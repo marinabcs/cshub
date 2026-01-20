@@ -1,12 +1,12 @@
-import { Menu, UserPlus } from 'lucide-react'
+import { Menu, Users } from 'lucide-react'
 import { useLocation, Link } from 'react-router-dom'
 
 export default function Header({ title, subtitle, onMenuClick }) {
   const location = useLocation()
-  const showActionButton = location.pathname === '/clientes'
+  const isDashboard = location.pathname === '/'
 
   return (
-    <header className="h-20 bg-dark-950 flex items-center justify-between px-6 border-b border-dark-800">
+    <header className="h-20 bg-dark-950 flex items-center justify-between px-6">
       <div className="flex items-center gap-4">
         <button
           onClick={onMenuClick}
@@ -23,22 +23,12 @@ export default function Header({ title, subtitle, onMenuClick }) {
       </div>
 
       <div className="flex items-center gap-3">
-        {showActionButton && (
-          <button
-            disabled
-            className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <UserPlus className="w-5 h-5" />
-            Novo Cliente
-          </button>
-        )}
-
-        {location.pathname === '/' && (
+        {isDashboard && (
           <Link
             to="/clientes"
             className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-medium transition-colors"
           >
-            <UserPlus className="w-5 h-5" />
+            <Users className="w-5 h-5" />
             Ver Clientes
           </Link>
         )}
