@@ -1,300 +1,467 @@
-import { Link } from 'react-router-dom'
-import {
-  Users,
-  AlertTriangle,
-  CheckCircle,
-  TrendingDown,
-  ArrowRight,
-  Clock,
-  Activity,
-  Calendar,
-  Target,
-  Gift
-} from 'lucide-react'
-import { useDashboardStats, useClientesCriticos } from '../hooks/useClientes'
-import { StatsCard, Card, CardHeader, CardContent } from '../components/UI/Card'
-import { StatusBadge } from '../components/UI/Badge'
-import { HealthBar } from '../components/UI/HealthBar'
-import { Loading, LoadingCard } from '../components/UI/Loading'
-import { formatRelativeTime } from '../utils/helpers'
-import { timestampToDate } from '../services/api'
+import { useState, useEffect } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../services/firebase';
+import { useNavigate } from 'react-router-dom';
+import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, Calendar, ChevronRight } from 'lucide-react';
 
 export default function Dashboard() {
-  const { stats, loading: loadingStats } = useDashboardStats()
-  const { clientes: clientesCriticos, loading: loadingCriticos } = useClientesCriticos(5)
+  const [clientes, setClientes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  return (
-    <div className="space-y-6">
-      {/* Stats Cards - Linha 1 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {loadingStats ? (
-          <>
-            <LoadingCard />
-            <LoadingCard />
-            <LoadingCard />
-            <LoadingCard />
-          </>
-        ) : (
-          <>
-            <StatsCard
-              title="Total de Clientes"
-              value={stats?.total || 0}
-              icon={Users}
-              color="cyan"
-            />
-            <StatsCard
-              title="Clientes Saudáveis"
-              value={stats?.saudaveis || 0}
-              icon={CheckCircle}
-              color="green"
-            />
-            <StatsCard
-              title="Precisam Atenção"
-              value={(stats?.atencao || 0) + (stats?.risco || 0)}
-              icon={AlertTriangle}
-              color="orange"
-            />
-            <StatsCard
-              title="Em Estado Crítico"
-              value={stats?.critico || 0}
-              icon={TrendingDown}
-              color="red"
-            />
-          </>
-        )}
+  useEffect(() => {
+    const fetchClientes = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'clientes'));
+        const clientesData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setClientes(clientesData);
+      } catch (error) {
+        console.error('Erro ao buscar clientes:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchClientes();
+  }, []);
+
+  const stats = {
+    total: clientes.length,
+    saudaveis: clientes.filter(c => c.health_status === 'saudavel').length,
+    atencao: clientes.filter(c => c.health_status === 'atencao').length,
+    risco: clientes.filter(c => c.health_status === 'risco').length,
+    critico: clientes.filter(c => c.health_status === 'critico').length
+  };
+
+  const clientesAtencao = clientes
+    .filter(c => c.health_status !== 'saudavel')
+    .sort((a, b) => (a.health_score || 0) - (b.health_score || 0))
+    .slice(0, 5);
+
+  const getHealthColor = (status) => {
+    const colors = {
+      saudavel: '#10b981',
+      atencao: '#f59e0b',
+      risco: '#f97316',
+      critico: '#ef4444'
+    };
+    return colors[status] || '#64748b';
+  };
+
+  const getHealthLabel = (status) => {
+    const labels = {
+      saudavel: 'Saudável',
+      atencao: 'Atenção',
+      risco: 'Risco',
+      critico: 'Crítico'
+    };
+    return labels[status] || status;
+  };
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return 'Sem registro';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+    if (diff === 0) return 'Hoje';
+    if (diff === 1) return 'Ontem';
+    return `há ${diff} dias`;
+  };
+
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: '#0f0a1f',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{
+          width: '48px',
+          height: '48px',
+          border: '3px solid rgba(139, 92, 246, 0.2)',
+          borderTopColor: '#8b5cf6',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }}></div>
       </div>
-
-      {/* Stats Cards - Linha 2 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {loadingStats ? (
-          <>
-            <LoadingCard />
-            <LoadingCard />
-            <LoadingCard />
-            <LoadingCard />
-          </>
-        ) : (
-          <>
-            <StatsCard
-              title="Interações (mês)"
-              value="-"
-              icon={Activity}
-              color="purple"
-            />
-            <StatsCard
-              title="Tempo Médio Resposta"
-              value="-"
-              icon={Clock}
-              color="amber"
-            />
-            <StatsCard
-              title="NPS Médio"
-              value="-"
-              icon={Target}
-              color="green"
-            />
-            <StatsCard
-              title="Renovações (mês)"
-              value="-"
-              icon={Calendar}
-              color="cyan"
-            />
-          </>
-        )}
-      </div>
-
-      {/* Seções em Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Clientes que precisam de atenção */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-400" />
-                <h2 className="text-base font-semibold text-white">
-                  Clientes em Atenção
-                </h2>
-              </div>
-              <Link
-                to="/clientes"
-                className="text-sm text-primary-400 hover:text-primary-300 font-medium flex items-center gap-1 transition-colors"
-              >
-                Ver todos
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loadingCriticos ? (
-              <div className="p-6">
-                <Loading />
-              </div>
-            ) : clientesCriticos.length === 0 ? (
-              <div className="py-12 text-center">
-                <p className="text-dark-400">Nenhum cliente em estado crítico</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-dark-700">
-                {clientesCriticos.map((cliente) => (
-                  <ClienteRow key={cliente.id} cliente={cliente} />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Distribuição por Status */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-primary-400" />
-                <h2 className="text-base font-semibold text-white">
-                  Distribuição por Status
-                </h2>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loadingStats ? (
-              <Loading />
-            ) : (
-              <div className="space-y-5">
-                <StatusBar
-                  label="Saudáveis"
-                  count={stats?.saudaveis || 0}
-                  total={stats?.total || 1}
-                  color="emerald"
-                />
-                <StatusBar
-                  label="Atenção"
-                  count={stats?.atencao || 0}
-                  total={stats?.total || 1}
-                  color="amber"
-                />
-                <StatusBar
-                  label="Risco"
-                  count={stats?.risco || 0}
-                  total={stats?.total || 1}
-                  color="orange"
-                />
-                <StatusBar
-                  label="Crítico"
-                  count={stats?.critico || 0}
-                  total={stats?.total || 1}
-                  color="red"
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Seção de Aniversários - Placeholder */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Gift className="w-5 h-5 text-pink-400" />
-                <h2 className="text-base font-semibold text-white">
-                  Aniversários do Mês
-                </h2>
-              </div>
-              <span className="text-sm text-primary-400 font-medium">
-                Ver todos →
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-dark-400 text-center py-8">
-              Nenhum aniversário este mês
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-cyan-400" />
-                <h2 className="text-base font-semibold text-white">
-                  Renovações Próximas
-                </h2>
-              </div>
-              <span className="text-sm text-primary-400 font-medium">
-                Ver todos →
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-dark-400 text-center py-8">
-              Nenhuma renovação próxima
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  )
-}
-
-function ClienteRow({ cliente }) {
-  return (
-    <Link
-      to={`/clientes/${cliente.id}`}
-      className="flex items-center gap-4 px-5 py-4 hover:bg-dark-750 transition-colors"
-    >
-      <div className="flex-shrink-0 w-10 h-10 bg-dark-700 rounded-xl flex items-center justify-center">
-        <span className="text-sm font-semibold text-white">
-          {cliente.team_name?.charAt(0).toUpperCase()}
-        </span>
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-white truncate">
-            {cliente.team_name}
-          </p>
-          <StatusBadge status={cliente.health_status} />
-        </div>
-        <p className="text-xs text-dark-400 mt-0.5">
-          {cliente.responsavel_nome}
-        </p>
-      </div>
-
-      <div className="flex-shrink-0 w-24 hidden sm:block">
-        <HealthBar score={cliente.health_score} showLabel={false} size="sm" />
-        <p className="text-xs text-dark-400 mt-1 text-center">{cliente.health_score}%</p>
-      </div>
-    </Link>
-  )
-}
-
-function StatusBar({ label, count, total, color }) {
-  const percentage = total > 0 ? Math.round((count / total) * 100) : 0
-
-  const colorClasses = {
-    emerald: 'bg-emerald-500',
-    amber: 'bg-amber-500',
-    orange: 'bg-orange-500',
-    red: 'bg-red-500'
+    );
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm text-dark-300">{label}</span>
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-white">{count}</span>
-          <span className="text-xs text-dark-500">{percentage}%</span>
+    <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: '32px'
+      }}>
+        <div>
+          <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>
+            Dashboard
+          </h1>
+          <p style={{ color: '#94a3b8', margin: 0 }}>Visão geral dos clientes</p>
+        </div>
+        <button
+          onClick={() => navigate('/clientes')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px 20px',
+            background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+            border: 'none',
+            borderRadius: '12px',
+            color: 'white',
+            fontSize: '14px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            boxShadow: '0 4px 20px rgba(139, 92, 246, 0.3)'
+          }}
+        >
+          <Users style={{ width: '18px', height: '18px' }} />
+          Ver Clientes
+        </button>
+      </div>
+
+      {/* Stats Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: '20px',
+        marginBottom: '32px'
+      }}>
+        {/* Total de Clientes */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)',
+          border: '1px solid rgba(139, 92, 246, 0.2)',
+          borderRadius: '20px',
+          padding: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px'
+        }}>
+          <div style={{
+            width: '56px',
+            height: '56px',
+            background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+            borderRadius: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(139, 92, 246, 0.3)'
+          }}>
+            <Users style={{ width: '28px', height: '28px', color: 'white' }} />
+          </div>
+          <div>
+            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Total de Clientes</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.total}</p>
+          </div>
+        </div>
+
+        {/* Saudáveis */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)',
+          border: '1px solid rgba(16, 185, 129, 0.2)',
+          borderRadius: '20px',
+          padding: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px'
+        }}>
+          <div style={{
+            width: '56px',
+            height: '56px',
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            borderRadius: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(16, 185, 129, 0.3)'
+          }}>
+            <CheckCircle style={{ width: '28px', height: '28px', color: 'white' }} />
+          </div>
+          <div>
+            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Saudáveis</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.saudaveis}</p>
+          </div>
+        </div>
+
+        {/* Precisam Atenção */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)',
+          border: '1px solid rgba(245, 158, 11, 0.2)',
+          borderRadius: '20px',
+          padding: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px'
+        }}>
+          <div style={{
+            width: '56px',
+            height: '56px',
+            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            borderRadius: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(245, 158, 11, 0.3)'
+          }}>
+            <AlertTriangle style={{ width: '28px', height: '28px', color: 'white' }} />
+          </div>
+          <div>
+            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Precisam Atenção</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.atencao + stats.risco}</p>
+          </div>
+        </div>
+
+        {/* Críticos */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: '20px',
+          padding: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px'
+        }}>
+          <div style={{
+            width: '56px',
+            height: '56px',
+            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+            borderRadius: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(239, 68, 68, 0.3)'
+          }}>
+            <XCircle style={{ width: '28px', height: '28px', color: 'white' }} />
+          </div>
+          <div>
+            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Em Estado Crítico</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.critico}</p>
+          </div>
         </div>
       </div>
-      <div className="w-full bg-dark-700 rounded-full h-2 overflow-hidden">
-        <div
-          className={`${colorClasses[color]} h-2 rounded-full transition-all duration-500`}
-          style={{ width: `${percentage}%` }}
-        />
+
+      {/* Grid de Seções */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '24px'
+      }}>
+        {/* Clientes que precisam de atenção */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '20px',
+          padding: '24px'
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '20px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <AlertTriangle style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>
+                Clientes em Atenção
+              </h2>
+            </div>
+            <button
+              onClick={() => navigate('/clientes')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: 'none',
+                border: 'none',
+                color: '#8b5cf6',
+                fontSize: '14px',
+                cursor: 'pointer'
+              }}
+            >
+              Ver todos
+              <ChevronRight style={{ width: '16px', height: '16px' }} />
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {clientesAtencao.length > 0 ? clientesAtencao.map((cliente) => (
+              <div
+                key={cliente.id}
+                onClick={() => navigate(`/clientes/${cliente.id}`)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '16px',
+                  background: 'rgba(15, 10, 31, 0.6)',
+                  border: '1px solid rgba(139, 92, 246, 0.1)',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '16px'
+                  }}>
+                    {cliente.team_name?.charAt(0) || 'C'}
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: 'white', fontWeight: '500' }}>{cliente.team_name}</span>
+                      <span style={{
+                        padding: '2px 8px',
+                        background: `${getHealthColor(cliente.health_status)}20`,
+                        color: getHealthColor(cliente.health_status),
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '500'
+                      }}>
+                        {getHealthLabel(cliente.health_status)}
+                      </span>
+                    </div>
+                    <span style={{ color: '#64748b', fontSize: '13px' }}>{cliente.responsavel_nome || 'Sem responsável'}</span>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginBottom: '4px'
+                  }}>
+                    <div style={{
+                      width: '80px',
+                      height: '6px',
+                      background: 'rgba(255,255,255,0.1)',
+                      borderRadius: '3px',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        width: `${cliente.health_score || 0}%`,
+                        height: '100%',
+                        background: getHealthColor(cliente.health_status),
+                        borderRadius: '3px'
+                      }}></div>
+                    </div>
+                    <span style={{ color: getHealthColor(cliente.health_status), fontSize: '14px', fontWeight: '600' }}>
+                      {cliente.health_score || 0}%
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b', fontSize: '12px' }}>
+                    <Clock style={{ width: '12px', height: '12px' }} />
+                    {formatDate(cliente.ultima_interacao)}
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div style={{
+                padding: '32px',
+                textAlign: 'center',
+                color: '#64748b'
+              }}>
+                Todos os clientes estão saudáveis! 🎉
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Distribuição por Status */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '20px',
+          padding: '24px'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginBottom: '24px'
+          }}>
+            <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>
+              Distribuição por Status
+            </h2>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {[
+              { label: 'Saudáveis', value: stats.saudaveis, color: '#10b981' },
+              { label: 'Atenção', value: stats.atencao, color: '#f59e0b' },
+              { label: 'Risco', value: stats.risco, color: '#f97316' },
+              { label: 'Crítico', value: stats.critico, color: '#ef4444' }
+            ].map((item, index) => (
+              <div key={index}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px'
+                }}>
+                  <span style={{ color: '#e2e8f0', fontSize: '14px' }}>{item.label}</span>
+                  <span style={{ color: 'white', fontWeight: '600' }}>
+                    {item.value} <span style={{ color: '#64748b', fontWeight: '400' }}>
+                      ({stats.total > 0 ? Math.round((item.value / stats.total) * 100) : 0}%)
+                    </span>
+                  </span>
+                </div>
+                <div style={{
+                  width: '100%',
+                  height: '8px',
+                  background: 'rgba(255,255,255,0.1)',
+                  borderRadius: '4px',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    width: stats.total > 0 ? `${(item.value / stats.total) * 100}%` : '0%',
+                    height: '100%',
+                    background: item.color,
+                    borderRadius: '4px',
+                    transition: 'width 0.5s ease'
+                  }}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Resumo */}
+          <div style={{
+            marginTop: '24px',
+            padding: '16px',
+            background: 'rgba(139, 92, 246, 0.1)',
+            border: '1px solid rgba(139, 92, 246, 0.2)',
+            borderRadius: '12px'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span style={{ color: '#94a3b8', fontSize: '14px' }}>Taxa de clientes saudáveis</span>
+              <span style={{ color: '#10b981', fontSize: '20px', fontWeight: 'bold' }}>
+                {stats.total > 0 ? Math.round((stats.saudaveis / stats.total) * 100) : 0}%
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  )
+  );
 }
