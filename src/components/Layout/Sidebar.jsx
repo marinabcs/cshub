@@ -1,146 +1,175 @@
-import { NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Users,
-  LogOut,
-  X,
-  Settings,
-  HelpCircle
-} from 'lucide-react'
-import { useAuth } from '../../contexts/AuthContext'
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { LayoutDashboard, Users, Settings, HelpCircle, LogOut } from 'lucide-react';
 
-const menuItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: Users, label: 'Clientes', path: '/clientes' },
-]
+export default function Sidebar() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
-const configItems = [
-  { icon: Settings, label: 'Configurações', path: '/config', disabled: true },
-  { icon: HelpCircle, label: 'Ajuda', path: '/ajuda', disabled: true },
-]
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Erro ao sair:', error);
+    }
+  };
 
-export default function Sidebar({ isOpen, onClose }) {
-  const { user, logout } = useAuth()
+  const menuItems = [
+    { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/clientes', icon: Users, label: 'Clientes' },
+  ];
 
-  const userName = user?.email?.split('@')[0] || 'Usuário'
-  const userInitial = userName.charAt(0).toUpperCase()
+  const configItems = [
+    { to: '/configuracoes', icon: Settings, label: 'Configurações' },
+    { to: '/ajuda', icon: HelpCircle, label: 'Ajuda' },
+  ];
+
+  const linkStyle = (isActive) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '12px 16px',
+    borderRadius: '12px',
+    color: isActive ? 'white' : '#94a3b8',
+    background: isActive ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(139, 92, 246, 0.1) 100%)' : 'transparent',
+    border: isActive ? '1px solid rgba(139, 92, 246, 0.3)' : '1px solid transparent',
+    textDecoration: 'none',
+    fontSize: '14px',
+    fontWeight: isActive ? '600' : '400',
+    transition: 'all 0.2s ease'
+  });
 
   return (
-    <>
-      {/* Overlay mobile */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
-          onClick={onClose}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        className={`
-          fixed top-0 left-0 z-50 h-screen w-[260px] bg-dark-900 border-r border-dark-700
-          transform transition-transform duration-300 ease-in-out flex flex-col
-          lg:translate-x-0 lg:static lg:z-auto
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}
-      >
-        {/* Logo */}
-        <div className="flex items-center justify-between h-20 px-5 border-b border-dark-700">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/25">
-              <span className="text-white font-bold text-lg">CS</span>
-            </div>
-            <div>
-              <span className="text-lg font-bold text-white">CS Hub</span>
-              <p className="text-[11px] text-dark-400 -mt-0.5">v1.0</p>
-            </div>
+    <div style={{
+      width: '260px',
+      height: '100vh',
+      background: 'linear-gradient(180deg, #0f0a1f 0%, #1a1033 100%)',
+      borderRight: '1px solid rgba(139, 92, 246, 0.1)',
+      display: 'flex',
+      flexDirection: 'column',
+      position: 'fixed',
+      left: 0,
+      top: 0
+    }}>
+      {/* Logo */}
+      <div style={{
+        padding: '24px 20px',
+        borderBottom: '1px solid rgba(139, 92, 246, 0.1)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(139, 92, 246, 0.3)'
+          }}>
+            <Users style={{ width: '24px', height: '24px', color: 'white' }} />
           </div>
-          <button
-            onClick={onClose}
-            className="lg:hidden p-2 text-dark-400 hover:text-white rounded-lg hover:bg-dark-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div>
+            <h1 style={{ fontSize: '18px', fontWeight: 'bold', color: 'white', margin: 0 }}>CS Hub</h1>
+            <span style={{ fontSize: '12px', color: '#64748b' }}>v1.0</span>
+          </div>
         </div>
+      </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-5 overflow-y-auto">
-          {/* Menu Section */}
-          <p className="px-4 mb-3 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
-            Menu
-          </p>
-          <div className="space-y-1 mb-6">
+      {/* Menu Principal */}
+      <div style={{ flex: 1, padding: '20px 12px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ marginBottom: '24px' }}>
+          <span style={{
+            display: 'block',
+            fontSize: '11px',
+            fontWeight: '600',
+            color: '#64748b',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            padding: '0 16px',
+            marginBottom: '12px'
+          }}>Menu</span>
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {menuItems.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                onClick={onClose}
-                className={({ isActive }) => `
-                  flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium
-                  transition-all duration-200
-                  ${isActive
-                    ? 'bg-primary-600/20 text-primary-400'
-                    : 'text-dark-300 hover:bg-dark-800 hover:text-white'
-                  }
-                `}
-              >
-                <item.icon className="w-5 h-5" />
+              <NavLink key={item.to} to={item.to} style={({ isActive }) => linkStyle(isActive)}>
+                <item.icon style={{ width: '20px', height: '20px' }} />
                 {item.label}
               </NavLink>
             ))}
-          </div>
-
-          {/* Configurações Section */}
-          <p className="px-4 mb-3 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
-            Configurações
-          </p>
-          <div className="space-y-1">
-            {configItems.map((item) => (
-              <button
-                key={item.path}
-                disabled={item.disabled}
-                className={`
-                  flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium w-full
-                  transition-all duration-200 text-left
-                  ${item.disabled
-                    ? 'text-dark-500 cursor-not-allowed opacity-50'
-                    : 'text-dark-300 hover:bg-dark-800 hover:text-white'
-                  }
-                `}
-              >
-                <item.icon className="w-5 h-5" />
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </nav>
-
-        {/* User Section */}
-        <div className="p-4 border-t border-dark-700">
-          <div className="flex items-center gap-3 px-2 py-2">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-500 to-primary-500 flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-semibold text-sm">
-                {userInitial}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">
-                {userName}
-              </p>
-              <p className="text-xs text-dark-400">
-                Administrador
-              </p>
-            </div>
-            <button
-              onClick={logout}
-              className="p-2 text-dark-400 hover:text-red-400 hover:bg-dark-800 rounded-lg transition-colors"
-              title="Sair"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+          </nav>
         </div>
-      </aside>
-    </>
-  )
+
+        <div>
+          <span style={{
+            display: 'block',
+            fontSize: '11px',
+            fontWeight: '600',
+            color: '#64748b',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            padding: '0 16px',
+            marginBottom: '12px'
+          }}>Configurações</span>
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {configItems.map((item) => (
+              <NavLink key={item.to} to={item.to} style={({ isActive }) => linkStyle(isActive)}>
+                <item.icon style={{ width: '20px', height: '20px' }} />
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+      </div>
+
+      {/* Usuário */}
+      <div style={{
+        padding: '16px',
+        borderTop: '1px solid rgba(139, 92, 246, 0.1)',
+        background: 'rgba(15, 10, 31, 0.5)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontWeight: '600',
+              fontSize: '16px'
+            }}>
+              {user?.email?.charAt(0).toUpperCase() || 'U'}
+            </div>
+            <div>
+              <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>
+                {user?.email?.split('@')[0] || 'Usuário'}
+              </p>
+              <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Administrador</p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            style={{
+              width: '36px',
+              height: '36px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+            title="Sair"
+          >
+            <LogOut style={{ width: '18px', height: '18px', color: '#ef4444' }} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
