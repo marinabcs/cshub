@@ -1,17 +1,17 @@
 export function Badge({ children, variant = 'default', className = '' }) {
   const variants = {
-    default: 'bg-gray-100 text-gray-800',
-    success: 'bg-emerald-100 text-emerald-800',
-    warning: 'bg-amber-100 text-amber-800',
-    danger: 'bg-orange-100 text-orange-800',
-    critical: 'bg-red-100 text-red-800',
-    info: 'bg-cyan-100 text-cyan-800',
-    primary: 'bg-primary-100 text-primary-800'
+    default: 'bg-dark-700 text-dark-300 border-dark-600',
+    success: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    warning: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    danger: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+    critical: 'bg-red-500/20 text-red-400 border-red-500/30',
+    info: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+    primary: 'bg-primary-500/20 text-primary-400 border-primary-500/30'
   }
 
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${variants[variant]} ${className}`}
+      className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border ${variants[variant]} ${className}`}
     >
       {children}
     </span>
@@ -33,16 +33,16 @@ export function StatusBadge({ status }) {
 
 export function SentimentBadge({ sentiment }) {
   const config = {
-    positivo: { emoji: '😊', color: 'bg-emerald-100 text-emerald-800' },
-    neutro: { emoji: '😐', color: 'bg-gray-100 text-gray-800' },
-    negativo: { emoji: '😟', color: 'bg-red-100 text-red-800' },
-    urgente: { emoji: '🚨', color: 'bg-red-100 text-red-800 animate-pulse' }
+    positivo: { emoji: '😊', bg: 'bg-emerald-500/20', border: 'border-emerald-500/30' },
+    neutro: { emoji: '😐', bg: 'bg-dark-700', border: 'border-dark-600' },
+    negativo: { emoji: '😟', bg: 'bg-red-500/20', border: 'border-red-500/30' },
+    urgente: { emoji: '🚨', bg: 'bg-red-500/20', border: 'border-red-500/30 animate-pulse' }
   }
 
-  const { emoji, color } = config[sentiment] || config.neutro
+  const { emoji, bg, border } = config[sentiment] || config.neutro
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-sm ${color}`}>
+    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-base ${bg} border ${border}`}>
       {emoji}
     </span>
   )

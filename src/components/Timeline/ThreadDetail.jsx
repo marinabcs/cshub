@@ -11,45 +11,45 @@ export default function ThreadDetail({ teamId, thread, onClose }) {
   if (!thread) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
-      <div className="w-full max-w-2xl bg-white h-full overflow-hidden flex flex-col animate-slide-in">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex justify-end">
+      <div className="w-full max-w-2xl bg-dark-900 h-full overflow-hidden flex flex-col animate-slide-in border-l border-dark-700">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 border-b border-dark-700">
           <button
             onClick={onClose}
-            className="p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+            className="p-2 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-dark-700 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <button
             onClick={onClose}
-            className="p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+            className="p-2 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-dark-700 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Thread Info */}
-        <div className="p-4 border-b border-gray-200 bg-gray-50">
+        <div className="p-4 border-b border-dark-700 bg-dark-800">
           <div className="flex items-center gap-2 mb-2">
             <SentimentBadge sentiment={thread.sentimento} />
-            <h2 className="font-semibold text-gray-900">{thread.assunto}</h2>
+            <h2 className="font-semibold text-slate-100">{thread.assunto}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <CategoriaBadge categoria={thread.categoria} />
             <ThreadStatusBadge status={thread.status} />
           </div>
           {thread.resumo_chat && (
-            <p className="text-sm text-gray-600">{thread.resumo_chat}</p>
+            <p className="text-sm text-slate-400">{thread.resumo_chat}</p>
           )}
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-dark-900">
           {loading ? (
             <Loading />
           ) : mensagens.length === 0 ? (
-            <p className="text-center text-gray-500 py-8">
+            <p className="text-center text-slate-500 py-8">
               Nenhuma mensagem encontrada.
             </p>
           ) : (
@@ -71,31 +71,31 @@ function MessageBubble({ mensagem }) {
       <div
         className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
           isEquipe
-            ? 'bg-primary-100 text-primary-700'
-            : 'bg-gray-100 text-gray-700'
+            ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
+            : 'bg-dark-700 text-slate-400 border border-dark-600'
         }`}
       >
         {getInitials(mensagem.remetente_nome)}
       </div>
 
       <div className={`flex-1 max-w-[80%] ${isEquipe ? 'text-right' : ''}`}>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-900">
+        <div className={`flex items-center gap-2 mb-1 ${isEquipe ? 'justify-end' : ''}`}>
+          <span className="text-sm font-medium text-slate-200">
             {mensagem.remetente_nome}
           </span>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-slate-500">
             {formatDateTime(timestampToDate(mensagem.data))}
           </span>
         </div>
         <div
-          className={`inline-block p-3 rounded-lg text-sm ${
+          className={`inline-block p-3 rounded-xl text-sm ${
             isEquipe
               ? 'bg-primary-600 text-white rounded-tr-none'
-              : 'bg-gray-100 text-gray-900 rounded-tl-none'
+              : 'bg-dark-700 text-slate-200 rounded-tl-none border border-dark-600'
           }`}
         >
           {mensagem.assunto && (
-            <p className={`font-medium mb-1 ${isEquipe ? 'text-white' : 'text-gray-700'}`}>
+            <p className={`font-medium mb-1 ${isEquipe ? 'text-white' : 'text-slate-300'}`}>
               {mensagem.assunto}
             </p>
           )}
