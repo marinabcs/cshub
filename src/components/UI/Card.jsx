@@ -1,7 +1,7 @@
 export function Card({ children, className = '', ...props }) {
   return (
     <div
-      className={`bg-dark-800 rounded-2xl border border-dark-700 shadow-lg shadow-black/10 ${className}`}
+      className={`bg-dark-800 rounded-2xl border border-dark-700 shadow-lg shadow-black/20 ${className}`}
       {...props}
     >
       {children}
@@ -33,52 +33,56 @@ export function CardFooter({ children, className = '' }) {
   )
 }
 
-export function StatsCard({ title, value, icon: Icon, trend, trendUp, color = 'primary', className = '' }) {
+export function StatsCard({ title, value, subtitle, icon: Icon, color = 'primary', className = '' }) {
   const colors = {
     primary: {
-      bg: 'bg-primary-500/20',
+      bg: 'bg-gradient-to-br from-primary-500/20 to-primary-600/10',
+      border: 'border-primary-500/30',
       icon: 'text-primary-400',
-      glow: 'shadow-primary-500/20'
+      iconBg: 'bg-primary-500/20',
+      glow: 'shadow-primary-500/10'
     },
     success: {
-      bg: 'bg-emerald-500/20',
+      bg: 'bg-gradient-to-br from-emerald-500/20 to-emerald-600/10',
+      border: 'border-emerald-500/30',
       icon: 'text-emerald-400',
-      glow: 'shadow-emerald-500/20'
+      iconBg: 'bg-emerald-500/20',
+      glow: 'shadow-emerald-500/10'
     },
     warning: {
-      bg: 'bg-amber-500/20',
+      bg: 'bg-gradient-to-br from-amber-500/20 to-amber-600/10',
+      border: 'border-amber-500/30',
       icon: 'text-amber-400',
-      glow: 'shadow-amber-500/20'
+      iconBg: 'bg-amber-500/20',
+      glow: 'shadow-amber-500/10'
     },
     danger: {
-      bg: 'bg-red-500/20',
+      bg: 'bg-gradient-to-br from-red-500/20 to-red-600/10',
+      border: 'border-red-500/30',
       icon: 'text-red-400',
-      glow: 'shadow-red-500/20'
+      iconBg: 'bg-red-500/20',
+      glow: 'shadow-red-500/10'
     }
   }
 
   const colorConfig = colors[color] || colors.primary
 
   return (
-    <Card className={`hover:border-dark-600 transition-all duration-300 ${className}`}>
-      <CardContent>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-dark-400">{title}</p>
-            <p className="mt-2 text-3xl font-bold text-white">{value}</p>
-            {trend && (
-              <p className={`mt-2 text-sm font-medium ${trendUp ? 'text-emerald-400' : 'text-red-400'}`}>
-                {trendUp ? '↑' : '↓'} {trend}
-              </p>
-            )}
-          </div>
-          {Icon && (
-            <div className={`p-4 ${colorConfig.bg} rounded-2xl shadow-lg ${colorConfig.glow}`}>
-              <Icon className={`w-7 h-7 ${colorConfig.icon}`} />
-            </div>
+    <div className={`${colorConfig.bg} rounded-2xl border ${colorConfig.border} p-6 shadow-lg ${colorConfig.glow} hover:scale-[1.02] transition-transform duration-200 ${className}`}>
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-slate-400 mb-1">{title}</p>
+          <p className="text-4xl font-bold text-white tracking-tight">{value}</p>
+          {subtitle && (
+            <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
           )}
         </div>
-      </CardContent>
-    </Card>
+        {Icon && (
+          <div className={`p-3 ${colorConfig.iconBg} rounded-xl border ${colorConfig.border}`}>
+            <Icon className={`w-6 h-6 ${colorConfig.icon}`} />
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

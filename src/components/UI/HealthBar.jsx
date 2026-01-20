@@ -1,16 +1,16 @@
 export function HealthBar({ score, showLabel = true, size = 'md' }) {
-  const getColor = (score) => {
-    if (score >= 80) return 'bg-emerald-500'
-    if (score >= 60) return 'bg-amber-500'
-    if (score >= 40) return 'bg-orange-500'
-    return 'bg-red-500'
+  const getGradient = (score) => {
+    if (score >= 80) return 'bg-gradient-to-r from-emerald-600 to-emerald-400'
+    if (score >= 60) return 'bg-gradient-to-r from-amber-600 to-amber-400'
+    if (score >= 40) return 'bg-gradient-to-r from-orange-600 to-orange-400'
+    return 'bg-gradient-to-r from-red-600 to-red-400'
   }
 
   const getGlow = (score) => {
-    if (score >= 80) return 'shadow-emerald-500/50'
-    if (score >= 60) return 'shadow-amber-500/50'
-    if (score >= 40) return 'shadow-orange-500/50'
-    return 'shadow-red-500/50'
+    if (score >= 80) return 'shadow-emerald-500/40'
+    if (score >= 60) return 'shadow-amber-500/40'
+    if (score >= 40) return 'shadow-orange-500/40'
+    return 'shadow-red-500/40'
   }
 
   const getTextColor = (score) => {
@@ -21,22 +21,21 @@ export function HealthBar({ score, showLabel = true, size = 'md' }) {
   }
 
   const sizes = {
-    sm: 'h-2',
-    md: 'h-3',
+    sm: 'h-1.5',
+    md: 'h-2.5',
     lg: 'h-4'
   }
 
   return (
     <div className="w-full">
       {showLabel && (
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-xs font-medium text-dark-400">Health Score</span>
-          <span className={`text-sm font-bold ${getTextColor(score)}`}>{score}%</span>
+        <div className="flex justify-between items-center mb-1.5">
+          <span className={`text-xs font-bold ${getTextColor(score)}`}>{score}%</span>
         </div>
       )}
-      <div className={`w-full bg-dark-700 rounded-full ${sizes[size]} overflow-hidden`}>
+      <div className={`w-full bg-dark-600 rounded-full ${sizes[size]} overflow-hidden`}>
         <div
-          className={`${getColor(score)} ${sizes[size]} rounded-full transition-all duration-500 shadow-lg ${getGlow(score)}`}
+          className={`${getGradient(score)} ${sizes[size]} rounded-full transition-all duration-500 shadow-md ${getGlow(score)}`}
           style={{ width: `${score}%` }}
         />
       </div>

@@ -4,7 +4,12 @@ import {
   AlertTriangle,
   CheckCircle,
   TrendingDown,
-  ArrowRight
+  ArrowRight,
+  ArrowUpRight,
+  Bell,
+  FileText,
+  Activity,
+  Clock
 } from 'lucide-react'
 import { useDashboardStats, useClientesCriticos } from '../hooks/useClientes'
 import { StatsCard, Card, CardHeader, CardContent } from '../components/UI/Card'
@@ -19,9 +24,9 @@ export default function Dashboard() {
   const { clientes: clientesCriticos, loading: loadingCriticos } = useClientesCriticos(5)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {loadingStats ? (
           <>
             <LoadingCard />
@@ -34,24 +39,28 @@ export default function Dashboard() {
             <StatsCard
               title="Total de Clientes"
               value={stats?.total || 0}
+              subtitle="Clientes ativos"
               icon={Users}
               color="primary"
             />
             <StatsCard
               title="Clientes Saudáveis"
               value={stats?.saudaveis || 0}
+              subtitle="Health score ≥ 80"
               icon={CheckCircle}
               color="success"
             />
             <StatsCard
               title="Precisam Atenção"
               value={(stats?.atencao || 0) + (stats?.risco || 0)}
+              subtitle="Health score 40-79"
               icon={AlertTriangle}
               color="warning"
             />
             <StatsCard
               title="Em Estado Crítico"
               value={stats?.critico || 0}
+              subtitle="Health score < 40"
               icon={TrendingDown}
               color="danger"
             />
@@ -59,171 +68,262 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Clientes Críticos */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-100">
-              Clientes que precisam de atenção
-            </h2>
-            <Link
-              to="/clientes"
-              className="text-sm text-primary-400 hover:text-primary-300 font-medium flex items-center gap-1 transition-colors"
-            >
-              Ver todos
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loadingCriticos ? (
-            <div className="p-6">
-              <Loading />
-            </div>
-          ) : clientesCriticos.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-8 h-8 text-emerald-400" />
-              </div>
-              <p className="text-slate-300 font-medium">Nenhum cliente em estado crítico</p>
-              <p className="text-slate-500 text-sm mt-1">Bom trabalho!</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-dark-700">
-              {clientesCriticos.map((cliente) => (
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Clientes que precisam de atenção - Takes 2 columns */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-500/20 rounded-lg">
+                    <Bell className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-slate-100">
+                    Clientes que precisam de atenção
+                  </h2>
+                </div>
                 <Link
-                  key={cliente.id}
-                  to={`/clientes/${cliente.id}`}
-                  className="flex items-center gap-4 p-4 hover:bg-dark-700/50 transition-colors"
+                  to="/clientes"
+                  className="text-sm text-primary-400 hover:text-primary-300 font-medium flex items-center gap-1 transition-colors"
                 >
-                  <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-dark-700 to-dark-600 rounded-xl flex items-center justify-center border border-dark-600">
-                    <span className="text-sm font-semibold text-slate-300">
-                      {cliente.team_name?.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-slate-100 truncate">
-                        {cliente.team_name}
-                      </p>
-                      <StatusBadge status={cliente.health_status} />
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {cliente.team_type} • {cliente.responsavel_nome}
-                    </p>
-                  </div>
-
-                  <div className="flex-shrink-0 w-32">
-                    <HealthBar score={cliente.health_score} size="sm" />
-                  </div>
-
-                  <div className="flex-shrink-0 text-right">
-                    <p className="text-xs text-slate-500">
-                      Última interação
-                    </p>
-                    <p className="text-sm text-slate-300">
-                      {formatRelativeTime(timestampToDate(cliente.ultima_interacao))}
-                    </p>
-                  </div>
+                  Ver todos
+                  <ArrowRight className="w-4 h-4" />
                 </Link>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Quick Info */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <h2 className="text-lg font-semibold text-slate-100">
-              Distribuição por Status
-            </h2>
-          </CardHeader>
-          <CardContent>
-            {loadingStats ? (
-              <Loading />
-            ) : (
-              <div className="space-y-5">
-                <StatusRow
-                  label="Saudáveis"
-                  count={stats?.saudaveis || 0}
-                  total={stats?.total || 1}
-                  color="bg-emerald-500"
-                  bgColor="bg-emerald-500/20"
-                />
-                <StatusRow
-                  label="Atenção"
-                  count={stats?.atencao || 0}
-                  total={stats?.total || 1}
-                  color="bg-amber-500"
-                  bgColor="bg-amber-500/20"
-                />
-                <StatusRow
-                  label="Risco"
-                  count={stats?.risco || 0}
-                  total={stats?.total || 1}
-                  color="bg-orange-500"
-                  bgColor="bg-orange-500/20"
-                />
-                <StatusRow
-                  label="Crítico"
-                  count={stats?.critico || 0}
-                  total={stats?.total || 1}
-                  color="bg-red-500"
-                  bgColor="bg-red-500/20"
-                />
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="p-4">
+              {loadingCriticos ? (
+                <div className="p-6">
+                  <Loading />
+                </div>
+              ) : clientesCriticos.length === 0 ? (
+                <div className="p-8 text-center">
+                  <div className="w-16 h-16 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-emerald-500/30">
+                    <CheckCircle className="w-8 h-8 text-emerald-400" />
+                  </div>
+                  <p className="text-slate-300 font-medium">Nenhum cliente em estado crítico</p>
+                  <p className="text-slate-500 text-sm mt-1">Todos os clientes estão saudáveis!</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {clientesCriticos.map((cliente) => (
+                    <ClienteCard key={cliente.id} cliente={cliente} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <h2 className="text-lg font-semibold text-slate-100">
-              Ações Rápidas
-            </h2>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
+        {/* Right Column - Distribution & Actions */}
+        <div className="space-y-6">
+          {/* Distribuição por Status */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary-500/20 rounded-lg">
+                  <Activity className="w-5 h-5 text-primary-400" />
+                </div>
+                <h2 className="text-lg font-semibold text-slate-100">
+                  Distribuição
+                </h2>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loadingStats ? (
+                <Loading />
+              ) : (
+                <div className="space-y-4">
+                  <StatusRow
+                    icon={CheckCircle}
+                    label="Saudáveis"
+                    count={stats?.saudaveis || 0}
+                    total={stats?.total || 1}
+                    color="emerald"
+                  />
+                  <StatusRow
+                    icon={AlertTriangle}
+                    label="Atenção"
+                    count={stats?.atencao || 0}
+                    total={stats?.total || 1}
+                    color="amber"
+                  />
+                  <StatusRow
+                    icon={AlertTriangle}
+                    label="Risco"
+                    count={stats?.risco || 0}
+                    total={stats?.total || 1}
+                    color="orange"
+                  />
+                  <StatusRow
+                    icon={TrendingDown}
+                    label="Crítico"
+                    count={stats?.critico || 0}
+                    total={stats?.total || 1}
+                    color="red"
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Ações Rápidas */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-slate-500/20 rounded-lg">
+                  <ArrowUpRight className="w-5 h-5 text-slate-400" />
+                </div>
+                <h2 className="text-lg font-semibold text-slate-100">
+                  Ações Rápidas
+                </h2>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
               <Link
                 to="/clientes"
-                className="p-5 bg-primary-500/10 border border-primary-500/20 rounded-xl hover:bg-primary-500/20 hover:border-primary-500/30 transition-all text-center group"
+                className="flex items-center gap-3 p-3 bg-dark-700/50 border border-dark-600 rounded-xl hover:bg-dark-700 hover:border-dark-500 transition-all group"
               >
-                <div className="w-12 h-12 bg-primary-500/20 rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
-                  <Users className="w-6 h-6 text-primary-400" />
+                <div className="p-2 bg-primary-500/20 rounded-lg group-hover:bg-primary-500/30 transition-colors">
+                  <Users className="w-4 h-4 text-primary-400" />
                 </div>
-                <p className="text-sm font-medium text-primary-300">Ver Clientes</p>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-200">Ver Clientes</p>
+                  <p className="text-xs text-slate-500">Lista completa</p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-colors" />
               </Link>
-              <div className="p-5 bg-dark-700/50 border border-dark-600 rounded-xl text-center opacity-60 cursor-not-allowed">
-                <div className="w-12 h-12 bg-dark-600 rounded-xl flex items-center justify-center mx-auto mb-3">
-                  <AlertTriangle className="w-6 h-6 text-slate-500" />
+
+              <button
+                disabled
+                className="flex items-center gap-3 p-3 bg-dark-700/30 border border-dark-700 rounded-xl w-full opacity-50 cursor-not-allowed"
+              >
+                <div className="p-2 bg-dark-600 rounded-lg">
+                  <Bell className="w-4 h-4 text-slate-500" />
                 </div>
-                <p className="text-sm font-medium text-slate-500">Em breve</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                <div className="flex-1 text-left">
+                  <p className="text-sm font-medium text-slate-400">Alertas</p>
+                  <p className="text-xs text-slate-600">Em breve</p>
+                </div>
+              </button>
+
+              <button
+                disabled
+                className="flex items-center gap-3 p-3 bg-dark-700/30 border border-dark-700 rounded-xl w-full opacity-50 cursor-not-allowed"
+              >
+                <div className="p-2 bg-dark-600 rounded-lg">
+                  <FileText className="w-4 h-4 text-slate-500" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-sm font-medium text-slate-400">Exportar Relatório</p>
+                  <p className="text-xs text-slate-600">Em breve</p>
+                </div>
+              </button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   )
 }
 
-function StatusRow({ label, count, total, color, bgColor }) {
+function ClienteCard({ cliente }) {
+  return (
+    <Link
+      to={`/clientes/${cliente.id}`}
+      className="flex items-center gap-4 p-4 bg-dark-700/50 border border-dark-600 rounded-xl hover:bg-dark-700 hover:border-dark-500 transition-all group"
+    >
+      {/* Avatar */}
+      <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-slate-600 to-slate-700 rounded-xl flex items-center justify-center border border-slate-500/30">
+        <span className="text-lg font-bold text-white">
+          {cliente.team_name?.charAt(0).toUpperCase()}
+        </span>
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-sm font-semibold text-slate-100 truncate group-hover:text-white transition-colors">
+            {cliente.team_name}
+          </p>
+          <StatusBadge status={cliente.health_status} />
+        </div>
+        <p className="text-xs text-slate-500">
+          {cliente.team_type} • {cliente.responsavel_nome}
+        </p>
+      </div>
+
+      {/* Health Bar */}
+      <div className="flex-shrink-0 w-28">
+        <HealthBar score={cliente.health_score} size="md" showLabel />
+      </div>
+
+      {/* Last Interaction */}
+      <div className="flex-shrink-0 hidden sm:block">
+        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+          <Clock className="w-3.5 h-3.5" />
+          <span>{formatRelativeTime(timestampToDate(cliente.ultima_interacao))}</span>
+        </div>
+      </div>
+
+      {/* Arrow */}
+      <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors flex-shrink-0" />
+    </Link>
+  )
+}
+
+function StatusRow({ icon: Icon, label, count, total, color }) {
   const percentage = total > 0 ? Math.round((count / total) * 100) : 0
 
+  const colorClasses = {
+    emerald: {
+      icon: 'text-emerald-400',
+      iconBg: 'bg-emerald-500/20',
+      bar: 'bg-gradient-to-r from-emerald-500 to-emerald-400',
+      text: 'text-emerald-400'
+    },
+    amber: {
+      icon: 'text-amber-400',
+      iconBg: 'bg-amber-500/20',
+      bar: 'bg-gradient-to-r from-amber-500 to-amber-400',
+      text: 'text-amber-400'
+    },
+    orange: {
+      icon: 'text-orange-400',
+      iconBg: 'bg-orange-500/20',
+      bar: 'bg-gradient-to-r from-orange-500 to-orange-400',
+      text: 'text-orange-400'
+    },
+    red: {
+      icon: 'text-red-400',
+      iconBg: 'bg-red-500/20',
+      bar: 'bg-gradient-to-r from-red-500 to-red-400',
+      text: 'text-red-400'
+    }
+  }
+
+  const colors = colorClasses[color] || colorClasses.emerald
+
   return (
-    <div>
-      <div className="flex justify-between text-sm mb-2">
-        <span className="text-slate-400">{label}</span>
-        <span className="font-medium text-slate-200">{count} <span className="text-slate-500">({percentage}%)</span></span>
+    <div className="flex items-center gap-3">
+      <div className={`p-1.5 ${colors.iconBg} rounded-lg flex-shrink-0`}>
+        <Icon className={`w-4 h-4 ${colors.icon}`} />
       </div>
-      <div className="w-full bg-dark-700 rounded-full h-2.5 overflow-hidden">
-        <div
-          className={`${color} h-2.5 rounded-full transition-all duration-500`}
-          style={{ width: `${percentage}%` }}
-        />
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between items-center mb-1.5">
+          <span className="text-sm text-slate-400">{label}</span>
+          <div className="flex items-center gap-2">
+            <span className={`text-lg font-bold ${colors.text}`}>{count}</span>
+            <span className="text-xs text-slate-600">({percentage}%)</span>
+          </div>
+        </div>
+        <div className="w-full bg-dark-700 rounded-full h-2.5 overflow-hidden">
+          <div
+            className={`${colors.bar} h-2.5 rounded-full transition-all duration-500`}
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
       </div>
     </div>
   )
