@@ -16,7 +16,6 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       await signInWithEmailAndPassword(auth, email, password);
       navigate('/');
@@ -28,171 +27,239 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Lado Esquerdo - Features */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#1a1625] via-[#1e1a2e] to-[#151220] p-12 flex-col justify-between relative">
-        {/* Background decorativo */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-20 left-10 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-40 right-10 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl"></div>
-        </div>
+    <div style={{ minHeight: '100vh', display: 'flex' }}>
+      {/* Lado Esquerdo */}
+      <div style={{
+        width: '50%',
+        background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%)',
+        padding: '48px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Blur decorativo */}
+        <div style={{
+          position: 'absolute',
+          top: '10%',
+          left: '10%',
+          width: '300px',
+          height: '300px',
+          background: 'rgba(139, 92, 246, 0.3)',
+          borderRadius: '50%',
+          filter: 'blur(100px)'
+        }}></div>
+        <div style={{
+          position: 'absolute',
+          bottom: '10%',
+          right: '10%',
+          width: '400px',
+          height: '400px',
+          background: 'rgba(6, 182, 212, 0.2)',
+          borderRadius: '50%',
+          filter: 'blur(120px)'
+        }}></div>
 
-        {/* Logo - Topo */}
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
-            <Users className="w-8 h-8 text-white" />
+        {/* Logo */}
+        <div style={{ position: 'relative', zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+              borderRadius: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 10px 40px rgba(139, 92, 246, 0.4)'
+            }}>
+              <Users style={{ width: '32px', height: '32px', color: 'white' }} />
+            </div>
+            <div>
+              <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: 'white', margin: 0 }}>CS Hub</h1>
+              <p style={{ color: '#a5b4fc', margin: 0 }}>Sistema de Customer Success v1.0</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-3xl font-bold text-white">CS Hub</h1>
-            <p className="text-slate-400">Sistema de Customer Success v1.0</p>
-          </div>
         </div>
 
-        {/* Features - Meio */}
-        <div className="relative z-10 space-y-7">
-          <FeatureItem
-            icon={Users}
-            title="Gestão de Clientes"
-            description="Acompanhe todos os clientes em um só lugar com informações completas e atualizadas."
-          />
-          <FeatureItem
-            icon={BarChart3}
-            title="Health Score"
-            description="Monitore a saúde dos clientes em tempo real com métricas inteligentes."
-          />
-          <FeatureItem
-            icon={Bell}
-            title="Alertas Inteligentes"
-            description="Receba notificações automáticas sobre clientes em risco ou que precisam de atenção."
-          />
-          <FeatureItem
-            icon={MessageSquare}
-            title="Timeline de Conversas"
-            description="Histórico completo de todas as interações com cada cliente."
-          />
+        {/* Features */}
+        <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {[
+            { icon: Users, title: 'Gestão de Clientes', desc: 'Acompanhe todos os clientes em um só lugar com informações completas.' },
+            { icon: BarChart3, title: 'Health Score', desc: 'Monitore a saúde dos clientes em tempo real com métricas inteligentes.' },
+            { icon: Bell, title: 'Alertas Inteligentes', desc: 'Receba notificações sobre clientes em risco ou que precisam de atenção.' },
+            { icon: MessageSquare, title: 'Timeline de Conversas', desc: 'Histórico completo de todas as interações com cada cliente.' }
+          ].map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                background: 'rgba(139, 92, 246, 0.2)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <item.icon style={{ width: '24px', height: '24px', color: '#a5b4fc' }} />
+              </div>
+              <div>
+                <h3 style={{ color: 'white', fontWeight: '600', margin: '0 0 4px 0' }}>{item.title}</h3>
+                <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0, lineHeight: 1.5 }}>{item.desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Rodapé - Base */}
-        <div className="relative z-10">
-          <div className="h-px bg-gradient-to-r from-transparent via-slate-600/50 to-transparent mb-6"></div>
-          <p className="text-slate-500 text-sm">Feito com 💜 pelo time de CS</p>
+        {/* Rodapé */}
+        <div style={{ position: 'relative', zIndex: 10 }}>
+          <div style={{ height: '1px', background: 'linear-gradient(90deg, transparent, #4c1d95, transparent)', marginBottom: '24px' }}></div>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Feito com 💜 pelo time de CS</p>
         </div>
       </div>
 
-      {/* Lado Direito - Login */}
-      <div className="w-full lg:w-1/2 bg-[#0d0b12] flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
-          {/* Logo Mobile */}
-          <div className="lg:hidden flex items-center gap-3 mb-10 justify-center">
-            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
-              <Users className="w-6 h-6 text-white" />
+      {/* Lado Direito */}
+      <div style={{
+        width: '50%',
+        background: '#0f0a1f',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '48px'
+      }}>
+        <div style={{ width: '100%', maxWidth: '400px' }}>
+          <div style={{
+            background: 'rgba(30, 27, 75, 0.6)',
+            border: '1px solid rgba(139, 92, 246, 0.2)',
+            borderRadius: '24px',
+            padding: '40px',
+            backdropFilter: 'blur(20px)'
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+              <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>Bem-vindo de volta!</h2>
+              <p style={{ color: '#94a3b8', margin: 0 }}>Entre para gerenciar seus clientes</p>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">CS Hub</h1>
-              <p className="text-slate-400 text-xs">v1.0</p>
-            </div>
-          </div>
 
-          {/* Card de Login */}
-          <div className="bg-[#1a1625] border border-[#2d2640] rounded-3xl p-8 shadow-2xl">
-            {/* Header */}
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-white mb-2">Bem-vindo de volta!</h2>
-              <p className="text-slate-400">Entre para gerenciar seus clientes</p>
-            </div>
-
-            {/* Formulário */}
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Email */}
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  E-mail
-                </label>
+            <form onSubmit={handleSubmit}>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: '#e2e8f0', fontSize: '14px', marginBottom: '8px' }}>E-mail</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.trakto.io"
-                  className="w-full px-4 py-3.5 bg-[#0d0b12] border border-[#2d2640] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all"
                   required
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#0f0a1f',
+                    border: '1px solid #3730a3',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '16px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
                 />
               </div>
 
-              {/* Senha */}
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Senha
-                </label>
-                <div className="relative">
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: '#e2e8f0', fontSize: '14px', marginBottom: '8px' }}>Senha</label>
+                <div style={{ position: 'relative' }}>
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full px-4 py-3.5 bg-[#0d0b12] border border-[#2d2640] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all pr-12"
                     required
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      paddingRight: '48px',
+                      background: '#0f0a1f',
+                      border: '1px solid #3730a3',
+                      borderRadius: '12px',
+                      color: 'white',
+                      fontSize: '16px',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '4px'
+                    }}
                   >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    {showPassword ?
+                      <EyeOff style={{ width: '20px', height: '20px', color: '#64748b' }} /> :
+                      <Eye style={{ width: '20px', height: '20px', color: '#64748b' }} />
+                    }
                   </button>
                 </div>
               </div>
 
-              {/* Erro */}
               {error && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-400 text-sm">
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  color: '#f87171',
+                  fontSize: '14px',
+                  marginBottom: '20px'
+                }}>
                   {error}
                 </div>
               )}
 
-              {/* Botão */}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: 'white',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: '0 10px 40px rgba(139, 92, 246, 0.3)',
+                  opacity: loading ? 0.7 : 1
+                }}
               >
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                ) : (
-                  <>
-                    <LogIn className="w-5 h-5" />
-                    Entrar
-                  </>
-                )}
+                <LogIn style={{ width: '20px', height: '20px' }} />
+                Entrar
               </button>
             </form>
 
-            {/* Link */}
-            <div className="mt-6 text-center">
-              <button className="text-slate-400 hover:text-purple-400 text-sm transition-colors">
+            <div style={{ textAlign: 'center', marginTop: '24px' }}>
+              <button style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}>
                 Esqueci minha senha
               </button>
             </div>
+
+            <div style={{ borderTop: '1px solid #3730a3', marginTop: '24px', paddingTop: '24px', textAlign: 'center' }}>
+              <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Acesso restrito para colaboradores @trakto.io</p>
+            </div>
           </div>
-
-          {/* Aviso fora do card */}
-          <p className="text-slate-600 text-xs text-center mt-6">
-            Acesso restrito para colaboradores @trakto.io
-          </p>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function FeatureItem({ icon: Icon, title, description }) {
-  return (
-    <div className="flex items-start gap-4">
-      <div className="w-11 h-11 bg-[#252035] border border-[#3a3350] rounded-xl flex items-center justify-center flex-shrink-0">
-        <Icon className="w-5 h-5 text-purple-400" />
-      </div>
-      <div className="pt-0.5">
-        <h3 className="text-white font-semibold text-base mb-1">{title}</h3>
-        <p className="text-slate-400 text-sm leading-relaxed">{description}</p>
       </div>
     </div>
   );
