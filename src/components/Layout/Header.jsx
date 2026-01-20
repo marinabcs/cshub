@@ -1,11 +1,12 @@
-import { Menu, Bell, Search } from 'lucide-react'
-import { useAuth } from '../../contexts/AuthContext'
+import { Menu, UserPlus } from 'lucide-react'
+import { useLocation, Link } from 'react-router-dom'
 
-export default function Header({ title, onMenuClick }) {
-  const { user } = useAuth()
+export default function Header({ title, subtitle, onMenuClick }) {
+  const location = useLocation()
+  const showActionButton = location.pathname === '/clientes'
 
   return (
-    <header className="h-16 bg-dark-900 border-b border-dark-700 flex items-center justify-between px-6">
+    <header className="h-20 bg-dark-950 flex items-center justify-between px-6 border-b border-dark-800">
       <div className="flex items-center gap-4">
         <button
           onClick={onMenuClick}
@@ -14,42 +15,33 @@ export default function Header({ title, onMenuClick }) {
           <Menu className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-xl font-semibold text-white">{title}</h1>
+          <h1 className="text-2xl font-bold text-white">{title}</h1>
+          {subtitle && (
+            <p className="text-sm text-dark-400 mt-0.5">{subtitle}</p>
+          )}
         </div>
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Search - futuro */}
-        <button className="hidden md:flex items-center gap-2 px-4 py-2 text-dark-400 bg-dark-800 rounded-lg hover:bg-dark-700 transition-colors">
-          <Search className="w-4 h-4" />
-          <span className="text-sm">Buscar...</span>
-          <kbd className="hidden lg:inline-flex items-center px-2 py-0.5 text-xs bg-dark-700 rounded ml-2">
-            ⌘K
-          </kbd>
-        </button>
+        {showActionButton && (
+          <button
+            disabled
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <UserPlus className="w-5 h-5" />
+            Novo Cliente
+          </button>
+        )}
 
-        {/* Notificações */}
-        <button className="relative p-2.5 text-dark-400 hover:text-white rounded-lg hover:bg-dark-800 transition-colors">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-dark-900" />
-        </button>
-
-        {/* Avatar do usuário */}
-        <div className="hidden sm:flex items-center gap-3 pl-3 ml-2 border-l border-dark-700">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center">
-            <span className="text-white font-semibold text-sm">
-              {user?.email?.charAt(0).toUpperCase()}
-            </span>
-          </div>
-          <div className="hidden lg:block">
-            <p className="text-sm font-medium text-white">
-              {user?.email?.split('@')[0]}
-            </p>
-            <p className="text-xs text-dark-400">
-              CS Team
-            </p>
-          </div>
-        </div>
+        {location.pathname === '/' && (
+          <Link
+            to="/clientes"
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-medium transition-colors"
+          >
+            <UserPlus className="w-5 h-5" />
+            Ver Clientes
+          </Link>
+        )}
       </div>
     </header>
   )

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* Cores da Trakto */
+  /* Cores Primary - Roxo Trakto */
   --color-primary-50: #f5f3ff;
   --color-primary-100: #ede9fe;
   --color-primary-200: #ddd6fe;
@@ -13,41 +13,37 @@
   --color-primary-800: #5b21b6;
   --color-primary-900: #4c1d95;
 
-  --color-secondary-50: #ecfeff;
-  --color-secondary-100: #cffafe;
-  --color-secondary-200: #a5f3fc;
-  --color-secondary-300: #67e8f9;
-  --color-secondary-400: #22d3ee;
-  --color-secondary-500: #06b6d4;
-  --color-secondary-600: #0891b2;
-  --color-secondary-700: #0e7490;
-  --color-secondary-800: #155e75;
-  --color-secondary-900: #164e63;
+  /* Cores Secundárias - Cyan */
+  --color-cyan-400: #22d3ee;
+  --color-cyan-500: #06b6d4;
+  --color-cyan-600: #0891b2;
 
-  /* Tema Dark - Slate */
-  --color-dark-950: #020617;
-  --color-dark-900: #0f172a;
-  --color-dark-800: #1e293b;
-  --color-dark-700: #334155;
-  --color-dark-600: #475569;
-  --color-dark-500: #64748b;
-  --color-dark-400: #94a3b8;
-  --color-dark-300: #cbd5e1;
-  --color-dark-200: #e2e8f0;
-  --color-dark-100: #f1f5f9;
-  --color-dark-50: #f8fafc;
+  /* Tema Dark - Roxo/Violeta (Trakteiros Style) */
+  --color-dark-950: #07060d;
+  --color-dark-900: #0d0b14;
+  --color-dark-850: #12101c;
+  --color-dark-800: #1a1726;
+  --color-dark-750: #211d30;
+  --color-dark-700: #2a253a;
+  --color-dark-600: #3d3654;
+  --color-dark-500: #544b6e;
+  --color-dark-400: #7c7299;
+  --color-dark-300: #a69fc0;
+  --color-dark-200: #d0cce0;
+  --color-dark-100: #e8e6f0;
+  --color-dark-50: #f4f3f8;
 
-  /* Background e Texto - Dark Theme */
-  --color-background: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-hover: #334155;
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
+  /* Background e Texto */
+  --color-background: #0d0b14;
+  --color-surface: #1a1726;
+  --color-surface-hover: #211d30;
+  --color-text-primary: #f4f3f8;
+  --color-text-secondary: #a69fc0;
+  --color-text-muted: #7c7299;
 
   /* Bordas */
-  --color-border: #334155;
-  --color-border-light: #1e293b;
+  --color-border: #2a253a;
+  --color-border-light: #211d30;
 }
 
 /* Reset básico */
@@ -72,7 +68,7 @@ body {
   min-height: 100vh;
 }
 
-/* Scrollbar personalizada - Dark */
+/* Scrollbar personalizada - Dark Purple */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -120,10 +116,10 @@ body {
 
 @keyframes pulse-glow {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(124, 58, 237, 0);
+    box-shadow: 0 0 0 8px rgba(139, 92, 246, 0);
   }
 }
 
