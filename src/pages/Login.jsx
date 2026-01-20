@@ -27,80 +27,73 @@ export default function Login() {
     }
   };
 
-  const features = [
-    {
-      icon: Users,
-      title: 'Gestão de Clientes',
-      description: 'Acompanhe todos os clientes em um só lugar com informações completas e atualizadas.'
-    },
-    {
-      icon: BarChart3,
-      title: 'Health Score',
-      description: 'Monitore a saúde dos clientes em tempo real com métricas inteligentes.'
-    },
-    {
-      icon: Bell,
-      title: 'Alertas Inteligentes',
-      description: 'Receba notificações automáticas sobre clientes em risco ou que precisam de atenção.'
-    },
-    {
-      icon: MessageSquare,
-      title: 'Timeline de Conversas',
-      description: 'Histórico completo de todas as interações com cada cliente.'
-    }
-  ];
-
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Lado Esquerdo - Features */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f0f23] p-12 flex-col justify-between relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 min-h-screen bg-gradient-to-br from-[#1a1625] via-[#1e1a2e] to-[#151220] p-10 flex-col relative">
         {/* Background decorativo */}
-        <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-20 left-20 w-72 h-72 bg-purple-500/20 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-20 right-20 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl"></div>
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute top-20 left-10 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-40 right-10 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl"></div>
         </div>
 
-        {/* Conteúdo */}
-        <div className="relative z-10">
-          {/* Logo */}
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-cyan-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/25">
-              <Users className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-white">CS Hub</h1>
-              <p className="text-slate-400">Sistema de Customer Success v1.0</p>
-            </div>
+        {/* Logo - Topo */}
+        <div className="relative z-10 flex items-center gap-4 mb-16">
+          <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center">
+            <Users className="w-7 h-7 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">CS Hub</h1>
+            <p className="text-slate-400 text-sm">Sistema de Customer Success v1.0</p>
           </div>
         </div>
 
-        {/* Features */}
-        <div className="relative z-10 space-y-6">
-          {features.map((feature, index) => (
-            <div key={index} className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-slate-800/50 border border-slate-700/50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <feature.icon className="w-6 h-6 text-purple-400" />
-              </div>
-              <div>
-                <h3 className="text-white font-semibold mb-1">{feature.title}</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">{feature.description}</p>
-              </div>
-            </div>
-          ))}
+        {/* Features - Meio */}
+        <div className="relative z-10 flex-1 flex flex-col justify-center space-y-8">
+          <FeatureItem
+            icon={Users}
+            title="Gestão de Clientes"
+            description="Acompanhe todos os clientes em um só lugar com informações completas e atualizadas."
+          />
+          <FeatureItem
+            icon={BarChart3}
+            title="Health Score"
+            description="Monitore a saúde dos clientes em tempo real com métricas inteligentes."
+          />
+          <FeatureItem
+            icon={Bell}
+            title="Alertas Inteligentes"
+            description="Receba notificações automáticas sobre clientes em risco ou que precisam de atenção."
+          />
+          <FeatureItem
+            icon={MessageSquare}
+            title="Timeline de Conversas"
+            description="Histórico completo de todas as interações com cada cliente."
+          />
         </div>
 
-        {/* Rodapé */}
-        <div className="relative z-10">
-          <div className="h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent mb-6"></div>
+        {/* Rodapé - Base */}
+        <div className="relative z-10 pt-8 border-t border-slate-700/50">
           <p className="text-slate-500 text-sm">Feito com 💜 pelo time de CS</p>
         </div>
       </div>
 
       {/* Lado Direito - Login */}
-      <div className="w-full lg:w-1/2 bg-[#0f0f1a] flex items-center justify-center p-8">
+      <div className="w-full lg:w-1/2 min-h-screen bg-[#0d0b12] flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-md">
+          {/* Logo Mobile */}
+          <div className="lg:hidden flex items-center gap-3 mb-10 justify-center">
+            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
+              <Users className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white">CS Hub</h1>
+              <p className="text-slate-400 text-xs">v1.0</p>
+            </div>
+          </div>
+
           {/* Card de Login */}
-          <div className="bg-[#1a1a2e]/80 backdrop-blur-xl border border-slate-800 rounded-3xl p-8 shadow-2xl">
+          <div className="bg-[#1a1625]/90 backdrop-blur-xl border border-[#2a2535] rounded-2xl p-8">
             {/* Header */}
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-white mb-2">Bem-vindo de volta!</h2>
@@ -119,7 +112,7 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.trakto.io"
-                  className="w-full px-4 py-3 bg-[#0f0f1a] border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3.5 bg-[#0d0b12] border border-[#2a2535] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all"
                   required
                 />
               </div>
@@ -135,7 +128,7 @@ export default function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full px-4 py-3 bg-[#0f0f1a] border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all pr-12"
+                    className="w-full px-4 py-3.5 bg-[#0d0b12] border border-[#2a2535] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all pr-12"
                     required
                   />
                   <button
@@ -159,7 +152,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -172,7 +165,7 @@ export default function Login() {
               </button>
             </form>
 
-            {/* Links */}
+            {/* Link */}
             <div className="mt-6 text-center">
               <button className="text-slate-400 hover:text-purple-400 text-sm transition-colors">
                 Esqueci minha senha
@@ -180,13 +173,27 @@ export default function Login() {
             </div>
 
             {/* Aviso */}
-            <div className="mt-6 pt-6 border-t border-slate-800">
+            <div className="mt-6 pt-6 border-t border-[#2a2535]">
               <p className="text-slate-500 text-xs text-center">
                 Acesso restrito para colaboradores @trakto.io
               </p>
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function FeatureItem({ icon: Icon, title, description }) {
+  return (
+    <div className="flex items-start gap-4">
+      <div className="w-12 h-12 bg-[#252030] border border-[#352f45] rounded-xl flex items-center justify-center flex-shrink-0">
+        <Icon className="w-5 h-5 text-purple-400" />
+      </div>
+      <div>
+        <h3 className="text-white font-semibold mb-1">{title}</h3>
+        <p className="text-slate-400 text-sm leading-relaxed">{description}</p>
       </div>
     </div>
   );
