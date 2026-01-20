@@ -28,28 +28,28 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen flex">
       {/* Lado Esquerdo - Features */}
-      <div className="hidden lg:flex lg:w-1/2 min-h-screen bg-gradient-to-br from-[#1a1625] via-[#1e1a2e] to-[#151220] p-10 flex-col relative">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#1a1625] via-[#1e1a2e] to-[#151220] p-12 flex-col justify-between relative">
         {/* Background decorativo */}
-        <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-20 left-10 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl"></div>
           <div className="absolute bottom-40 right-10 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl"></div>
         </div>
 
         {/* Logo - Topo */}
-        <div className="relative z-10 flex items-center gap-4 mb-16">
-          <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center">
-            <Users className="w-7 h-7 text-white" />
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
+            <Users className="w-8 h-8 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">CS Hub</h1>
-            <p className="text-slate-400 text-sm">Sistema de Customer Success v1.0</p>
+            <h1 className="text-3xl font-bold text-white">CS Hub</h1>
+            <p className="text-slate-400">Sistema de Customer Success v1.0</p>
           </div>
         </div>
 
         {/* Features - Meio */}
-        <div className="relative z-10 flex-1 flex flex-col justify-center space-y-8">
+        <div className="relative z-10 space-y-7">
           <FeatureItem
             icon={Users}
             title="Gestão de Clientes"
@@ -73,13 +73,14 @@ export default function Login() {
         </div>
 
         {/* Rodapé - Base */}
-        <div className="relative z-10 pt-8 border-t border-slate-700/50">
+        <div className="relative z-10">
+          <div className="h-px bg-gradient-to-r from-transparent via-slate-600/50 to-transparent mb-6"></div>
           <p className="text-slate-500 text-sm">Feito com 💜 pelo time de CS</p>
         </div>
       </div>
 
       {/* Lado Direito - Login */}
-      <div className="w-full lg:w-1/2 min-h-screen bg-[#0d0b12] flex items-center justify-center p-6 lg:p-12">
+      <div className="w-full lg:w-1/2 bg-[#0d0b12] flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           {/* Logo Mobile */}
           <div className="lg:hidden flex items-center gap-3 mb-10 justify-center">
@@ -93,7 +94,7 @@ export default function Login() {
           </div>
 
           {/* Card de Login */}
-          <div className="bg-[#1a1625]/90 backdrop-blur-xl border border-[#2a2535] rounded-2xl p-8">
+          <div className="bg-[#1a1625] border border-[#2d2640] rounded-3xl p-8 shadow-2xl">
             {/* Header */}
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-white mb-2">Bem-vindo de volta!</h2>
@@ -112,7 +113,7 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.trakto.io"
-                  className="w-full px-4 py-3.5 bg-[#0d0b12] border border-[#2a2535] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all"
+                  className="w-full px-4 py-3.5 bg-[#0d0b12] border border-[#2d2640] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all"
                   required
                 />
               </div>
@@ -128,7 +129,7 @@ export default function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full px-4 py-3.5 bg-[#0d0b12] border border-[#2a2535] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all pr-12"
+                    className="w-full px-4 py-3.5 bg-[#0d0b12] border border-[#2d2640] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all pr-12"
                     required
                   />
                   <button
@@ -152,7 +153,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-4 bg-gradient-to-r from-purple-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -171,14 +172,12 @@ export default function Login() {
                 Esqueci minha senha
               </button>
             </div>
-
-            {/* Aviso */}
-            <div className="mt-6 pt-6 border-t border-[#2a2535]">
-              <p className="text-slate-500 text-xs text-center">
-                Acesso restrito para colaboradores @trakto.io
-              </p>
-            </div>
           </div>
+
+          {/* Aviso fora do card */}
+          <p className="text-slate-600 text-xs text-center mt-6">
+            Acesso restrito para colaboradores @trakto.io
+          </p>
         </div>
       </div>
     </div>
@@ -188,11 +187,11 @@ export default function Login() {
 function FeatureItem({ icon: Icon, title, description }) {
   return (
     <div className="flex items-start gap-4">
-      <div className="w-12 h-12 bg-[#252030] border border-[#352f45] rounded-xl flex items-center justify-center flex-shrink-0">
+      <div className="w-11 h-11 bg-[#252035] border border-[#3a3350] rounded-xl flex items-center justify-center flex-shrink-0">
         <Icon className="w-5 h-5 text-purple-400" />
       </div>
-      <div>
-        <h3 className="text-white font-semibold mb-1">{title}</h3>
+      <div className="pt-0.5">
+        <h3 className="text-white font-semibold text-base mb-1">{title}</h3>
         <p className="text-slate-400 text-sm leading-relaxed">{description}</p>
       </div>
     </div>
