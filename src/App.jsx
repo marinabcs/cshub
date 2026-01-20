@@ -55,7 +55,7 @@ function AppRoutes() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/clientes" element={<Clientes />} />
-        <Route path="/clientes/:teamId" element={<ClienteDetalhe />} />
+        <Route path="/clientes/:id" element={<ClienteDetalhe />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
