@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Users,
   AlertTriangle,
   Clock,
   CheckCircle,
-  TrendingDown
+  TrendingDown,
+  Database,
+  Loader2
 } from 'lucide-react'
 import { useDashboardStats, useClientesCriticos } from '../hooks/useClientes'
 import { StatsCard, Card, CardHeader, CardContent } from '../components/UI/Card'
@@ -13,10 +16,39 @@ import { HealthBar } from '../components/UI/HealthBar'
 import { Loading, LoadingCard } from '../components/UI/Loading'
 import { formatRelativeTime } from '../utils/helpers'
 import { timestampToDate } from '../services/api'
+import { seedDatabase } from '../utils/seedData'
 
 export default function Dashboard() {
   const { stats, loading: loadingStats } = useDashboardStats()
   const { clientes: clientesCriticos, loading: loadingCriticos } = useClientesCriticos(5)
+  const [seeding, setSeeding] = useState(false)
+  const [seedResult, setSeedResult] = useState(null)
+
+  async function handleSeed() {
+    if (seeding) return
+
+    const confirmed = window.confirm(
+      'Isso irá popular o banco de dados com dados de teste. Deseja continuar?'
+    )
+
+    if (!confirmed) return
+
+    setSeeding(true)
+    setSeedResult(null)
+
+    try {
+      const result = await seedDatabase()
+      setSeedResult(result)
+      // Recarrega a página após 2 segundos para mostrar os novos dados
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
+    } catch (err) {
+      setSeedResult({ errors: [err.message] })
+    } finally {
+      setSeeding(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -189,6 +221,68 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Dev Tools - Temporário */}
+      <Card className="border-dashed border-2 border-amber-300 bg-amber-50/50">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-amber-600" />
+            <h2 className="text-lg font-semibold text-amber-800">
+              Dev Tools (Temporário)
+            </h2>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-amber-700 mb-4">
+            Use este botão para popular o banco de dados com dados de teste.
+            Remova esta seção antes de ir para produção.
+          </p>
+
+          <button
+            onClick={handleSeed}
+            disabled={seeding}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {seeding ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Populando banco...
+              </>
+            ) : (
+              <>
+                <Database className="w-4 h-4" />
+                Popular banco com dados de teste
+              </>
+            )}
+          </button>
+
+          {seedResult && (
+            <div className={`mt-4 p-4 rounded-lg ${seedResult.errors?.length > 0 ? 'bg-red-100' : 'bg-emerald-100'}`}>
+              {seedResult.errors?.length > 0 ? (
+                <div className="text-red-700">
+                  <p className="font-medium">Erros encontrados:</p>
+                  <ul className="list-disc list-inside text-sm mt-1">
+                    {seedResult.errors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <div className="text-emerald-700">
+                  <p className="font-medium">Seed concluído com sucesso!</p>
+                  <ul className="text-sm mt-1">
+                    <li>{seedResult.clientes} clientes criados</li>
+                    <li>{seedResult.usuarios} usuários criados</li>
+                    <li>{seedResult.threads} threads criadas</li>
+                    <li>{seedResult.mensagens} mensagens criadas</li>
+                  </ul>
+                  <p className="text-sm mt-2">Recarregando página...</p>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
