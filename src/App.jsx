@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import Clientes from './pages/Clientes'
 import ClienteDetalhe from './pages/ClienteDetalhe'
 import Configuracoes from './pages/Configuracoes'
+import Analytics from './pages/Analytics'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -57,6 +58,7 @@ function AppRoutes() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/clientes/:id" element={<ClienteDetalhe />} />
+        <Route path="/analytics" element={<Analytics />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
