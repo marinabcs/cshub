@@ -15,7 +15,7 @@ export default function ClientesList({ clientes, loading }) {
   if (clientes.length === 0) {
     return (
       <div className="text-center py-12 bg-dark-800 rounded-2xl border border-dark-700">
-        <p className="text-slate-400">Nenhum cliente encontrado.</p>
+        <p className="text-dark-400">Nenhum cliente encontrado.</p>
       </div>
     )
   }

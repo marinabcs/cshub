@@ -30,7 +30,7 @@ export default function ClienteFilters({
   onResponsavelChange
 }) {
   return (
-    <div className="bg-dark-800 rounded-2xl border border-dark-700 p-4 mb-6">
+    <div className="bg-dark-800/60 backdrop-blur-sm rounded-2xl border border-primary-900/30 p-4 mb-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <SearchInput
           placeholder="Buscar cliente..."

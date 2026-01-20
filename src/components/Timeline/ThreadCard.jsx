@@ -15,7 +15,7 @@ export default function ThreadCard({ thread, onClick }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <SentimentBadge sentiment={thread.sentimento} />
-              <h3 className="font-medium text-slate-100 truncate">
+              <h3 className="font-medium text-white truncate">
                 {thread.assunto}
               </h3>
             </div>
@@ -27,12 +27,12 @@ export default function ThreadCard({ thread, onClick }) {
         </div>
 
         {thread.resumo_chat && (
-          <p className="text-sm text-slate-400 mb-3">
+          <p className="text-sm text-dark-400 mb-3">
             {truncateText(thread.resumo_chat, 150)}
           </p>
         )}
 
-        <div className="flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-dark-700">
+        <div className="flex items-center justify-between text-xs text-dark-500 pt-3 border-t border-dark-700/50">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <MessageSquare className="w-3.5 h-3.5" />

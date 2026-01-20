@@ -14,8 +14,8 @@ export default function ThreadsList({ threads, loading, onThreadClick }) {
 
   if (threads.length === 0) {
     return (
-      <div className="text-center py-12 bg-dark-800 rounded-2xl border border-dark-700">
-        <p className="text-slate-400">Nenhuma conversa encontrada.</p>
+      <div className="text-center py-12 bg-dark-800/60 rounded-2xl border border-primary-900/30">
+        <p className="text-dark-400">Nenhuma conversa encontrada.</p>
       </div>
     )
   }

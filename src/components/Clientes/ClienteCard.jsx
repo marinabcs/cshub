@@ -13,14 +13,14 @@ export default function ClienteCard({ cliente }) {
         <CardContent>
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-dark-700 to-dark-600 rounded-xl flex items-center justify-center border border-dark-600">
-                <span className="text-lg font-bold text-slate-300">
+              <div className="w-12 h-12 bg-gradient-to-br from-primary-600/20 to-primary-500/10 rounded-xl flex items-center justify-center border border-primary-500/30">
+                <span className="text-lg font-bold text-primary-400">
                   {cliente.team_name?.charAt(0).toUpperCase()}
                 </span>
               </div>
               <div>
-                <h3 className="font-semibold text-slate-100">{cliente.team_name}</h3>
-                <p className="text-sm text-slate-500">{cliente.team_type}</p>
+                <h3 className="font-semibold text-white">{cliente.team_name}</h3>
+                <p className="text-sm text-dark-400">{cliente.team_type}</p>
               </div>
             </div>
             <StatusBadge status={cliente.health_status} />
@@ -37,17 +37,17 @@ export default function ClienteCard({ cliente }) {
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="flex items-center gap-2 text-slate-400">
+            <div className="flex items-center gap-2 text-dark-400">
               <User className="w-4 h-4" />
               <span className="truncate">{cliente.responsavel_nome}</span>
             </div>
-            <div className="flex items-center gap-2 text-slate-400">
+            <div className="flex items-center gap-2 text-dark-400">
               <Users className="w-4 h-4" />
               <span>{cliente.total_usuarios || 0} usuários</span>
             </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-dark-700 flex items-center gap-2 text-xs text-slate-500">
+          <div className="mt-4 pt-4 border-t border-dark-700/50 flex items-center gap-2 text-xs text-dark-500">
             <Calendar className="w-3.5 h-3.5" />
             <span>
               Última interação: {formatRelativeTime(timestampToDate(cliente.ultima_interacao))}

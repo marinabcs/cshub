@@ -7,18 +7,18 @@ export const Input = forwardRef(function Input(
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">
+        <label className="block text-sm font-medium text-dark-300 mb-1.5">
           {label}
         </label>
       )}
       <input
         ref={ref}
         className={`
-          w-full px-4 py-2.5 bg-dark-700 border rounded-xl
-          text-slate-100 placeholder-slate-500
+          w-full px-4 py-2.5 bg-dark-800 border rounded-xl
+          text-white placeholder-dark-500
           focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500
-          disabled:bg-dark-800 disabled:cursor-not-allowed disabled:text-slate-500
-          ${error ? 'border-red-500' : 'border-dark-600'}
+          disabled:bg-dark-900 disabled:cursor-not-allowed disabled:text-dark-500
+          ${error ? 'border-red-500' : 'border-dark-700'}
           ${className}
         `}
         {...props}
@@ -34,17 +34,17 @@ export function Select({ label, error, children, className = '', ...props }) {
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">
+        <label className="block text-sm font-medium text-dark-300 mb-1.5">
           {label}
         </label>
       )}
       <select
         className={`
-          w-full px-4 py-2.5 bg-dark-700 border rounded-xl
-          text-slate-100
+          w-full px-4 py-2.5 bg-dark-800 border rounded-xl
+          text-white
           focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500
-          disabled:bg-dark-800 disabled:cursor-not-allowed disabled:text-slate-500
-          ${error ? 'border-red-500' : 'border-dark-600'}
+          disabled:bg-dark-900 disabled:cursor-not-allowed disabled:text-dark-500
+          ${error ? 'border-red-500' : 'border-dark-700'}
           ${className}
         `}
         {...props}
@@ -66,10 +66,10 @@ export function SearchInput({ placeholder = 'Buscar...', value, onChange, classN
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full pl-11 pr-4 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500"
+        className="w-full pl-11 pr-4 py-2.5 bg-dark-800 border border-dark-700 rounded-xl text-white placeholder-dark-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500"
       />
       <svg
-        className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"
+        className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500"
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"

@@ -34,8 +34,8 @@ export default function Clientes() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-100">Clientes</h2>
-        <p className="text-slate-500">
+        <h2 className="text-2xl font-bold text-white">Clientes</h2>
+        <p className="text-dark-400">
           {loading ? 'Carregando...' : `${filteredClientes.length} clientes encontrados`}
         </p>
       </div>
