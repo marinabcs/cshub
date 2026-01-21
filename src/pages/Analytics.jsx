@@ -30,12 +30,37 @@ export default function Analytics() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [selectedType, setSelectedType] = useState('todos');
-  const [scoreMin, setScoreMin] = useState('');
-  const [scoreMax, setScoreMax] = useState('');
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
-  const [periodDays, setPeriodDays] = useState(30);
 
-  // Get periods (YYYY-MM) for a given number of days
+  // Date range filter (default: last 30 days)
+  const getDefaultDates = () => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+    return {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0]
+    };
+  };
+  const defaultDates = getDefaultDates();
+  const [startDate, setStartDate] = useState(defaultDates.start);
+  const [endDate, setEndDate] = useState(defaultDates.end);
+
+  // Get periods (YYYY-MM) for a date range
+  const getPeriodsForDateRange = (start, end) => {
+    const periods = new Set();
+    const startD = new Date(start);
+    const endD = new Date(end);
+    const current = new Date(startD);
+    while (current <= endD) {
+      const period = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+      periods.add(period);
+      current.setDate(current.getDate() + 1);
+    }
+    return Array.from(periods);
+  };
+
+  // For initial fetch, get periods for last 30 days
   const getPeriodsForDays = (days) => {
     const periods = new Set();
     const now = new Date();
@@ -109,10 +134,10 @@ export default function Analytics() {
     fetchData();
   }, []);
 
-  // Calculate usage metrics for a client within period
+  // Calculate usage metrics for a client within date range
   const getClientUsage = (clienteId) => {
     const usage = usageData[clienteId] || [];
-    const periodsToInclude = getPeriodsForDays(periodDays);
+    const periodsToInclude = getPeriodsForDateRange(startDate, endDate);
 
     // Filter usage by periods within range
     const filteredUsage = usage.filter(u => periodsToInclude.includes(u.period));
@@ -145,13 +170,9 @@ export default function Analytics() {
       const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(cliente.health_status);
       const matchesType = selectedType === 'todos' || cliente.team_type === selectedType;
 
-      const score = cliente.health_score || 0;
-      const matchesScoreMin = scoreMin === '' || score >= Number(scoreMin);
-      const matchesScoreMax = scoreMax === '' || score <= Number(scoreMax);
-
-      return matchesSearch && matchesStatus && matchesType && matchesScoreMin && matchesScoreMax;
+      return matchesSearch && matchesStatus && matchesType;
     });
-  }, [clientes, searchTerm, selectedStatuses, selectedType, scoreMin, scoreMax]);
+  }, [clientes, searchTerm, selectedStatuses, selectedType]);
 
   // Aggregated metrics
   const aggregatedMetrics = useMemo(() => {
@@ -167,7 +188,7 @@ export default function Analytics() {
         aiEscreverTexto: acc.aiEscreverTexto + usage.ai_escrever_texto
       };
     }, { totalLogins: 0, totalPecas: 0, totalDownloads: 0, totalAI: 0, aiRemoverFundo: 0, aiGerarImagem: 0, aiEscreverTexto: 0 });
-  }, [filteredClientes, usageData, periodDays]);
+  }, [filteredClientes, usageData, startDate, endDate]);
 
   // Stats for cards
   const stats = useMemo(() => {
@@ -195,17 +216,18 @@ export default function Analytics() {
       .sort((a, b) => b.usage.logins - a.usage.logins)
       .slice(0, 10)
       .map(c => ({ name: c.team_name?.substring(0, 15) || 'N/A', logins: c.usage.logins, pecas: c.usage.pecas_criadas }));
-  }, [filteredClientes, usageData, periodDays]);
+  }, [filteredClientes, usageData, startDate, endDate]);
 
   const clearFilters = () => {
     setSearchTerm('');
     setSelectedStatuses([]);
     setSelectedType('todos');
-    setScoreMin('');
-    setScoreMax('');
+    const defaults = getDefaultDates();
+    setStartDate(defaults.start);
+    setEndDate(defaults.end);
   };
 
-  const hasFilters = searchTerm || selectedStatuses.length > 0 || selectedType !== 'todos' || scoreMin || scoreMax;
+  const hasFilters = searchTerm || selectedStatuses.length > 0 || selectedType !== 'todos' || startDate !== defaultDates.start || endDate !== defaultDates.end;
 
   const toggleStatus = (status) => {
     setSelectedStatuses(prev =>
@@ -224,6 +246,15 @@ export default function Analytics() {
     if (!timestamp) return '-';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
+  // Format date range for display
+  const formatDateRangeLabel = () => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end - start);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return `${diffDays}d`;
   };
 
   const formatNumber = (num) => {
@@ -358,21 +389,26 @@ export default function Analytics() {
             {teamTypes.map(type => (<option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>))}
           </select>
 
-          {/* Score Range */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <input type="number" placeholder="Min" min="0" max="100" value={scoreMin} onChange={(e) => setScoreMin(e.target.value)} style={{ width: '100%', padding: '10px 8px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', textAlign: 'center' }} />
-            <span style={{ color: '#64748b' }}>-</span>
-            <input type="number" placeholder="Max" min="0" max="100" value={scoreMax} onChange={(e) => setScoreMax(e.target.value)} style={{ width: '100%', padding: '10px 8px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', textAlign: 'center' }} />
+          {/* Data Inicial */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ color: '#64748b', fontSize: '11px' }}>Data Inicial</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={{ padding: '8px 12px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
+            />
           </div>
 
-          {/* Período */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Calendar style={{ width: '16px', height: '16px', color: '#64748b' }} />
-            <select value={periodDays} onChange={(e) => setPeriodDays(Number(e.target.value))} style={{ flex: 1, padding: '10px 12px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
-              <option value={7} style={{ background: '#1e1b4b' }}>7 dias</option>
-              <option value={15} style={{ background: '#1e1b4b' }}>15 dias</option>
-              <option value={30} style={{ background: '#1e1b4b' }}>30 dias</option>
-            </select>
+          {/* Data Final */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ color: '#64748b', fontSize: '11px' }}>Data Final</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              style={{ padding: '8px 12px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
+            />
           </div>
         </div>
       </div>
@@ -385,7 +421,7 @@ export default function Analytics() {
               <LogIn style={{ width: '22px', height: '22px', color: 'white' }} />
             </div>
             <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Logins ({periodDays}d)</p>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Logins ({formatDateRangeLabel()})</p>
               <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{formatNumber(aggregatedMetrics.totalLogins)}</p>
             </div>
           </div>
@@ -397,7 +433,7 @@ export default function Analytics() {
               <FileImage style={{ width: '22px', height: '22px', color: 'white' }} />
             </div>
             <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Peças Criadas ({periodDays}d)</p>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Peças Criadas ({formatDateRangeLabel()})</p>
               <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{formatNumber(aggregatedMetrics.totalPecas)}</p>
             </div>
           </div>
@@ -409,7 +445,7 @@ export default function Analytics() {
               <Download style={{ width: '22px', height: '22px', color: 'white' }} />
             </div>
             <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Downloads ({periodDays}d)</p>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Downloads ({formatDateRangeLabel()})</p>
               <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{formatNumber(aggregatedMetrics.totalDownloads)}</p>
             </div>
           </div>
@@ -421,7 +457,7 @@ export default function Analytics() {
               <Sparkles style={{ width: '22px', height: '22px', color: 'white' }} />
             </div>
             <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Uso AI ({periodDays}d)</p>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Uso AI ({formatDateRangeLabel()})</p>
               <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{formatNumber(aggregatedMetrics.totalAI)}</p>
             </div>
           </div>

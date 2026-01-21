@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { LayoutDashboard, Users, BarChart3, Bell, Settings, HelpCircle, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut } from 'lucide-react';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -24,7 +24,6 @@ export default function Sidebar() {
 
   const configItems = [
     { to: '/configuracoes', icon: Settings, label: 'Configurações' },
-    { to: '/ajuda', icon: HelpCircle, label: 'Ajuda' },
   ];
 
   const linkStyle = (isActive) => ({
