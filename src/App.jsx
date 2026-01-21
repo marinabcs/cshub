@@ -10,6 +10,7 @@ import Configuracoes from './pages/Configuracoes'
 import Analytics from './pages/Analytics'
 import Alertas from './pages/Alertas'
 import ClienteForm from './pages/ClienteForm'
+import Usuarios from './pages/Usuarios'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -65,6 +66,7 @@ function AppRoutes() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
+        <Route path="/configuracoes/usuarios" element={<Usuarios />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
