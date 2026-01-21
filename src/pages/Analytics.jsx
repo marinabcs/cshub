@@ -60,7 +60,6 @@ export default function Analytics() {
 
         // Get periods to fetch (current month + previous if needed)
         const periods = getPeriodsForDays(30); // Fetch max period data
-        console.log('[ANALYTICS DEBUG] Períodos a buscar:', periods);
 
         // Fetch uso_plataforma for each cliente's linked teams
         // Each cliente has a "times" array with team IDs
@@ -72,29 +71,22 @@ export default function Analytics() {
               return { clienteId: cliente.id, usage: [] };
             }
 
-            console.log(`[ANALYTICS DEBUG] Cliente ${cliente.team_name} - times:`, teamIds);
-
             // Fetch usage data from all linked teams for all periods
             const teamUsagePromises = teamIds.flatMap((teamId) =>
               periods.map(async (period) => {
                 try {
-                  const path = `clientes/${teamId}/uso_plataforma/${period}`;
                   const usageDoc = await getDoc(doc(db, 'clientes', teamId, 'uso_plataforma', period));
                   if (usageDoc.exists()) {
-                    const data = usageDoc.data();
-                    console.log(`[ANALYTICS DEBUG] Encontrado ${path}:`, data.escala, data.ai);
-                    return { id: usageDoc.id, teamId, period, ...data };
+                    return { id: usageDoc.id, teamId, period, ...usageDoc.data() };
                   }
                   return null;
-                } catch (err) {
-                  console.error(`[ANALYTICS DEBUG] Erro:`, err);
+                } catch {
                   return null;
                 }
               })
             );
 
             const teamUsageResults = await Promise.all(teamUsagePromises);
-            // Filter out nulls
             const combinedUsage = teamUsageResults.filter(u => u !== null);
             return { clienteId: cliente.id, usage: combinedUsage };
           } catch {
@@ -107,7 +99,6 @@ export default function Analytics() {
         usageResults.forEach(({ clienteId, usage }) => {
           usageMap[clienteId] = usage;
         });
-        console.log('[ANALYTICS DEBUG] UsageMap final:', usageMap);
         setUsageData(usageMap);
       } catch (error) {
         console.error('Erro ao buscar dados:', error);
