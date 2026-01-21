@@ -9,6 +9,7 @@ import ClienteDetalhe from './pages/ClienteDetalhe'
 import Configuracoes from './pages/Configuracoes'
 import Analytics from './pages/Analytics'
 import Alertas from './pages/Alertas'
+import ClienteForm from './pages/ClienteForm'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -58,7 +59,9 @@ function AppRoutes() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/clientes" element={<Clientes />} />
+        <Route path="/clientes/novo" element={<ClienteForm />} />
         <Route path="/clientes/:id" element={<ClienteDetalhe />} />
+        <Route path="/clientes/:id/editar" element={<ClienteForm />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />

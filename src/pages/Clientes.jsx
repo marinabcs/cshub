@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, Filter, ChevronRight, Clock, Building2 } from 'lucide-react';
+import { Users, Search, Filter, ChevronRight, Clock, Building2, Plus, Pencil } from 'lucide-react';
 
 export default function Clientes() {
   const [clientes, setClientes] = useState([]);
@@ -75,6 +75,25 @@ export default function Clientes() {
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>Clientes</h1>
           <p style={{ color: '#94a3b8', margin: 0 }}>{clientes.length} clientes cadastrados</p>
         </div>
+        <button
+          onClick={() => navigate('/clientes/novo')}
+          style={{
+            padding: '12px 20px',
+            background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)',
+            border: 'none',
+            borderRadius: '12px',
+            color: 'white',
+            fontSize: '14px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <Plus style={{ width: '18px', height: '18px' }} />
+          Novo Cliente
+        </button>
       </div>
 
       <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
@@ -115,9 +134,28 @@ export default function Clientes() {
                   </div>
                 </div>
               </div>
-              <span style={{ padding: '4px 10px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
-                {getHealthLabel(cliente.health_status)}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ padding: '4px 10px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
+                  {getHealthLabel(cliente.health_status)}
+                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${cliente.id}/editar`); }}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    background: 'rgba(139, 92, 246, 0.2)',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer'
+                  }}
+                  title="Editar cliente"
+                >
+                  <Pencil style={{ width: '14px', height: '14px', color: '#a78bfa' }} />
+                </button>
+              </div>
             </div>
             <div style={{ marginBottom: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
