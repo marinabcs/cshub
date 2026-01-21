@@ -46,12 +46,30 @@ export default function Analytics() {
         }));
         setClientes(clientesData);
 
-        // Fetch uso_plataforma for each cliente
+        // Fetch uso_plataforma for each cliente's linked teams
+        // Each cliente has a "times" array with team IDs
+        // Usage data is stored in clientes/{team_id}/uso_plataforma
         const usagePromises = clientesData.map(async (cliente) => {
           try {
-            const usageSnapshot = await getDocs(collection(db, 'clientes', cliente.id, 'uso_plataforma'));
-            const usage = usageSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            return { clienteId: cliente.id, usage };
+            const teamIds = cliente.times || [];
+            if (teamIds.length === 0) {
+              return { clienteId: cliente.id, usage: [] };
+            }
+
+            // Fetch usage data from all linked teams
+            const teamUsagePromises = teamIds.map(async (teamId) => {
+              try {
+                const usageSnapshot = await getDocs(collection(db, 'clientes', teamId, 'uso_plataforma'));
+                return usageSnapshot.docs.map(doc => ({ id: doc.id, teamId, ...doc.data() }));
+              } catch {
+                return [];
+              }
+            });
+
+            const teamUsageResults = await Promise.all(teamUsagePromises);
+            // Flatten all team usage data into single array
+            const combinedUsage = teamUsageResults.flat();
+            return { clienteId: cliente.id, usage: combinedUsage };
           } catch {
             return { clienteId: cliente.id, usage: [] };
           }
