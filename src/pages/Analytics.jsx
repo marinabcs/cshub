@@ -60,6 +60,7 @@ export default function Analytics() {
 
         // Get periods to fetch (current month + previous if needed)
         const periods = getPeriodsForDays(30); // Fetch max period data
+        console.log('[ANALYTICS DEBUG] Períodos a buscar:', periods);
 
         // Fetch uso_plataforma for each cliente's linked teams
         // Each cliente has a "times" array with team IDs
@@ -71,16 +72,22 @@ export default function Analytics() {
               return { clienteId: cliente.id, usage: [] };
             }
 
+            console.log(`[ANALYTICS DEBUG] Cliente ${cliente.team_name} - times:`, teamIds);
+
             // Fetch usage data from all linked teams for all periods
             const teamUsagePromises = teamIds.flatMap((teamId) =>
               periods.map(async (period) => {
                 try {
+                  const path = `clientes/${teamId}/uso_plataforma/${period}`;
                   const usageDoc = await getDoc(doc(db, 'clientes', teamId, 'uso_plataforma', period));
                   if (usageDoc.exists()) {
-                    return { id: usageDoc.id, teamId, period, ...usageDoc.data() };
+                    const data = usageDoc.data();
+                    console.log(`[ANALYTICS DEBUG] Encontrado ${path}:`, data.escala, data.ai);
+                    return { id: usageDoc.id, teamId, period, ...data };
                   }
                   return null;
-                } catch {
+                } catch (err) {
+                  console.error(`[ANALYTICS DEBUG] Erro:`, err);
                   return null;
                 }
               })
@@ -100,6 +107,7 @@ export default function Analytics() {
         usageResults.forEach(({ clienteId, usage }) => {
           usageMap[clienteId] = usage;
         });
+        console.log('[ANALYTICS DEBUG] UsageMap final:', usageMap);
         setUsageData(usageMap);
       } catch (error) {
         console.error('Erro ao buscar dados:', error);

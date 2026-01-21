@@ -54,6 +54,9 @@ export default function ClienteDetalhe() {
           // Fetch usage data from linked teams
           const clienteData = docSnap.data();
           const teamIds = clienteData.times || [];
+          console.log('[DEBUG] Cliente:', clienteData.team_name);
+          console.log('[DEBUG] Team IDs vinculados:', teamIds);
+
           if (teamIds.length > 0) {
             // Get periods for last 30 days (format: YYYY-MM)
             const periods = new Set();
@@ -64,17 +67,24 @@ export default function ClienteDetalhe() {
               periods.add(period);
             }
             const periodsArray = Array.from(periods);
+            console.log('[DEBUG] Períodos a buscar:', periodsArray);
 
             // Fetch usage data from each team for each period
             const teamUsagePromises = teamIds.flatMap((teamId) =>
               periodsArray.map(async (period) => {
                 try {
+                  const path = `clientes/${teamId}/uso_plataforma/${period}`;
+                  console.log('[DEBUG] Buscando:', path);
                   const usageDoc = await getDoc(doc(db, 'clientes', teamId, 'uso_plataforma', period));
                   if (usageDoc.exists()) {
-                    return usageDoc.data();
+                    const data = usageDoc.data();
+                    console.log('[DEBUG] Dados encontrados em', path, ':', data);
+                    return data;
                   }
+                  console.log('[DEBUG] Documento não existe:', path);
                   return null;
-                } catch {
+                } catch (err) {
+                  console.error('[DEBUG] Erro ao buscar:', err);
                   return null;
                 }
               })
@@ -82,6 +92,8 @@ export default function ClienteDetalhe() {
 
             const teamUsageResults = await Promise.all(teamUsagePromises);
             const allUsage = teamUsageResults.filter(u => u !== null);
+            console.log('[DEBUG] Total de documentos encontrados:', allUsage.length);
+            console.log('[DEBUG] Dados de uso:', allUsage);
 
             // Aggregate all usage data
             const aggregated = allUsage.reduce((acc, u) => {
@@ -95,7 +107,10 @@ export default function ClienteDetalhe() {
               };
             }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
 
+            console.log('[DEBUG] Métricas agregadas:', aggregated);
             setUsageData(aggregated);
+          } else {
+            console.log('[DEBUG] Cliente não tem times vinculados');
           }
         }
       } catch (error) {
