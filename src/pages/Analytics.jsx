@@ -3,6 +3,15 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { BarChart3, Users, TrendingUp, AlertTriangle, Search, Filter, Download, X, ChevronDown } from 'lucide-react';
 
+// Função para normalizar texto (remove acentos)
+const normalizeText = (text) => {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+};
+
 export default function Analytics() {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,9 +46,10 @@ export default function Analytics() {
 
   const filteredClientes = useMemo(() => {
     return clientes.filter(cliente => {
-      const matchesSearch = !searchTerm ||
-        cliente.team_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        cliente.responsavel_nome?.toLowerCase().includes(searchTerm.toLowerCase());
+      const searchNormalized = normalizeText(searchTerm);
+      const nameNormalized = normalizeText(cliente.team_name || '');
+      const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
+      const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
 
       const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(cliente.health_status);
 

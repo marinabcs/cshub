@@ -2,7 +2,16 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, Filter, ChevronRight, Clock, Building2, Plus, Pencil } from 'lucide-react';
+import { Users, Search, Filter, ChevronRight, Clock, Building2, Plus, Pencil, Download } from 'lucide-react';
+
+// Função para normalizar texto (remove acentos)
+const normalizeText = (text) => {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+};
 
 export default function Clientes() {
   const [clientes, setClientes] = useState([]);
@@ -51,14 +60,41 @@ export default function Clientes() {
   };
 
   const filteredClientes = clientes.filter(cliente => {
-    const matchesSearch = cliente.team_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         cliente.responsavel_nome?.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchNormalized = normalizeText(searchTerm);
+    const nameNormalized = normalizeText(cliente.team_name || '');
+    const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
+    const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
     const matchesStatus = filterStatus === 'todos' || cliente.health_status === filterStatus;
     const matchesType = filterType === 'todos' || cliente.team_type === filterType;
     return matchesSearch && matchesStatus && matchesType;
   });
 
   const teamTypes = [...new Set(clientes.map(c => c.team_type).filter(Boolean))];
+
+  const exportToCSV = () => {
+    const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Health Score', 'Status', 'Qtd Times'];
+    const rows = filteredClientes.map(cliente => [
+      cliente.team_name || cliente.nome || '',
+      cliente.responsavel_nome || '',
+      cliente.responsavel_email || '',
+      (cliente.tags || []).join('; '),
+      cliente.health_score || 0,
+      getHealthLabel(cliente.health_status),
+      (cliente.times || []).length
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `clientes_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
 
   if (loading) {
     return (
@@ -75,25 +111,46 @@ export default function Clientes() {
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>Clientes</h1>
           <p style={{ color: '#94a3b8', margin: 0 }}>{clientes.length} clientes cadastrados</p>
         </div>
-        <button
-          onClick={() => navigate('/clientes/novo')}
-          style={{
-            padding: '12px 20px',
-            background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)',
-            border: 'none',
-            borderRadius: '12px',
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Plus style={{ width: '18px', height: '18px' }} />
-          Novo Cliente
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={exportToCSV}
+            style={{
+              padding: '12px 20px',
+              background: 'rgba(30, 27, 75, 0.6)',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <Download style={{ width: '18px', height: '18px' }} />
+            Exportar CSV
+          </button>
+          <button
+            onClick={() => navigate('/clientes/novo')}
+            style={{
+              padding: '12px 20px',
+              background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <Plus style={{ width: '18px', height: '18px' }} />
+            Novo Cliente
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
@@ -115,6 +172,11 @@ export default function Clientes() {
           <option value="todos" style={{ background: '#1e1b4b' }}>Todos os tipos</option>
           {teamTypes.map(type => (<option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>))}
         </select>
+        {(searchTerm || filterStatus !== 'todos' || filterType !== 'todos') && (
+          <span style={{ color: '#64748b', fontSize: '13px', alignSelf: 'center' }}>
+            {filteredClientes.length} de {clientes.length} clientes
+          </span>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '16px' }}>

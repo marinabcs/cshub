@@ -2,11 +2,23 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
-import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, Calendar, ChevronRight } from 'lucide-react';
+import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, Calendar, ChevronRight, Filter, Search } from 'lucide-react';
+
+// Função para normalizar texto (remove acentos)
+const normalizeText = (text) => {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+};
 
 export default function Dashboard() {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterTeamType, setFilterTeamType] = useState('todos');
+  const [filterResponsavel, setFilterResponsavel] = useState('todos');
+  const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,15 +39,31 @@ export default function Dashboard() {
     fetchClientes();
   }, []);
 
+  // Get unique team types and responsáveis
+  const teamTypes = [...new Set(clientes.map(c => c.team_type).filter(Boolean))].sort();
+  const responsaveis = [...new Set(clientes.map(c => c.responsavel_nome).filter(Boolean))].sort();
+
+  // Filter clients
+  const filteredClientes = clientes.filter(cliente => {
+    const matchesTeamType = filterTeamType === 'todos' || cliente.team_type === filterTeamType;
+    const matchesResponsavel = filterResponsavel === 'todos' || cliente.responsavel_nome === filterResponsavel;
+    const searchNormalized = normalizeText(searchTerm);
+    const nameNormalized = normalizeText(cliente.team_name || '');
+    const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
+    const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
+    return matchesTeamType && matchesResponsavel && matchesSearch;
+  });
+
+  // Stats based on filtered clients
   const stats = {
-    total: clientes.length,
-    saudaveis: clientes.filter(c => c.health_status === 'saudavel').length,
-    atencao: clientes.filter(c => c.health_status === 'atencao').length,
-    risco: clientes.filter(c => c.health_status === 'risco').length,
-    critico: clientes.filter(c => c.health_status === 'critico').length
+    total: filteredClientes.length,
+    saudaveis: filteredClientes.filter(c => c.health_status === 'saudavel').length,
+    atencao: filteredClientes.filter(c => c.health_status === 'atencao').length,
+    risco: filteredClientes.filter(c => c.health_status === 'risco').length,
+    critico: filteredClientes.filter(c => c.health_status === 'critico').length
   };
 
-  const clientesAtencao = clientes
+  const clientesAtencao = filteredClientes
     .filter(c => c.health_status !== 'saudavel')
     .sort((a, b) => (a.health_score || 0) - (b.health_score || 0))
     .slice(0, 5);
@@ -70,6 +98,14 @@ export default function Dashboard() {
     return `há ${diff} dias`;
   };
 
+  const clearFilters = () => {
+    setFilterTeamType('todos');
+    setFilterResponsavel('todos');
+    setSearchTerm('');
+  };
+
+  const hasActiveFilters = filterTeamType !== 'todos' || filterResponsavel !== 'todos' || searchTerm !== '';
+
   if (loading) {
     return (
       <div style={{
@@ -98,7 +134,7 @@ export default function Dashboard() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: '32px'
+        marginBottom: '24px'
       }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>
@@ -126,6 +162,101 @@ export default function Dashboard() {
           <Users style={{ width: '18px', height: '18px' }} />
           Ver Clientes
         </button>
+      </div>
+
+      {/* Filters */}
+      <div style={{
+        display: 'flex',
+        gap: '12px',
+        marginBottom: '24px',
+        flexWrap: 'wrap',
+        alignItems: 'center'
+      }}>
+        <div style={{ position: 'relative', minWidth: '220px' }}>
+          <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#64748b' }} />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar cliente..."
+            style={{
+              width: '100%',
+              padding: '10px 12px 10px 36px',
+              background: 'rgba(30, 27, 75, 0.4)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
+              borderRadius: '10px',
+              color: 'white',
+              fontSize: '13px',
+              outline: 'none',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
+        <select
+          value={filterTeamType}
+          onChange={(e) => setFilterTeamType(e.target.value)}
+          style={{
+            padding: '10px 14px',
+            background: 'rgba(30, 27, 75, 0.4)',
+            border: '1px solid rgba(139, 92, 246, 0.2)',
+            borderRadius: '10px',
+            color: 'white',
+            fontSize: '13px',
+            outline: 'none',
+            cursor: 'pointer',
+            minWidth: '160px'
+          }}
+        >
+          <option value="todos" style={{ background: '#1e1b4b' }}>Todos os tipos</option>
+          {teamTypes.map(type => (
+            <option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>
+          ))}
+        </select>
+        <select
+          value={filterResponsavel}
+          onChange={(e) => setFilterResponsavel(e.target.value)}
+          style={{
+            padding: '10px 14px',
+            background: 'rgba(30, 27, 75, 0.4)',
+            border: '1px solid rgba(139, 92, 246, 0.2)',
+            borderRadius: '10px',
+            color: 'white',
+            fontSize: '13px',
+            outline: 'none',
+            cursor: 'pointer',
+            minWidth: '160px'
+          }}
+        >
+          <option value="todos" style={{ background: '#1e1b4b' }}>Todos responsáveis</option>
+          {responsaveis.map(resp => (
+            <option key={resp} value={resp} style={{ background: '#1e1b4b' }}>{resp}</option>
+          ))}
+        </select>
+        {hasActiveFilters && (
+          <button
+            onClick={clearFilters}
+            style={{
+              padding: '10px 14px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '10px',
+              color: '#ef4444',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <XCircle style={{ width: '14px', height: '14px' }} />
+            Limpar filtros
+          </button>
+        )}
+        {hasActiveFilters && (
+          <span style={{ color: '#64748b', fontSize: '13px' }}>
+            {filteredClientes.length} de {clientes.length} clientes
+          </span>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -377,7 +508,7 @@ export default function Dashboard() {
                 textAlign: 'center',
                 color: '#64748b'
               }}>
-                Todos os clientes estão saudáveis! 🎉
+                {hasActiveFilters ? 'Nenhum cliente encontrado com os filtros aplicados' : 'Todos os clientes estão saudáveis! 🎉'}
               </div>
             )}
           </div>
