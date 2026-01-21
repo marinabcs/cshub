@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
 export default function ClienteDetalhe() {
   const { id } = useParams();
@@ -11,6 +12,7 @@ export default function ClienteDetalhe() {
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
   const [mensagens, setMensagens] = useState([]);
+  const [healthHistory, setHealthHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,6 +30,25 @@ export default function ClienteDetalhe() {
             const dateB = b.updated_at?.toDate?.() || new Date(0);
             return dateB - dateA;
           }));
+
+          // Fetch health history (last 30 days)
+          const healthRef = collection(db, 'clientes', id, 'health_history');
+          const healthQuery = query(healthRef, orderBy('hist_date', 'desc'), limit(30));
+          const healthSnap = await getDocs(healthQuery);
+          const healthData = healthSnap.docs.map(doc => {
+            const data = doc.data();
+            const date = data.hist_date?.toDate?.() || new Date(data.hist_date);
+            return {
+              id: doc.id,
+              date: date,
+              dateFormatted: date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+              score: data.hist_score || 0,
+              status: data.hist_status,
+              componentes: data.hist_componentes
+            };
+          });
+          // Sort ascending for chart display
+          setHealthHistory(healthData.sort((a, b) => a.date - b.date));
         }
       } catch (error) {
         console.error('Erro ao buscar cliente:', error);
@@ -174,6 +195,73 @@ export default function ClienteDetalhe() {
           <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Última Interação</p>
           <span style={{ color: 'white', fontSize: '20px', fontWeight: '600' }}>{formatRelativeDate(cliente.ultima_interacao)}</span>
         </div>
+      </div>
+
+      {/* Evolução do Health Score */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+          <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Evolução do Health Score</h2>
+          <span style={{ color: '#64748b', fontSize: '13px', marginLeft: 'auto' }}>Últimos 30 dias</span>
+        </div>
+        {healthHistory.length > 0 ? (
+          <div style={{ height: '280px', width: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={healthHistory} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.1}/>
+                  </linearGradient>
+                  <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#8b5cf6"/>
+                    <stop offset="100%" stopColor="#06b6d4"/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" vertical={false} />
+                <XAxis
+                  dataKey="dateFormatted"
+                  stroke="#64748b"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={{ stroke: 'rgba(139, 92, 246, 0.2)' }}
+                />
+                <YAxis
+                  stroke="#64748b"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={{ stroke: 'rgba(139, 92, 246, 0.2)' }}
+                  domain={[0, 100]}
+                  ticks={[0, 25, 50, 75, 100]}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'rgba(15, 10, 31, 0.95)',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
+                  }}
+                  labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
+                  formatter={(value, name) => [`${value}%`, 'Health Score']}
+                  labelFormatter={(label) => `Data: ${label}`}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="score"
+                  stroke="url(#lineGradient)"
+                  strokeWidth={3}
+                  fill="url(#scoreGradient)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div style={{ padding: '48px', textAlign: 'center' }}>
+            <TrendingUp style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
+            <p style={{ color: '#94a3b8', fontSize: '16px', margin: '0 0 8px 0' }}>Nenhum histórico disponível</p>
+            <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>O histórico de Health Score será exibido aqui quando houver dados</p>
+          </div>
+        )}
       </div>
 
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
