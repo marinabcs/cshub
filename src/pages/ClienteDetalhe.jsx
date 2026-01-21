@@ -55,37 +55,45 @@ export default function ClienteDetalhe() {
           const clienteData = docSnap.data();
           const teamIds = clienteData.times || [];
           if (teamIds.length > 0) {
+            // Get periods for last 30 days (format: YYYY-MM)
+            const periods = new Set();
             const now = new Date();
-            const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // Last 30 days
+            for (let i = 0; i < 30; i++) {
+              const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+              const period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+              periods.add(period);
+            }
+            const periodsArray = Array.from(periods);
 
-            const teamUsagePromises = teamIds.map(async (teamId) => {
-              try {
-                const usageSnapshot = await getDocs(collection(db, 'clientes', teamId, 'uso_plataforma'));
-                return usageSnapshot.docs.map(doc => doc.data());
-              } catch {
-                return [];
-              }
-            });
+            // Fetch usage data from each team for each period
+            const teamUsagePromises = teamIds.flatMap((teamId) =>
+              periodsArray.map(async (period) => {
+                try {
+                  const usageDoc = await getDoc(doc(db, 'clientes', teamId, 'uso_plataforma', period));
+                  if (usageDoc.exists()) {
+                    return usageDoc.data();
+                  }
+                  return null;
+                } catch {
+                  return null;
+                }
+              })
+            );
 
             const teamUsageResults = await Promise.all(teamUsagePromises);
-            const allUsage = teamUsageResults.flat();
+            const allUsage = teamUsageResults.filter(u => u !== null);
 
-            // Filter by period and aggregate
-            const aggregated = allUsage
-              .filter(u => {
-                const date = u.data?.toDate?.() || new Date(u.data);
-                return date >= cutoff;
-              })
-              .reduce((acc, u) => {
-                const escala = u.escala || {};
-                const ai = u.ai || {};
-                return {
-                  logins: acc.logins + (escala.logins || 0),
-                  pecas_criadas: acc.pecas_criadas + (escala.pecas_criadas || 0),
-                  downloads: acc.downloads + (escala.downloads || 0),
-                  ai_total: acc.ai_total + (ai.total_uso || ai.total || 0)
-                };
-              }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
+            // Aggregate all usage data
+            const aggregated = allUsage.reduce((acc, u) => {
+              const escala = u.escala || {};
+              const ai = u.ai || {};
+              return {
+                logins: acc.logins + (escala.logins || 0),
+                pecas_criadas: acc.pecas_criadas + (escala.pecas_criadas || 0),
+                downloads: acc.downloads + (escala.downloads || 0),
+                ai_total: acc.ai_total + (ai.total_uso || ai.total || 0)
+              };
+            }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
 
             setUsageData(aggregated);
           }

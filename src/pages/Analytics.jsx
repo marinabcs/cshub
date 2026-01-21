@@ -1,6 +1,6 @@
 // Atualizado em 21/01/2026
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { BarChart3, Users, TrendingUp, AlertTriangle, Search, Filter, Download, X, ChevronDown, LogIn, FileImage, Sparkles, Calendar } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -35,20 +35,35 @@ export default function Analytics() {
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [periodDays, setPeriodDays] = useState(30);
 
+  // Get periods (YYYY-MM) for a given number of days
+  const getPeriodsForDays = (days) => {
+    const periods = new Set();
+    const now = new Date();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      periods.add(period);
+    }
+    return Array.from(periods);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Fetch clientes
         const clientesSnapshot = await getDocs(collection(db, 'clientes'));
-        const clientesData = clientesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
+        const clientesData = clientesSnapshot.docs.map(d => ({
+          id: d.id,
+          ...d.data()
         }));
         setClientes(clientesData);
 
+        // Get periods to fetch (current month + previous if needed)
+        const periods = getPeriodsForDays(30); // Fetch max period data
+
         // Fetch uso_plataforma for each cliente's linked teams
         // Each cliente has a "times" array with team IDs
-        // Usage data is stored in clientes/{team_id}/uso_plataforma
+        // Usage data is stored in clientes/{team_id}/uso_plataforma/{period}
         const usagePromises = clientesData.map(async (cliente) => {
           try {
             const teamIds = cliente.times || [];
@@ -56,19 +71,24 @@ export default function Analytics() {
               return { clienteId: cliente.id, usage: [] };
             }
 
-            // Fetch usage data from all linked teams
-            const teamUsagePromises = teamIds.map(async (teamId) => {
-              try {
-                const usageSnapshot = await getDocs(collection(db, 'clientes', teamId, 'uso_plataforma'));
-                return usageSnapshot.docs.map(doc => ({ id: doc.id, teamId, ...doc.data() }));
-              } catch {
-                return [];
-              }
-            });
+            // Fetch usage data from all linked teams for all periods
+            const teamUsagePromises = teamIds.flatMap((teamId) =>
+              periods.map(async (period) => {
+                try {
+                  const usageDoc = await getDoc(doc(db, 'clientes', teamId, 'uso_plataforma', period));
+                  if (usageDoc.exists()) {
+                    return { id: usageDoc.id, teamId, period, ...usageDoc.data() };
+                  }
+                  return null;
+                } catch {
+                  return null;
+                }
+              })
+            );
 
             const teamUsageResults = await Promise.all(teamUsagePromises);
-            // Flatten all team usage data into single array
-            const combinedUsage = teamUsageResults.flat();
+            // Filter out nulls
+            const combinedUsage = teamUsageResults.filter(u => u !== null);
             return { clienteId: cliente.id, usage: combinedUsage };
           } catch {
             return { clienteId: cliente.id, usage: [] };
@@ -93,13 +113,10 @@ export default function Analytics() {
   // Calculate usage metrics for a client within period
   const getClientUsage = (clienteId) => {
     const usage = usageData[clienteId] || [];
-    const now = new Date();
-    const cutoff = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
+    const periodsToInclude = getPeriodsForDays(periodDays);
 
-    const filteredUsage = usage.filter(u => {
-      const date = u.data?.toDate?.() || new Date(u.data);
-      return date >= cutoff;
-    });
+    // Filter usage by periods within range
+    const filteredUsage = usage.filter(u => periodsToInclude.includes(u.period));
 
     return filteredUsage.reduce((acc, u) => {
       const escala = u.escala || {};
@@ -109,7 +126,7 @@ export default function Analytics() {
         pecas_criadas: acc.pecas_criadas + (escala.pecas_criadas || 0),
         downloads: acc.downloads + (escala.downloads || 0),
         usuarios_ativos: Math.max(acc.usuarios_ativos, escala.usuarios_ativos || 0),
-        ai_total: acc.ai_total + (ai.total || 0),
+        ai_total: acc.ai_total + (ai.total_uso || ai.total || 0),
         ai_remover_fundo: acc.ai_remover_fundo + (ai.remover_fundo || 0),
         ai_gerar_imagem: acc.ai_gerar_imagem + (ai.gerar_imagem || 0),
         ai_escrever_texto: acc.ai_escrever_texto + (ai.escrever_texto || 0)
