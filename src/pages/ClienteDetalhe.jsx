@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
 export default function ClienteDetalhe() {
@@ -13,6 +13,7 @@ export default function ClienteDetalhe() {
   const [selectedThread, setSelectedThread] = useState(null);
   const [mensagens, setMensagens] = useState([]);
   const [healthHistory, setHealthHistory] = useState([]);
+  const [usageData, setUsageData] = useState({ logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -49,6 +50,45 @@ export default function ClienteDetalhe() {
           });
           // Sort ascending for chart display
           setHealthHistory(healthData.sort((a, b) => a.date - b.date));
+
+          // Fetch usage data from linked teams
+          const clienteData = docSnap.data();
+          const teamIds = clienteData.times || [];
+          if (teamIds.length > 0) {
+            const now = new Date();
+            const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // Last 30 days
+
+            const teamUsagePromises = teamIds.map(async (teamId) => {
+              try {
+                const usageSnapshot = await getDocs(collection(db, 'clientes', teamId, 'uso_plataforma'));
+                return usageSnapshot.docs.map(doc => doc.data());
+              } catch {
+                return [];
+              }
+            });
+
+            const teamUsageResults = await Promise.all(teamUsagePromises);
+            const allUsage = teamUsageResults.flat();
+
+            // Filter by period and aggregate
+            const aggregated = allUsage
+              .filter(u => {
+                const date = u.data?.toDate?.() || new Date(u.data);
+                return date >= cutoff;
+              })
+              .reduce((acc, u) => {
+                const escala = u.escala || {};
+                const ai = u.ai || {};
+                return {
+                  logins: acc.logins + (escala.logins || 0),
+                  pecas_criadas: acc.pecas_criadas + (escala.pecas_criadas || 0),
+                  downloads: acc.downloads + (escala.downloads || 0),
+                  ai_total: acc.ai_total + (ai.total_uso || ai.total || 0)
+                };
+              }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
+
+            setUsageData(aggregated);
+          }
         }
       } catch (error) {
         console.error('Erro ao buscar cliente:', error);
@@ -194,6 +234,57 @@ export default function ClienteDetalhe() {
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
           <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Última Interação</p>
           <span style={{ color: 'white', fontSize: '20px', fontWeight: '600' }}>{formatRelativeDate(cliente.ultima_interacao)}</span>
+        </div>
+      </div>
+
+      {/* Métricas de Uso da Plataforma */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
+        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <LogIn style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Logins (30d)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{usageData.logins.toLocaleString('pt-BR')}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <FileImage style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Peças Criadas (30d)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{usageData.pecas_criadas.toLocaleString('pt-BR')}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Download style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Downloads (30d)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{usageData.downloads.toLocaleString('pt-BR')}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Sparkles style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Uso AI (30d)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{usageData.ai_total.toLocaleString('pt-BR')}</p>
+            </div>
+          </div>
         </div>
       </div>
 
