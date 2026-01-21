@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
 export default function ClienteDetalhe() {
@@ -14,6 +14,8 @@ export default function ClienteDetalhe() {
   const [mensagens, setMensagens] = useState([]);
   const [healthHistory, setHealthHistory] = useState([]);
   const [usageData, setUsageData] = useState({ logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
+  const [usuarios, setUsuarios] = useState([]);
+  const [showAllUsuarios, setShowAllUsuarios] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -98,6 +100,36 @@ export default function ClienteDetalhe() {
 
             setUsageData(aggregated);
           }
+
+          // Fetch users from usuarios_lookup for each linked team
+          if (teamIds.length > 0) {
+            const usuariosLookupRef = collection(db, 'usuarios_lookup');
+            const userPromises = teamIds.map(async (teamId) => {
+              try {
+                const userQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
+                const userSnap = await getDocs(userQuery);
+                return userSnap.docs.map(doc => ({
+                  id: doc.id,
+                  ...doc.data(),
+                  team_id: teamId
+                }));
+              } catch {
+                return [];
+              }
+            });
+
+            const userResults = await Promise.all(userPromises);
+            const allUsers = userResults.flat();
+
+            // Sort by name
+            allUsers.sort((a, b) => {
+              const nameA = (a.nome || a.name || '').toLowerCase();
+              const nameB = (b.nome || b.name || '').toLowerCase();
+              return nameA.localeCompare(nameB);
+            });
+
+            setUsuarios(allUsers);
+          }
         }
       } catch (error) {
         console.error('Erro ao buscar cliente:', error);
@@ -173,6 +205,35 @@ export default function ClienteDetalhe() {
     if (diff === 1) return 'Ontem';
     return `há ${diff} dias`;
   };
+
+  const formatSimpleDate = (timestamp) => {
+    if (!timestamp) return '-';
+    const date = timestamp.toDate ? timestamp.toDate() : (timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp));
+    if (isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
+  const getUserStatusColor = (user) => {
+    if (user.deleted_at) return '#ef4444';
+    if (user.status === 'ativo' || user.status === 'active') return '#10b981';
+    if (user.status === 'inativo' || user.status === 'inactive') return '#64748b';
+    return '#10b981'; // Default to active
+  };
+
+  const getUserStatusLabel = (user) => {
+    if (user.deleted_at) return 'Excluído';
+    if (user.status === 'ativo' || user.status === 'active') return 'Ativo';
+    if (user.status === 'inativo' || user.status === 'inactive') return 'Inativo';
+    return 'Ativo';
+  };
+
+  const getTeamNameById = (teamId) => {
+    // Try to find from cliente.times_info if available, otherwise show teamId
+    const timesInfo = cliente?.times_info || {};
+    return timesInfo[teamId] || teamId;
+  };
+
+  const displayedUsuarios = showAllUsuarios ? usuarios : usuarios.slice(0, 20);
 
   if (loading) {
     return (
@@ -316,6 +377,124 @@ export default function ClienteDetalhe() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Seção de Usuários */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <User style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Usuários</h2>
+            <span style={{ padding: '4px 12px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
+              {usuarios.length} {usuarios.length === 1 ? 'usuário' : 'usuários'}
+            </span>
+          </div>
+        </div>
+
+        {usuarios.length > 0 ? (
+          <>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '12px 16px', color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>Nome</th>
+                    <th style={{ textAlign: 'left', padding: '12px 16px', color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>Email</th>
+                    <th style={{ textAlign: 'left', padding: '12px 16px', color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>Time</th>
+                    <th style={{ textAlign: 'center', padding: '12px 16px', color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>Status</th>
+                    <th style={{ textAlign: 'center', padding: '12px 16px', color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>Criado em</th>
+                    <th style={{ textAlign: 'center', padding: '12px 16px', color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>Excluído em</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedUsuarios.map((user, index) => (
+                    <tr key={user.id || index} style={{ borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{
+                            width: '32px',
+                            height: '32px',
+                            background: user.deleted_at ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '12px',
+                            fontWeight: '600'
+                          }}>
+                            {(user.nome || user.name || 'U').charAt(0).toUpperCase()}
+                          </div>
+                          <span style={{ color: user.deleted_at ? '#64748b' : 'white', fontSize: '14px', fontWeight: '500' }}>
+                            {user.nome || user.name || '-'}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '14px 16px', color: user.deleted_at ? '#64748b' : '#94a3b8', fontSize: '13px' }}>
+                        {user.email || '-'}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#94a3b8', fontSize: '13px' }}>
+                        {user.team_name || getTeamNameById(user.team_id)}
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '4px 10px',
+                          background: `${getUserStatusColor(user)}20`,
+                          color: getUserStatusColor(user),
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: '500'
+                        }}>
+                          {getUserStatusLabel(user)}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 16px', color: '#64748b', fontSize: '13px', textAlign: 'center' }}>
+                        {formatSimpleDate(user.created_at)}
+                      </td>
+                      <td style={{ padding: '14px 16px', color: user.deleted_at ? '#ef4444' : '#64748b', fontSize: '13px', textAlign: 'center' }}>
+                        {user.deleted_at ? formatSimpleDate(user.deleted_at) : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {usuarios.length > 20 && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px' }}>
+                <button
+                  onClick={() => setShowAllUsuarios(!showAllUsuarios)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 20px',
+                    background: 'rgba(139, 92, 246, 0.1)',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    color: '#a78bfa',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {showAllUsuarios ? 'Mostrar menos' : `Ver todos (${usuarios.length})`}
+                  <ChevronDown style={{
+                    width: '16px',
+                    height: '16px',
+                    transform: showAllUsuarios ? 'rotate(180deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s ease'
+                  }} />
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ padding: '48px', textAlign: 'center' }}>
+            <User style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
+            <p style={{ color: '#94a3b8', fontSize: '16px', margin: '0 0 8px 0' }}>Nenhum usuário encontrado</p>
+            <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Os usuários dos times vinculados aparecerão aqui</p>
+          </div>
+        )}
       </div>
 
       {/* Evolução do Health Score */}
