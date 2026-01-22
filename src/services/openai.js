@@ -1,5 +1,9 @@
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 
+// DEBUG: Verificar se a API key está sendo carregada
+console.log('🔑 OpenAI API Key configurada:', !!OPENAI_API_KEY);
+console.log('🔑 Todas as variáveis VITE_:', import.meta.env);
+
 // Categorias de thread
 export const THREAD_CATEGORIAS = {
   erro_bug: {
