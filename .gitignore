@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# API Keys (local config)
+src/config/*.local.js
+
 # Logs
 logs
 *.log

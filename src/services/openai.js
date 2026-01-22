@@ -1,8 +1,8 @@
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+// Importar chave do arquivo local (não commitado)
+import { OPENAI_API_KEY as LOCAL_KEY } from '../config/apiKeys.local.js';
 
-// DEBUG: Verificar se a API key está sendo carregada
-console.log('🔑 OpenAI API Key configurada:', !!OPENAI_API_KEY);
-console.log('🔑 Todas as variáveis VITE_:', import.meta.env);
+// API Key - Tentar do .env primeiro, depois do arquivo local
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || LOCAL_KEY;
 
 // Categorias de thread
 export const THREAD_CATEGORIAS = {
