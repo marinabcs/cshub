@@ -1,27 +1,94 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Clock, ListChecks, ChevronRight, Plus, Loader2 } from 'lucide-react';
+import { ClipboardList, Clock, ListChecks, ChevronRight, Plus, Loader2, Sparkles } from 'lucide-react';
 import { buscarPlaybooks } from '../services/playbooks';
+import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../services/firebase';
+
+// Playbooks padrão para criar
+const PLAYBOOKS_PADRAO = {
+  onboarding: {
+    nome: "Onboarding",
+    descricao: "Processo de implantação de cliente novo",
+    duracao_estimada_dias: 30,
+    ativo: true,
+    etapas: [
+      { ordem: 1, nome: "Kick-off", descricao: "Reunião inicial de alinhamento com o cliente", prazo_dias: 1, obrigatoria: true },
+      { ordem: 2, nome: "Configuração inicial", descricao: "Setup da conta, upload de logo, configuração de marca", prazo_dias: 3, obrigatoria: true },
+      { ordem: 3, nome: "Treinamento 1", descricao: "Treinamento básico da plataforma", prazo_dias: 7, obrigatoria: true },
+      { ordem: 4, nome: "Treinamento 2", descricao: "Treinamento avançado e casos de uso específicos", prazo_dias: 14, obrigatoria: true },
+      { ordem: 5, nome: "Go-live", descricao: "Cliente começa a usar em produção", prazo_dias: 21, obrigatoria: true },
+      { ordem: 6, nome: "Check-in pós go-live", descricao: "Reunião de acompanhamento 1 semana após go-live", prazo_dias: 30, obrigatoria: false }
+    ]
+  },
+  reativacao: {
+    nome: "Reativação de Cliente",
+    descricao: "Processo para reativar clientes inativos",
+    duracao_estimada_dias: 14,
+    ativo: true,
+    etapas: [
+      { ordem: 1, nome: "Análise de histórico", descricao: "Revisar histórico de uso e motivos da inatividade", prazo_dias: 1, obrigatoria: true },
+      { ordem: 2, nome: "Contato inicial", descricao: "Ligar ou enviar email para entender a situação", prazo_dias: 2, obrigatoria: true },
+      { ordem: 3, nome: "Reunião de alinhamento", descricao: "Reunião para entender necessidades e apresentar novidades", prazo_dias: 7, obrigatoria: true },
+      { ordem: 4, nome: "Plano de ação", descricao: "Definir próximos passos e metas", prazo_dias: 10, obrigatoria: true },
+      { ordem: 5, nome: "Acompanhamento", descricao: "Verificar se o cliente voltou a usar a plataforma", prazo_dias: 14, obrigatoria: false }
+    ]
+  },
+  qbr: {
+    nome: "QBR (Quarterly Business Review)",
+    descricao: "Revisão trimestral de resultados com o cliente",
+    duracao_estimada_dias: 7,
+    ativo: true,
+    etapas: [
+      { ordem: 1, nome: "Coleta de dados", descricao: "Reunir métricas de uso, NPS e resultados do período", prazo_dias: 2, obrigatoria: true },
+      { ordem: 2, nome: "Preparar apresentação", descricao: "Criar apresentação com análise de resultados e recomendações", prazo_dias: 4, obrigatoria: true },
+      { ordem: 3, nome: "Reunião de QBR", descricao: "Apresentar resultados e alinhar próximos passos", prazo_dias: 6, obrigatoria: true },
+      { ordem: 4, nome: "Documentar ação", descricao: "Registrar decisões e criar tarefas de follow-up", prazo_dias: 7, obrigatoria: false }
+    ]
+  }
+};
 
 export default function Playbooks() {
   const navigate = useNavigate();
   const [playbooks, setPlaybooks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [criando, setCriando] = useState(false);
+
+  const fetchPlaybooks = async () => {
+    try {
+      const data = await buscarPlaybooks();
+      setPlaybooks(data);
+    } catch (error) {
+      console.error('Erro ao buscar playbooks:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchPlaybooks = async () => {
-      try {
-        const data = await buscarPlaybooks();
-        setPlaybooks(data);
-      } catch (error) {
-        console.error('Erro ao buscar playbooks:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchPlaybooks();
   }, []);
+
+  const criarPlaybooksPadrao = async () => {
+    setCriando(true);
+    try {
+      for (const [id, data] of Object.entries(PLAYBOOKS_PADRAO)) {
+        await setDoc(doc(db, 'playbooks', id), {
+          ...data,
+          created_at: Timestamp.now(),
+          updated_at: Timestamp.now()
+        });
+      }
+      // Recarregar lista
+      await fetchPlaybooks();
+      alert('Playbooks criados com sucesso!');
+    } catch (error) {
+      console.error('Erro ao criar playbooks:', error);
+      alert(`Erro ao criar playbooks: ${error.message}`);
+    } finally {
+      setCriando(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -189,8 +256,41 @@ export default function Playbooks() {
           <p style={{ color: '#94a3b8', fontSize: '18px', margin: '0 0 12px 0', fontWeight: '500' }}>
             Nenhum playbook disponível
           </p>
-          <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
-            Execute o script <code style={{ background: 'rgba(139, 92, 246, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>populate-playbooks.js</code> para criar os playbooks iniciais
+          <p style={{ color: '#64748b', fontSize: '14px', margin: '0 0 24px 0' }}>
+            Crie os playbooks padrão para começar a usar o sistema
+          </p>
+          <button
+            onClick={criarPlaybooksPadrao}
+            disabled={criando}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '14px 28px',
+              background: criando ? 'rgba(139, 92, 246, 0.4)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '15px',
+              fontWeight: '600',
+              cursor: criando ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)'
+            }}
+          >
+            {criando ? (
+              <>
+                <Loader2 style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
+                Criando...
+              </>
+            ) : (
+              <>
+                <Sparkles style={{ width: '18px', height: '18px' }} />
+                Criar Playbooks Padrão
+              </>
+            )}
+          </button>
+          <p style={{ color: '#64748b', fontSize: '12px', marginTop: '16px' }}>
+            Onboarding, Reativação e QBR
           </p>
         </div>
       )}
