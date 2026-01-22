@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useHealthScore } from '../hooks/useHealthScore';
 import { getHealthColor, getHealthLabel, getComponenteLabel } from '../utils/healthScore';
+import { useClassificarThread } from '../hooks/useClassificarThread';
+import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../services/openai';
 
 export default function ClienteDetalhe() {
   const { id } = useParams();
@@ -20,8 +22,19 @@ export default function ClienteDetalhe() {
   const [showAllUsuarios, setShowAllUsuarios] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Filtros de threads
+  const [filtroCategoria, setFiltroCategoria] = useState('todos');
+  const [filtroSentimento, setFiltroSentimento] = useState('todos');
+
   // Health Score hook
   const { healthData, calculating, calcularESalvar } = useHealthScore(id);
+
+  // Classificação de threads
+  const { classificar, classificarManual, classificando, erro: erroClassificacao } = useClassificarThread();
+  const [showManualClassification, setShowManualClassification] = useState(false);
+  const [manualCategoria, setManualCategoria] = useState('');
+  const [manualSentimento, setManualSentimento] = useState('');
+  const [manualResumo, setManualResumo] = useState('');
 
   useEffect(() => {
     const fetchCliente = async () => {
@@ -190,13 +203,95 @@ export default function ClienteDetalhe() {
   };
 
   const getSentimentColor = (sentiment) => {
-    const colors = { positivo: '#10b981', neutro: '#64748b', negativo: '#f97316', urgente: '#ef4444' };
-    return colors[sentiment] || '#64748b';
+    return getSentimentoInfo(sentiment).color;
   };
 
   const getCategoryLabel = (cat) => {
-    const labels = { erro_bug: 'Erro/Bug', problema_tecnico: 'Problema Técnico', feedback: 'Feedback', duvida_pergunta: 'Dúvida', solicitacao: 'Solicitação', outro: 'Outro' };
-    return labels[cat] || cat;
+    return getCategoriaInfo(cat).label;
+  };
+
+  const getCategoryColor = (cat) => {
+    return getCategoriaInfo(cat).color;
+  };
+
+  // Função para classificar thread com IA
+  const handleClassificarThread = async () => {
+    if (!selectedThread) return;
+
+    // Formatar conversa para enviar à IA
+    const conversaTexto = mensagens.map(msg =>
+      `[${msg.tipo_remetente === 'equipe' ? 'Equipe' : 'Cliente'} - ${msg.remetente_nome || 'Anônimo'}]: ${msg.snippet || ''}`
+    ).join('\n');
+
+    if (!conversaTexto.trim()) {
+      alert('Não há mensagens para classificar');
+      return;
+    }
+
+    const threadData = {
+      team_name: cliente?.team_name,
+      cliente_id: cliente?.id,
+      cliente_nome: cliente?.team_name,
+      responsavel_email: cliente?.responsavel_email,
+      responsavel_nome: cliente?.responsavel_nome
+    };
+
+    const result = await classificar(
+      selectedThread._teamId,
+      selectedThread.id,
+      conversaTexto,
+      threadData
+    );
+
+    if (result.success) {
+      // Atualizar a thread selecionada com os novos dados
+      setSelectedThread(prev => ({
+        ...prev,
+        categoria: result.resultado.categoria,
+        sentimento: result.resultado.sentimento,
+        resumo_ia: result.resultado.resumo,
+        classificado_por: 'ia'
+      }));
+
+      // Atualizar na lista de threads
+      setThreads(prev => prev.map(t =>
+        t.id === selectedThread.id
+          ? { ...t, categoria: result.resultado.categoria, sentimento: result.resultado.sentimento, resumo_ia: result.resultado.resumo, classificado_por: 'ia' }
+          : t
+      ));
+    }
+  };
+
+  // Função para classificar manualmente
+  const handleClassificarManual = async () => {
+    if (!selectedThread || !manualCategoria || !manualSentimento) return;
+
+    const result = await classificarManual(
+      selectedThread._teamId,
+      selectedThread.id,
+      { categoria: manualCategoria, sentimento: manualSentimento, resumo: manualResumo }
+    );
+
+    if (result.success) {
+      setSelectedThread(prev => ({
+        ...prev,
+        categoria: manualCategoria,
+        sentimento: manualSentimento,
+        resumo_ia: manualResumo || null,
+        classificado_por: 'manual'
+      }));
+
+      setThreads(prev => prev.map(t =>
+        t.id === selectedThread.id
+          ? { ...t, categoria: manualCategoria, sentimento: manualSentimento, resumo_ia: manualResumo || null, classificado_por: 'manual' }
+          : t
+      ));
+
+      setShowManualClassification(false);
+      setManualCategoria('');
+      setManualSentimento('');
+      setManualResumo('');
+    }
   };
 
   const getStatusColor = (status) => {
@@ -253,6 +348,13 @@ export default function ClienteDetalhe() {
   };
 
   const displayedUsuarios = showAllUsuarios ? usuarios : usuarios.slice(0, 20);
+
+  // Filtrar threads
+  const filteredThreads = threads.filter(thread => {
+    const matchesCategoria = filtroCategoria === 'todos' || thread.categoria === filtroCategoria;
+    const matchesSentimento = filtroSentimento === 'todos' || thread.sentimento === filtroSentimento;
+    return matchesCategoria && matchesSentimento;
+  });
 
   if (loading) {
     return (
@@ -643,24 +745,60 @@ export default function ClienteDetalhe() {
       </div>
 
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-          <MessageSquare style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Timeline de Conversas</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <MessageSquare style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Timeline de Conversas</h2>
+            <span style={{ padding: '4px 10px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', borderRadius: '10px', fontSize: '12px' }}>
+              {filteredThreads.length} de {threads.length}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <select
+              value={filtroCategoria}
+              onChange={(e) => setFiltroCategoria(e.target.value)}
+              style={{ padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', color: 'white', fontSize: '12px', outline: 'none', cursor: 'pointer' }}
+            >
+              <option value="todos" style={{ background: '#1e1b4b' }}>Todas categorias</option>
+              {Object.values(THREAD_CATEGORIAS).map(cat => (
+                <option key={cat.value} value={cat.value} style={{ background: '#1e1b4b' }}>{cat.label}</option>
+              ))}
+            </select>
+            <select
+              value={filtroSentimento}
+              onChange={(e) => setFiltroSentimento(e.target.value)}
+              style={{ padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', color: 'white', fontSize: '12px', outline: 'none', cursor: 'pointer' }}
+            >
+              <option value="todos" style={{ background: '#1e1b4b' }}>Todos sentimentos</option>
+              {Object.values(THREAD_SENTIMENTOS).map(sent => (
+                <option key={sent.value} value={sent.value} style={{ background: '#1e1b4b' }}>{sent.emoji} {sent.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        {threads.length > 0 ? (
+        {filteredThreads.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {threads.map((thread) => (
+            {filteredThreads.map((thread) => (
               <div key={thread.id} onClick={() => handleThreadClick(thread)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.1)', borderRadius: '12px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flex: 1 }}>
-                  <div style={{ width: '40px', height: '40px', background: `${getSentimentColor(thread.sentimento)}20`, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <div style={{ width: '40px', height: '40px', background: `${getSentimentColor(thread.sentimento)}20`, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
                     <Mail style={{ width: '20px', height: '20px', color: getSentimentColor(thread.sentimento) }} />
+                    {thread.sentimento === 'urgente' && (
+                      <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '12px', height: '12px', background: '#ef4444', borderRadius: '50%', border: '2px solid #1a1033', animation: 'pulse 2s infinite' }}></span>
+                    )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                       <span style={{ color: 'white', fontWeight: '500', fontSize: '14px' }}>{thread.assunto || 'Sem assunto'}</span>
                       <span style={{ padding: '2px 8px', background: `${getStatusColor(thread.status)}20`, color: getStatusColor(thread.status), borderRadius: '6px', fontSize: '11px', fontWeight: '500' }}>{getStatusLabel(thread.status)}</span>
+                      {thread.categoria && (
+                        <span style={{ padding: '2px 8px', background: `${getCategoryColor(thread.categoria)}20`, color: getCategoryColor(thread.categoria), borderRadius: '6px', fontSize: '10px', fontWeight: '500' }}>{getCategoryLabel(thread.categoria)}</span>
+                      )}
+                      {thread.sentimento && (
+                        <span style={{ padding: '2px 8px', background: `${getSentimentColor(thread.sentimento)}20`, color: getSentimentColor(thread.sentimento), borderRadius: '6px', fontSize: '10px' }}>{getSentimentoInfo(thread.sentimento).emoji} {getSentimentoInfo(thread.sentimento).label}</span>
+                      )}
                     </div>
-                    <p style={{ color: '#64748b', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{thread.resumo_chat || 'Sem resumo'}</p>
+                    <p style={{ color: '#64748b', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{thread.resumo_ia || thread.resumo_chat || 'Sem resumo'}</p>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: '16px' }}>
@@ -683,24 +821,162 @@ export default function ClienteDetalhe() {
 
       {selectedThread && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '32px' }}>
-          <div style={{ background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '20px', width: '100%', maxWidth: '700px', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '20px', width: '100%', maxWidth: '800px', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div>
                 <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 8px 0' }}>{selectedThread.assunto || 'Sem assunto'}</h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ padding: '4px 10px', background: `${getStatusColor(selectedThread.status)}20`, color: getStatusColor(selectedThread.status), borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>{getStatusLabel(selectedThread.status)}</span>
-                  <span style={{ padding: '4px 10px', background: `${getSentimentColor(selectedThread.sentimento)}20`, color: getSentimentColor(selectedThread.sentimento), borderRadius: '6px', fontSize: '12px' }}>{selectedThread.sentimento}</span>
+                  {selectedThread.categoria && (
+                    <span style={{ padding: '4px 10px', background: `${getCategoryColor(selectedThread.categoria)}20`, color: getCategoryColor(selectedThread.categoria), borderRadius: '6px', fontSize: '11px', fontWeight: '500' }}>{getCategoryLabel(selectedThread.categoria)}</span>
+                  )}
+                  {selectedThread.sentimento && (
+                    <span style={{ padding: '4px 10px', background: `${getSentimentColor(selectedThread.sentimento)}20`, color: getSentimentColor(selectedThread.sentimento), borderRadius: '6px', fontSize: '11px' }}>{getSentimentoInfo(selectedThread.sentimento).emoji} {getSentimentoInfo(selectedThread.sentimento).label}</span>
+                  )}
+                  {selectedThread.classificado_por && (
+                    <span style={{ padding: '4px 8px', background: 'rgba(100, 116, 139, 0.2)', color: '#94a3b8', borderRadius: '6px', fontSize: '10px' }}>
+                      Classificado por {selectedThread.classificado_por === 'ia' ? 'IA' : 'manual'}
+                    </span>
+                  )}
                 </div>
               </div>
-              <button onClick={() => setSelectedThread(null)} style={{ width: '36px', height: '36px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <button onClick={() => { setSelectedThread(null); setShowManualClassification(false); }} style={{ width: '36px', height: '36px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X style={{ width: '18px', height: '18px', color: '#ef4444' }} />
               </button>
             </div>
-            {selectedThread.resumo_chat && (
-              <div style={{ padding: '16px 24px', background: 'rgba(139, 92, 246, 0.1)', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <p style={{ color: '#a5b4fc', fontSize: '13px', margin: 0, fontStyle: 'italic' }}>{selectedThread.resumo_chat}</p>
+
+            {/* Classificação por IA */}
+            <div style={{ padding: '16px 24px', background: 'rgba(139, 92, 246, 0.05)', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+              {selectedThread.resumo_ia && (
+                <div style={{ marginBottom: '12px', padding: '12px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '8px' }}>
+                  <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Resumo da IA</p>
+                  <p style={{ color: '#e2e8f0', fontSize: '13px', margin: 0, lineHeight: 1.5 }}>{selectedThread.resumo_ia}</p>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {isOpenAIConfigured() && (
+                  <button
+                    onClick={handleClassificarThread}
+                    disabled={classificando || mensagens.length === 0}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 14px',
+                      background: classificando ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: 'white',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      cursor: classificando || mensagens.length === 0 ? 'not-allowed' : 'pointer',
+                      opacity: mensagens.length === 0 ? 0.5 : 1
+                    }}
+                  >
+                    <Bot style={{ width: '14px', height: '14px', animation: classificando ? 'spin 1s linear infinite' : 'none' }} />
+                    {classificando ? 'Classificando...' : selectedThread.categoria ? 'Reclassificar com IA' : 'Classificar com IA'}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowManualClassification(!showManualClassification);
+                    if (selectedThread.categoria) {
+                      setManualCategoria(selectedThread.categoria);
+                      setManualSentimento(selectedThread.sentimento);
+                      setManualResumo(selectedThread.resumo_ia || '');
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    background: 'rgba(100, 116, 139, 0.2)',
+                    border: '1px solid rgba(100, 116, 139, 0.3)',
+                    borderRadius: '8px',
+                    color: '#94a3b8',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Pencil style={{ width: '14px', height: '14px' }} />
+                  {showManualClassification ? 'Cancelar' : 'Classificar Manualmente'}
+                </button>
               </div>
-            )}
+
+              {erroClassificacao && (
+                <p style={{ color: '#ef4444', fontSize: '12px', margin: '8px 0 0 0' }}>Erro: {erroClassificacao}</p>
+              )}
+
+              {!isOpenAIConfigured() && (
+                <p style={{ color: '#f59e0b', fontSize: '12px', margin: '8px 0 0 0' }}>
+                  Configure VITE_OPENAI_API_KEY no .env para usar classificação por IA
+                </p>
+              )}
+
+              {/* Formulário de classificação manual */}
+              {showManualClassification && (
+                <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Categoria</label>
+                      <select
+                        value={manualCategoria}
+                        onChange={(e) => setManualCategoria(e.target.value)}
+                        style={{ width: '100%', padding: '10px 12px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none' }}
+                      >
+                        <option value="">Selecione...</option>
+                        {Object.values(THREAD_CATEGORIAS).map(cat => (
+                          <option key={cat.value} value={cat.value} style={{ background: '#1e1b4b' }}>{cat.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sentimento</label>
+                      <select
+                        value={manualSentimento}
+                        onChange={(e) => setManualSentimento(e.target.value)}
+                        style={{ width: '100%', padding: '10px 12px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none' }}
+                      >
+                        <option value="">Selecione...</option>
+                        {Object.values(THREAD_SENTIMENTOS).map(sent => (
+                          <option key={sent.value} value={sent.value} style={{ background: '#1e1b4b' }}>{sent.emoji} {sent.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ display: 'block', color: '#94a3b8', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Resumo (opcional)</label>
+                    <textarea
+                      value={manualResumo}
+                      onChange={(e) => setManualResumo(e.target.value)}
+                      placeholder="Descreva brevemente a conversa..."
+                      rows={2}
+                      style={{ width: '100%', padding: '10px 12px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none', resize: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <button
+                    onClick={handleClassificarManual}
+                    disabled={!manualCategoria || !manualSentimento || classificando}
+                    style={{
+                      padding: '10px 20px',
+                      background: (!manualCategoria || !manualSentimento) ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: 'white',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: (!manualCategoria || !manualSentimento) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    Salvar Classificação
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
               {mensagens.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
