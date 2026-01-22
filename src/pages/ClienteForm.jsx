@@ -106,6 +106,14 @@ export default function ClienteForm() {
     return cliente;
   };
 
+  // Check if time is orphan (not linked to any client)
+  const isOrphanTime = (teamId) => {
+    // If editing and time belongs to current client, not orphan
+    if (isEditing && timesOriginais.includes(teamId)) return false;
+    // Check if any client has this team
+    return !clientes.some(c => c.times?.includes(teamId));
+  };
+
   // Get team types from selected teams
   const getTeamTypes = () => {
     const selectedTeams = times.filter(t => timesSelecionados.includes(t.id));
@@ -116,13 +124,32 @@ export default function ClienteForm() {
   // Filter teams
   const teamTypes = [...new Set(times.map(t => t.team_type).filter(Boolean))];
 
-  const filteredTimes = times.filter(time => {
-    const searchNormalized = removeAccents(searchTime);
-    const nameNormalized = removeAccents(time.team_name || '');
-    const matchesSearch = nameNormalized.includes(searchNormalized);
-    const matchesType = filterTeamType === 'todos' || time.team_type === filterTeamType;
-    return matchesSearch && matchesType;
-  });
+  // Filter and sort teams: orphans first, then others, both alphabetically
+  const filteredTimes = times
+    .filter(time => {
+      const searchNormalized = removeAccents(searchTime);
+      const nameNormalized = removeAccents(time.team_name || '');
+      const matchesSearch = nameNormalized.includes(searchNormalized);
+      const matchesType = filterTeamType === 'todos' || time.team_type === filterTeamType;
+      return matchesSearch && matchesType;
+    })
+    .sort((a, b) => {
+      const aIsSelected = timesSelecionados.includes(a.id);
+      const bIsSelected = timesSelecionados.includes(b.id);
+      const aIsOrphan = isOrphanTime(a.id);
+      const bIsOrphan = isOrphanTime(b.id);
+
+      // Selected times first
+      if (aIsSelected && !bIsSelected) return -1;
+      if (!aIsSelected && bIsSelected) return 1;
+
+      // Then orphan times
+      if (aIsOrphan && !bIsOrphan) return -1;
+      if (!aIsOrphan && bIsOrphan) return 1;
+
+      // Then alphabetically
+      return (a.team_name || '').localeCompare(b.team_name || '');
+    });
 
   const toggleTag = (tag) => {
     setTags(prev =>
@@ -473,14 +500,21 @@ export default function ClienteForm() {
             {/* Times */}
             <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h2 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>
-                  Times Vinculados
-                  {timesSelecionados.length > 0 && (
-                    <span style={{ marginLeft: '8px', padding: '2px 8px', background: 'rgba(124, 58, 237, 0.3)', borderRadius: '10px', fontSize: '12px', color: '#a78bfa' }}>
-                      {timesSelecionados.length}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <h2 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>
+                    Times Vinculados
+                    {timesSelecionados.length > 0 && (
+                      <span style={{ marginLeft: '8px', padding: '2px 8px', background: 'rgba(124, 58, 237, 0.3)', borderRadius: '10px', fontSize: '12px', color: '#a78bfa' }}>
+                        {timesSelecionados.length}
+                      </span>
+                    )}
+                  </h2>
+                  {times.filter(t => isOrphanTime(t.id)).length > 0 && (
+                    <span style={{ padding: '4px 10px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', color: '#10b981', fontSize: '11px', fontWeight: '500' }}>
+                      {times.filter(t => isOrphanTime(t.id)).length} disponíveis
                     </span>
                   )}
-                </h2>
+                </div>
               </div>
 
               {/* Search and Filter */}
@@ -533,6 +567,7 @@ export default function ClienteForm() {
                   const clienteDoTime = getClienteDoTime(time.id);
                   const isSelected = timesSelecionados.includes(time.id);
                   const isDisabled = Boolean(clienteDoTime);
+                  const isOrphan = isOrphanTime(time.id);
 
                   return (
                     <div
@@ -543,8 +578,16 @@ export default function ClienteForm() {
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '12px 16px',
-                        background: isSelected ? 'rgba(124, 58, 237, 0.2)' : 'rgba(15, 10, 31, 0.6)',
-                        border: isSelected ? '1px solid rgba(124, 58, 237, 0.5)' : '1px solid rgba(139, 92, 246, 0.1)',
+                        background: isSelected
+                          ? 'rgba(124, 58, 237, 0.2)'
+                          : isOrphan
+                            ? 'rgba(16, 185, 129, 0.08)'
+                            : 'rgba(15, 10, 31, 0.6)',
+                        border: isSelected
+                          ? '1px solid rgba(124, 58, 237, 0.5)'
+                          : isOrphan
+                            ? '1px solid rgba(16, 185, 129, 0.25)'
+                            : '1px solid rgba(139, 92, 246, 0.1)',
                         borderRadius: '12px',
                         cursor: isDisabled ? 'not-allowed' : 'pointer',
                         opacity: isDisabled ? 0.5 : 1,
@@ -555,7 +598,11 @@ export default function ClienteForm() {
                         <div style={{
                           width: '32px',
                           height: '32px',
-                          background: isSelected ? 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' : 'rgba(139, 92, 246, 0.2)',
+                          background: isSelected
+                            ? 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)'
+                            : isOrphan
+                              ? 'rgba(16, 185, 129, 0.2)'
+                              : 'rgba(139, 92, 246, 0.2)',
                           borderRadius: '8px',
                           display: 'flex',
                           alignItems: 'center',
@@ -564,13 +611,28 @@ export default function ClienteForm() {
                           {isSelected ? (
                             <Check style={{ width: '16px', height: '16px', color: 'white' }} />
                           ) : (
-                            <Building2 style={{ width: '16px', height: '16px', color: '#a78bfa' }} />
+                            <Building2 style={{ width: '16px', height: '16px', color: isOrphan ? '#10b981' : '#a78bfa' }} />
                           )}
                         </div>
                         <div>
-                          <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 2px 0' }}>
-                            {time.team_name}
-                          </p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                            <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>
+                              {time.team_name}
+                            </p>
+                            {isOrphan && !isSelected && (
+                              <span style={{
+                                padding: '2px 6px',
+                                background: 'rgba(16, 185, 129, 0.2)',
+                                color: '#10b981',
+                                fontSize: '9px',
+                                fontWeight: '600',
+                                borderRadius: '4px',
+                                textTransform: 'uppercase'
+                              }}>
+                                Disponível
+                              </span>
+                            )}
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ color: '#64748b', fontSize: '11px' }}>{time.team_type || 'Sem tipo'}</span>
                             {isDisabled && (
