@@ -90,6 +90,71 @@ const TEST_DATA = {
         dominio_conflito: false
       }
     }
+  ],
+  threads: [
+    {
+      teamId: 'time_teste_01',
+      id: 'thread_teste_001',
+      data: {
+        thread_id: 'thread_teste_001',
+        team_id: 'time_teste_01',
+        team_name: 'Cliente Teste A',
+        team_type: 'BR LCS',
+        assunto: 'Dúvida sobre exportação de designs',
+        status: 'aguardando_cliente',
+        total_mensagens: 2,
+        total_msgs_cliente: 1,
+        total_msgs_equipe: 1,
+        dias_sem_resposta: 2,
+        responsavel_email: 'cesar@trakto.io',
+        responsavel_nome: 'César Oliveira',
+        data_inicio: new Date('2025-01-20T10:00:00Z'),
+        ultima_msg_cliente: new Date('2025-01-20T10:00:00Z'),
+        ultima_msg_equipe: new Date('2025-01-20T11:30:00Z')
+      }
+    },
+    {
+      teamId: 'time_teste_02',
+      id: 'thread_teste_002',
+      data: {
+        thread_id: 'thread_teste_002',
+        team_id: 'time_teste_02',
+        team_name: 'Cliente Teste B',
+        team_type: 'BR MMS',
+        assunto: 'Erro ao salvar projeto',
+        status: 'aguardando_equipe',
+        total_mensagens: 3,
+        total_msgs_cliente: 2,
+        total_msgs_equipe: 1,
+        dias_sem_resposta: 1,
+        responsavel_email: 'cesar@trakto.io',
+        responsavel_nome: 'César Oliveira',
+        data_inicio: new Date('2025-01-21T09:00:00Z'),
+        ultima_msg_cliente: new Date('2025-01-21T14:00:00Z'),
+        ultima_msg_equipe: new Date('2025-01-21T10:00:00Z')
+      }
+    },
+    {
+      teamId: 'time_teste_03',
+      id: 'thread_teste_003',
+      data: {
+        thread_id: 'thread_teste_003',
+        team_id: 'time_teste_03',
+        team_name: 'Cliente Teste C',
+        team_type: 'SPLA LCS',
+        assunto: 'Sugestão de melhoria',
+        status: 'aguardando_equipe',
+        total_mensagens: 1,
+        total_msgs_cliente: 1,
+        total_msgs_equipe: 0,
+        dias_sem_resposta: 0,
+        responsavel_email: 'cesar@trakto.io',
+        responsavel_nome: 'César Oliveira',
+        data_inicio: new Date('2025-01-22T08:00:00Z'),
+        ultima_msg_cliente: new Date('2025-01-22T08:00:00Z'),
+        ultima_msg_equipe: null
+      }
+    }
   ]
 };
 
@@ -179,7 +244,11 @@ export default function DebugFirestore() {
   const seedTestData = async () => {
     setSeedLoading(true);
     setSeedResults(null);
-    const results = { times: { success: 0, errors: [] }, usuarios_lookup: { success: 0, errors: [] } };
+    const results = {
+      times: { success: 0, errors: [] },
+      usuarios_lookup: { success: 0, errors: [] },
+      threads: { success: 0, errors: [] }
+    };
 
     try {
       // Seed times
@@ -205,6 +274,23 @@ export default function DebugFirestore() {
           results.usuarios_lookup.success++;
         } catch (e) {
           results.usuarios_lookup.errors.push({ id: item.id, error: e.message });
+        }
+      }
+
+      // Seed threads (subcollections)
+      for (const item of TEST_DATA.threads) {
+        try {
+          const threadData = { ...item.data };
+          // Convert Date objects to Timestamps
+          if (threadData.data_inicio) threadData.data_inicio = Timestamp.fromDate(threadData.data_inicio);
+          if (threadData.ultima_msg_cliente) threadData.ultima_msg_cliente = Timestamp.fromDate(threadData.ultima_msg_cliente);
+          if (threadData.ultima_msg_equipe) threadData.ultima_msg_equipe = Timestamp.fromDate(threadData.ultima_msg_equipe);
+          threadData.updated_at = Timestamp.now();
+
+          await setDoc(doc(db, 'times', item.teamId, 'threads', item.id), threadData);
+          results.threads.success++;
+        } catch (e) {
+          results.threads.errors.push({ id: item.id, error: e.message });
         }
       }
 
@@ -748,6 +834,8 @@ export default function DebugFirestore() {
           <br />
           <span style={{ color: 'white' }}>• usuarios_lookup:</span> 4 documentos (user_01, user_02, user_03, user_04)
           <br />
+          <span style={{ color: 'white' }}>• threads:</span> 3 documentos (subcollections em cada time)
+          <br />
           <span style={{ color: '#64748b' }}>• clientes: será deixado vazio (criar via interface)</span>
         </p>
 
@@ -815,6 +903,19 @@ export default function DebugFirestore() {
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>usuarios_lookup</span>
                 <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '500' }}>
                   {seedResults.usuarios_lookup.success} documentos criados
+                </span>
+              </div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: 'rgba(15, 10, 31, 0.4)',
+                borderRadius: '8px',
+                marginBottom: '8px'
+              }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>threads (subcollections)</span>
+                <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '500' }}>
+                  {seedResults.threads?.success || 0} documentos criados
                 </span>
               </div>
               <div style={{
