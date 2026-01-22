@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History } from 'lucide-react';
+import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History, Settings2 } from 'lucide-react';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -18,6 +18,7 @@ export default function Sidebar() {
   const menuItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/clientes', icon: Users, label: 'Clientes' },
+    { to: '/gestao-clientes', icon: Settings2, label: 'Gestão' },
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/alertas', icon: Bell, label: 'Alertas' },
   ];
