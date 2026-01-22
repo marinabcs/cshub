@@ -219,12 +219,19 @@ export default function ClienteDetalhe() {
     if (!selectedThread) return;
 
     // Formatar conversa para enviar à IA
-    const conversaTexto = mensagens.map(msg =>
-      `[${msg.tipo_remetente === 'equipe' ? 'Equipe' : 'Cliente'} - ${msg.remetente_nome || 'Anônimo'}]: ${msg.snippet || ''}`
-    ).join('\n');
+    let conversaTexto = '';
+
+    if (mensagens.length > 0) {
+      conversaTexto = mensagens.map(msg =>
+        `[${msg.tipo_remetente === 'equipe' ? 'Equipe' : 'Cliente'} - ${msg.remetente_nome || 'Anônimo'}]: ${msg.snippet || ''}`
+      ).join('\n');
+    } else {
+      // Se não houver mensagens, usar o assunto/snippet da thread
+      conversaTexto = `Assunto: ${selectedThread.assunto || selectedThread.subject || 'Sem assunto'}\n${selectedThread.snippet || ''}`;
+    }
 
     if (!conversaTexto.trim()) {
-      alert('Não há mensagens para classificar');
+      alert('Não há conteúdo para classificar');
       return;
     }
 
@@ -858,7 +865,7 @@ export default function ClienteDetalhe() {
                 {isOpenAIConfigured() && (
                   <button
                     onClick={handleClassificarThread}
-                    disabled={classificando || mensagens.length === 0}
+                    disabled={classificando}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -870,8 +877,8 @@ export default function ClienteDetalhe() {
                       color: 'white',
                       fontSize: '12px',
                       fontWeight: '500',
-                      cursor: classificando || mensagens.length === 0 ? 'not-allowed' : 'pointer',
-                      opacity: mensagens.length === 0 ? 0.5 : 1
+                      cursor: classificando ? 'not-allowed' : 'pointer',
+                      opacity: 1
                     }}
                   >
                     <Bot style={{ width: '14px', height: '14px', animation: classificando ? 'spin 1s linear infinite' : 'none' }} />
