@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Clock, UserX, AlertTriangle, AlertOctagon, Bug, RefreshCw, Check, ChevronRight, Filter, X, Play, CheckCircle, XCircle } from 'lucide-react';
+import { Bell, Clock, UserX, AlertTriangle, AlertOctagon, Bug, RefreshCw, Check, ChevronRight, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2 } from 'lucide-react';
 import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas } from '../hooks/useAlertas';
 import {
   ALERTA_TIPOS,
@@ -11,6 +11,9 @@ import {
   getStatusInfo,
   formatarTempoRelativo
 } from '../utils/alertas';
+import { isClickUpConfigured, criarTarefaClickUp, buscarMembrosClickUp, PRIORIDADES_CLICKUP } from '../services/clickup';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 // Mapeamento de ícones por tipo
 const TIPO_ICONS = {
@@ -30,6 +33,17 @@ export default function Alertas() {
   const [filtroPrioridades, setFiltroPrioridades] = useState([]);
   const [filtroStatus, setFiltroStatus] = useState(['pendente', 'em_andamento']);
   const [filtroResponsavel, setFiltroResponsavel] = useState('todos');
+
+  // ClickUp Modal
+  const [showClickUpModal, setShowClickUpModal] = useState(false);
+  const [selectedAlerta, setSelectedAlerta] = useState(null);
+  const [clickUpNome, setClickUpNome] = useState('');
+  const [clickUpDescricao, setClickUpDescricao] = useState('');
+  const [clickUpPrioridade, setClickUpPrioridade] = useState(3);
+  const [clickUpResponsavel, setClickUpResponsavel] = useState('');
+  const [clickUpMembros, setClickUpMembros] = useState([]);
+  const [criandoTarefa, setCriandoTarefa] = useState(false);
+  const [loadingMembros, setLoadingMembros] = useState(false);
 
   // Hooks
   const { alertas, loading, refetch } = useAlertas({
@@ -93,6 +107,68 @@ export default function Alertas() {
     setFiltroPrioridades([]);
     setFiltroStatus(['pendente', 'em_andamento']);
     setFiltroResponsavel('todos');
+  };
+
+  // ClickUp functions
+  const abrirModalClickUp = async (alerta) => {
+    setSelectedAlerta(alerta);
+    setClickUpNome(`[CS Hub] ${alerta.titulo}`);
+    setClickUpDescricao(`**Alerta do CS Hub**\n\n**Tipo:** ${getTipoInfo(alerta.tipo).label}\n**Prioridade:** ${getPrioridadeInfo(alerta.prioridade).label}\n**Cliente/Time:** ${alerta.time_name || alerta.cliente_nome || 'N/A'}\n\n**Detalhes:**\n${alerta.mensagem}`);
+
+    // Mapear prioridade
+    const prioMap = { 'urgente': 1, 'alta': 2, 'media': 3, 'baixa': 4 };
+    setClickUpPrioridade(prioMap[alerta.prioridade] || 3);
+    setClickUpResponsavel('');
+    setShowClickUpModal(true);
+
+    // Buscar membros
+    if (clickUpMembros.length === 0) {
+      setLoadingMembros(true);
+      try {
+        const membros = await buscarMembrosClickUp();
+        setClickUpMembros(membros);
+      } catch (error) {
+        console.error('Erro ao buscar membros:', error);
+      } finally {
+        setLoadingMembros(false);
+      }
+    }
+  };
+
+  const fecharModalClickUp = () => {
+    setShowClickUpModal(false);
+    setSelectedAlerta(null);
+  };
+
+  const handleCriarTarefaClickUp = async () => {
+    if (!selectedAlerta) return;
+
+    setCriandoTarefa(true);
+    try {
+      const result = await criarTarefaClickUp(selectedAlerta, {
+        nome: clickUpNome,
+        descricao: clickUpDescricao,
+        prioridade: clickUpPrioridade,
+        responsavelId: clickUpResponsavel || null
+      });
+
+      // Salvar no Firebase
+      const alertaRef = doc(db, 'alertas', selectedAlerta.id);
+      await updateDoc(alertaRef, {
+        clickup_task_id: result.id,
+        clickup_task_url: result.url,
+        status: 'em_andamento'
+      });
+
+      alert('Tarefa criada com sucesso no ClickUp!');
+      fecharModalClickUp();
+      refetch();
+    } catch (error) {
+      console.error('Erro ao criar tarefa:', error);
+      alert(`Erro ao criar tarefa: ${error.message}`);
+    } finally {
+      setCriandoTarefa(false);
+    }
   };
 
   if (loading) {
@@ -408,6 +484,50 @@ export default function Alertas() {
                       <Clock style={{ width: '12px', height: '12px' }} />
                       {formatarTempoRelativo(alerta.created_at)}
                     </span>
+
+                    {/* ClickUp badge ou botão */}
+                    {alerta.clickup_task_url ? (
+                      <a
+                        href={alerta.clickup_task_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: '4px 10px',
+                          background: 'rgba(124, 58, 237, 0.1)',
+                          border: '1px solid rgba(124, 58, 237, 0.3)',
+                          borderRadius: '8px',
+                          color: '#7c3aed',
+                          fontSize: '12px',
+                          textDecoration: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <ListTodo style={{ width: '12px', height: '12px' }} />
+                        Tarefa criada
+                        <ExternalLink style={{ width: '10px', height: '10px' }} />
+                      </a>
+                    ) : isClickUpConfigured() && (alerta.status === 'pendente' || alerta.status === 'em_andamento') && (
+                      <button
+                        onClick={() => abrirModalClickUp(alerta)}
+                        style={{
+                          padding: '4px 10px',
+                          background: 'rgba(124, 58, 237, 0.1)',
+                          border: '1px solid rgba(124, 58, 237, 0.2)',
+                          borderRadius: '8px',
+                          color: '#7c3aed',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <ListTodo style={{ width: '12px', height: '12px' }} />
+                        Criar Tarefa
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -500,6 +620,247 @@ export default function Alertas() {
           </div>
         )}
       </div>
+
+      {/* Modal de criação de tarefa no ClickUp */}
+      {showClickUpModal && selectedAlerta && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#1e1b4b',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '500px',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid rgba(139, 92, 246, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  background: 'rgba(124, 58, 237, 0.2)',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <ListTodo style={{ width: '20px', height: '20px', color: '#7c3aed' }} />
+                </div>
+                <div>
+                  <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Criar Tarefa no ClickUp</h3>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Lista: Atividades</p>
+                </div>
+              </div>
+              <button
+                onClick={fecharModalClickUp}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  padding: '8px'
+                }}
+              >
+                <X style={{ width: '20px', height: '20px' }} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px' }}>
+              {/* Nome da tarefa */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                  Nome da Tarefa
+                </label>
+                <input
+                  type="text"
+                  value={clickUpNome}
+                  onChange={(e) => setClickUpNome(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#0f0a1f',
+                    border: '1px solid rgba(139, 92, 246, 0.2)',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '14px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              {/* Descrição */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                  Descrição
+                </label>
+                <textarea
+                  value={clickUpDescricao}
+                  onChange={(e) => setClickUpDescricao(e.target.value)}
+                  rows={6}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#0f0a1f',
+                    border: '1px solid rgba(139, 92, 246, 0.2)',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '14px',
+                    outline: 'none',
+                    resize: 'vertical',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              {/* Prioridade e Responsável */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                {/* Prioridade */}
+                <div>
+                  <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                    Prioridade
+                  </label>
+                  <select
+                    value={clickUpPrioridade}
+                    onChange={(e) => setClickUpPrioridade(parseInt(e.target.value))}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      background: '#0f0a1f',
+                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                      borderRadius: '12px',
+                      color: 'white',
+                      fontSize: '14px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {PRIORIDADES_CLICKUP.map(p => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Responsável */}
+                <div>
+                  <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                    Responsável
+                  </label>
+                  <select
+                    value={clickUpResponsavel}
+                    onChange={(e) => setClickUpResponsavel(e.target.value)}
+                    disabled={loadingMembros}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      background: '#0f0a1f',
+                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                      borderRadius: '12px',
+                      color: 'white',
+                      fontSize: '14px',
+                      outline: 'none',
+                      cursor: loadingMembros ? 'wait' : 'pointer'
+                    }}
+                  >
+                    <option value="">
+                      {loadingMembros ? 'Carregando...' : 'Sem responsável'}
+                    </option>
+                    {clickUpMembros.map(m => (
+                      <option key={m.id} value={m.id}>{m.nome}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Preview do alerta original */}
+              <div style={{
+                padding: '12px',
+                background: 'rgba(139, 92, 246, 0.05)',
+                border: '1px solid rgba(139, 92, 246, 0.1)',
+                borderRadius: '8px',
+                marginBottom: '20px'
+              }}>
+                <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Alerta Original</p>
+                <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>{selectedAlerta.titulo}</p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid rgba(139, 92, 246, 0.15)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px'
+            }}>
+              <button
+                onClick={fecharModalClickUp}
+                style={{
+                  padding: '10px 20px',
+                  background: 'transparent',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  borderRadius: '10px',
+                  color: '#94a3b8',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCriarTarefaClickUp}
+                disabled={criandoTarefa || !clickUpNome.trim()}
+                style={{
+                  padding: '10px 20px',
+                  background: criandoTarefa ? 'rgba(124, 58, 237, 0.5)' : 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: criandoTarefa ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {criandoTarefa ? (
+                  <>
+                    <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                    Criando...
+                  </>
+                ) : (
+                  <>
+                    <ListTodo style={{ width: '16px', height: '16px' }} />
+                    Criar Tarefa
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
