@@ -13,6 +13,8 @@ import ClienteForm from './pages/ClienteForm'
 import Usuarios from './pages/Usuarios'
 import Auditoria from './pages/Auditoria'
 import DebugFirestore from './pages/DebugFirestore'
+import Playbooks from './pages/Playbooks'
+import PlaybookDetalhe from './pages/PlaybookDetalhe'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -65,6 +67,8 @@ function AppRoutes() {
         <Route path="/clientes/novo" element={<ClienteForm />} />
         <Route path="/clientes/:id" element={<ClienteDetalhe />} />
         <Route path="/clientes/:id/editar" element={<ClienteForm />} />
+        <Route path="/playbooks" element={<Playbooks />} />
+        <Route path="/playbooks/:id" element={<PlaybookDetalhe />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />

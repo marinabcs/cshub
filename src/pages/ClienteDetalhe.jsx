@@ -8,6 +8,7 @@ import { useHealthScore } from '../hooks/useHealthScore';
 import { getHealthColor, getHealthLabel, getComponenteLabel } from '../utils/healthScore';
 import { useClassificarThread } from '../hooks/useClassificarThread';
 import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../services/openai';
+import PlaybooksSection from '../components/Cliente/PlaybooksSection';
 
 export default function ClienteDetalhe() {
   const { id } = useParams();
@@ -565,6 +566,9 @@ export default function ClienteDetalhe() {
           </div>
         </div>
       </div>
+
+      {/* Seção de Playbooks */}
+      <PlaybooksSection clienteId={id} />
 
       {/* Seção de Usuários */}
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>

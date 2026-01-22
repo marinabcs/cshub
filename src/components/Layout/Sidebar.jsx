@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History } from 'lucide-react';
+import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History, ClipboardList } from 'lucide-react';
 import { useAlertasCount } from '../../hooks/useAlertas';
 
 export default function Sidebar() {
@@ -20,6 +20,7 @@ export default function Sidebar() {
   const menuItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/clientes', icon: Users, label: 'Clientes' },
+    { to: '/playbooks', icon: ClipboardList, label: 'Playbooks' },
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/alertas', icon: Bell, label: 'Alertas', badge: alertaCounts.pendentes, urgente: alertaCounts.urgentes > 0 },
   ];
