@@ -1,10 +1,12 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History } from 'lucide-react';
+import { useAlertasCount } from '../../hooks/useAlertas';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { counts: alertaCounts } = useAlertasCount();
 
   const handleLogout = async () => {
     try {
@@ -19,7 +21,7 @@ export default function Sidebar() {
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/clientes', icon: Users, label: 'Clientes' },
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-    { to: '/alertas', icon: Bell, label: 'Alertas' },
+    { to: '/alertas', icon: Bell, label: 'Alertas', badge: alertaCounts.pendentes, urgente: alertaCounts.urgentes > 0 },
   ];
 
   const configItems = [
@@ -95,9 +97,31 @@ export default function Sidebar() {
           }}>Menu</span>
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {menuItems.map((item) => (
-              <NavLink key={item.to} to={item.to} style={({ isActive }) => linkStyle(isActive)}>
-                <item.icon style={{ width: '20px', height: '20px' }} />
-                {item.label}
+              <NavLink key={item.to} to={item.to} style={({ isActive }) => ({
+                ...linkStyle(isActive),
+                justifyContent: 'space-between'
+              })}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <item.icon style={{ width: '20px', height: '20px' }} />
+                  {item.label}
+                </div>
+                {item.badge > 0 && (
+                  <span style={{
+                    minWidth: '20px',
+                    height: '20px',
+                    padding: '0 6px',
+                    background: item.urgente ? '#ef4444' : '#f59e0b',
+                    borderRadius: '10px',
+                    color: 'white',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    {item.badge}
+                  </span>
+                )}
               </NavLink>
             ))}
           </nav>
