@@ -73,10 +73,7 @@ export default function ClienteDetalhe() {
           // Sort ascending for chart display
           setHealthHistory(healthData.sort((a, b) => a.date - b.date));
 
-          // Fetch usage data from linked teams
-          const clienteData = docSnap.data();
-          const teamIds = clienteData.times || [];
-
+          // Fetch usage data from linked teams (reuse teamIds from above)
           if (teamIds.length > 0) {
             // Get periods for last 30 days (format: YYYY-MM)
             const periods = new Set();
