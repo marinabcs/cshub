@@ -3,6 +3,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
 import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, Calendar, ChevronRight, Filter, Search } from 'lucide-react';
+import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 
 // Função para normalizar texto (remove acentos)
 const normalizeText = (text) => {
@@ -67,26 +68,6 @@ export default function Dashboard() {
     .filter(c => c.health_status !== 'saudavel')
     .sort((a, b) => (a.health_score || 0) - (b.health_score || 0))
     .slice(0, 5);
-
-  const getHealthColor = (status) => {
-    const colors = {
-      saudavel: '#10b981',
-      atencao: '#f59e0b',
-      risco: '#f97316',
-      critico: '#ef4444'
-    };
-    return colors[status] || '#64748b';
-  };
-
-  const getHealthLabel = (status) => {
-    const labels = {
-      saudavel: 'Saudável',
-      atencao: 'Atenção',
-      risco: 'Risco',
-      critico: 'Crítico'
-    };
-    return labels[status] || status;
-  };
 
   const formatDate = (timestamp) => {
     if (!timestamp) return 'Sem registro';

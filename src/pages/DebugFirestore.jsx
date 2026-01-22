@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { collection, getDocs, query, limit, doc, deleteDoc, setDoc, Timestamp, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Database, RefreshCw, Copy, Check, Trash2, Download, AlertTriangle, FolderDown, Plus, Calendar } from 'lucide-react';
+import { Database, RefreshCw, Copy, Check, Trash2, Download, AlertTriangle, FolderDown, Plus, Calendar, Activity } from 'lucide-react';
+import { useCalcularTodosHealthScores } from '../hooks/useHealthScore';
+import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 
 const COLLECTIONS_TO_CLEAN = ['usuarios_lookup', 'times', 'clientes', 'usuarios'];
 
@@ -186,6 +188,9 @@ export default function DebugFirestore() {
   const [cleanOldLoading, setCleanOldLoading] = useState(false);
   const [cleanOldResults, setCleanOldResults] = useState(null);
   const [oldClientsFound, setOldClientsFound] = useState(null);
+
+  // Health Score calculation
+  const { calculating: healthCalculating, results: healthResults, calcularTodos: calcularTodosHealthScores } = useCalcularTodosHealthScores();
 
   // Find and delete old clients (created before today)
   const findOldClients = async () => {
@@ -1335,6 +1340,125 @@ export default function DebugFirestore() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Health Score Calculation Section */}
+      <div style={{
+        background: 'rgba(139, 92, 246, 0.05)',
+        border: '1px solid rgba(139, 92, 246, 0.2)',
+        borderRadius: '20px',
+        padding: '24px',
+        marginTop: '32px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <Activity style={{ width: '24px', height: '24px', color: '#8b5cf6' }} />
+          <h2 style={{ color: '#8b5cf6', fontSize: '18px', margin: 0 }}>Calcular Health Scores</h2>
+        </div>
+
+        <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '16px' }}>
+          Recalcula o Health Score de todos os clientes baseado nas threads vinculadas.
+          <br />
+          <span style={{ color: '#64748b', fontSize: '12px' }}>
+            Considera: Engajamento (30%), Sentimento (30%), Tickets Abertos (25%), Tempo sem Contato (15%)
+          </span>
+        </p>
+
+        {!healthResults && (
+          <button
+            onClick={calcularTodosHealthScores}
+            disabled={healthCalculating}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: healthCalculating ? 'rgba(139, 92, 246, 0.5)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontWeight: '600',
+              cursor: healthCalculating ? 'not-allowed' : 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            {healthCalculating ? (
+              <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Activity style={{ width: '18px', height: '18px' }} />
+            )}
+            {healthCalculating ? 'Calculando...' : 'Calcular Todos os Health Scores'}
+          </button>
+        )}
+
+        {healthResults && healthResults.length > 0 && (
+          <div style={{
+            padding: '20px',
+            background: 'rgba(16, 185, 129, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(16, 185, 129, 0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <Check style={{ width: '24px', height: '24px', color: '#10b981' }} />
+              <span style={{ color: '#10b981', fontSize: '18px', fontWeight: '600' }}>
+                {healthResults.filter(r => r.success).length}/{healthResults.length} Health Scores Calculados!
+              </span>
+            </div>
+
+            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px' }}>
+              {healthResults.map((result, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    background: 'rgba(15, 10, 31, 0.4)',
+                    borderRadius: '8px',
+                    marginBottom: '8px'
+                  }}
+                >
+                  <span style={{ color: 'white', fontSize: '14px' }}>{result.nome}</span>
+                  {result.success ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{
+                        padding: '4px 10px',
+                        background: `${getHealthColor(result.status)}20`,
+                        color: getHealthColor(result.status),
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: '600'
+                      }}>
+                        {result.score}% - {getHealthLabel(result.status)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span style={{ color: '#ef4444', fontSize: '12px' }}>{result.error}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => {
+                // Clear results to allow recalculation
+                window.location.reload();
+              }}
+              style={{
+                padding: '10px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '10px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Calcular Novamente
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

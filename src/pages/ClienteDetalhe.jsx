@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { useHealthScore } from '../hooks/useHealthScore';
+import { getHealthColor, getHealthLabel, getComponenteLabel } from '../utils/healthScore';
 
 export default function ClienteDetalhe() {
   const { id } = useParams();
@@ -17,6 +19,9 @@ export default function ClienteDetalhe() {
   const [usuarios, setUsuarios] = useState([]);
   const [showAllUsuarios, setShowAllUsuarios] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Health Score hook
+  const { healthData, calculating, calcularESalvar } = useHealthScore(id);
 
   useEffect(() => {
     const fetchCliente = async () => {
@@ -184,16 +189,6 @@ export default function ClienteDetalhe() {
     fetchMensagens(thread);
   };
 
-  const getHealthColor = (status) => {
-    const colors = { saudavel: '#10b981', atencao: '#f59e0b', risco: '#f97316', critico: '#ef4444' };
-    return colors[status] || '#64748b';
-  };
-
-  const getHealthLabel = (status) => {
-    const labels = { saudavel: 'Saudável', atencao: 'Atenção', risco: 'Risco', critico: 'Crítico' };
-    return labels[status] || status;
-  };
-
   const getSentimentColor = (sentiment) => {
     const colors = { positivo: '#10b981', neutro: '#64748b', negativo: '#f97316', urgente: '#ef4444' };
     return colors[sentiment] || '#64748b';
@@ -330,14 +325,73 @@ export default function ClienteDetalhe() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px', marginBottom: '32px' }}>
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Health Score</p>
-          <span style={{ color: getHealthColor(cliente.health_status), fontSize: '32px', fontWeight: '700' }}>{cliente.health_score || 0}%</span>
-          <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', marginTop: '12px', overflow: 'hidden' }}>
-            <div style={{ width: `${cliente.health_score || 0}%`, height: '100%', background: getHealthColor(cliente.health_status), borderRadius: '3px' }}></div>
+      {/* Health Score Section */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Activity style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Health Score</h2>
+          </div>
+          <button
+            onClick={calcularESalvar}
+            disabled={calculating}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              background: 'rgba(139, 92, 246, 0.1)',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '10px',
+              color: '#a78bfa',
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: calculating ? 'wait' : 'pointer',
+              opacity: calculating ? 0.7 : 1
+            }}
+          >
+            <RefreshCw style={{ width: '14px', height: '14px', animation: calculating ? 'spin 1s linear infinite' : 'none' }} />
+            {calculating ? 'Calculando...' : 'Recalcular'}
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px' }}>
+          {/* Score Principal */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', background: `linear-gradient(135deg, ${getHealthColor(cliente.health_status)}15 0%, rgba(30, 27, 75, 0.6) 100%)`, border: `1px solid ${getHealthColor(cliente.health_status)}30`, borderRadius: '16px' }}>
+            <span style={{ color: getHealthColor(cliente.health_status), fontSize: '56px', fontWeight: '700', lineHeight: 1 }}>{cliente.health_score || 0}</span>
+            <span style={{ color: '#94a3b8', fontSize: '14px', marginTop: '4px' }}>de 100</span>
+            <span style={{ padding: '6px 16px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '20px', fontSize: '13px', fontWeight: '600', marginTop: '12px' }}>
+              {getHealthLabel(cliente.health_status)}
+            </span>
+          </div>
+
+          {/* Componentes do Score */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            {healthData?.componentes ? (
+              <>
+                {Object.entries(healthData.componentes).filter(([key, value]) => value !== null).map(([key, value]) => (
+                  <div key={key} style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.1)', borderRadius: '12px' }}>
+                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 8px 0' }}>{getComponenteLabel(key)}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: `${value}%`, height: '100%', background: value >= 70 ? '#10b981' : value >= 40 ? '#f59e0b' : '#ef4444', borderRadius: '3px', transition: 'width 0.3s ease' }}></div>
+                      </div>
+                      <span style={{ color: 'white', fontSize: '14px', fontWeight: '600', minWidth: '36px' }}>{value}%</span>
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div style={{ gridColumn: '1 / -1', padding: '32px', textAlign: 'center' }}>
+                <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Clique em "Recalcular" para ver os componentes do score</p>
+              </div>
+            )}
           </div>
         </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
           <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Total de Conversas</p>
           <span style={{ color: 'white', fontSize: '32px', fontWeight: '700' }}>{threads.length}</span>
