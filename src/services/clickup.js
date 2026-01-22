@@ -125,30 +125,38 @@ _Criado automaticamente pelo CS Hub_
  * Buscar membros do workspace do ClickUp
  */
 export async function buscarMembrosClickUp() {
+  // Se TEAM_ID não estiver configurado, retornar lista vazia
   if (!CLICKUP_API_KEY || !CLICKUP_TEAM_ID) {
-    throw new Error('ClickUp não está configurado.');
+    console.warn('ClickUp TEAM_ID não configurado. Lista de membros indisponível.');
+    return [];
   }
 
-  const response = await fetch(`${BASE_URL}/team/${CLICKUP_TEAM_ID}`, {
-    headers: {
-      'Authorization': CLICKUP_API_KEY
+  try {
+    const response = await fetch(`${BASE_URL}/team/${CLICKUP_TEAM_ID}`, {
+      headers: {
+        'Authorization': CLICKUP_API_KEY
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('Erro ao buscar membros:', error);
+      return [];
     }
-  });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.err || 'Erro ao buscar membros do ClickUp');
+    const data = await response.json();
+
+    // Retornar membros do team
+    return (data.team?.members || []).map(m => ({
+      id: m.user.id,
+      nome: m.user.username || m.user.email,
+      email: m.user.email,
+      avatar: m.user.profilePicture
+    }));
+  } catch (error) {
+    console.error('Erro ao buscar membros do ClickUp:', error);
+    return [];
   }
-
-  const data = await response.json();
-
-  // Retornar membros do team
-  return (data.team?.members || []).map(m => ({
-    id: m.user.id,
-    nome: m.user.username || m.user.email,
-    email: m.user.email,
-    avatar: m.user.profilePicture
-  }));
 }
 
 /**
