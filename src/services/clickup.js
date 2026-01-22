@@ -5,6 +5,13 @@ const CLICKUP_TEAM_ID = import.meta.env.VITE_CLICKUP_TEAM_ID || '';
 
 const BASE_URL = 'https://api.clickup.com/api/v2';
 
+// Debug: verificar se as variáveis estão carregadas
+console.log('ClickUp Config:', {
+  apiKey: CLICKUP_API_KEY ? 'Configurada' : 'NÃO CONFIGURADA',
+  listId: CLICKUP_LIST_ID || 'NÃO CONFIGURADO',
+  teamId: CLICKUP_TEAM_ID || 'NÃO CONFIGURADO'
+});
+
 // Verificar se ClickUp está configurado
 export function isClickUpConfigured() {
   return !!(CLICKUP_API_KEY && CLICKUP_LIST_ID);
