@@ -1,16 +1,5 @@
-// API Key - Carregar do .env ou do arquivo local (se existir)
-// Para usar: crie src/config/apiKeys.local.js com: export const OPENAI_API_KEY = 'sua-chave';
-let OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
-
-// Tentar carregar do arquivo local (async)
-try {
-  const localConfig = await import('../config/apiKeys.local.js').catch(() => null);
-  if (localConfig?.OPENAI_API_KEY) {
-    OPENAI_API_KEY = localConfig.OPENAI_API_KEY;
-  }
-} catch (e) {
-  // Arquivo local não existe, usar .env
-}
+// API Key - Carregada via vite.config.js do arquivo .env
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
 
 // Categorias de thread
 export const THREAD_CATEGORIAS = {
