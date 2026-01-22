@@ -1,7 +1,8 @@
 // ClickUp API Integration
 const CLICKUP_API_KEY = import.meta.env.VITE_CLICKUP_API_KEY || '';
 const CLICKUP_LIST_ID = import.meta.env.VITE_CLICKUP_LIST_ID || '';
-const CLICKUP_TEAM_ID = import.meta.env.VITE_CLICKUP_TEAM_ID || '';
+// Fallback para TEAM_ID caso o Vite não carregue a variável
+const CLICKUP_TEAM_ID = import.meta.env.VITE_CLICKUP_TEAM_ID || '9010147018';
 
 const BASE_URL = 'https://api.clickup.com/api/v2';
 
@@ -9,7 +10,7 @@ const BASE_URL = 'https://api.clickup.com/api/v2';
 console.log('ClickUp Config:', {
   apiKey: CLICKUP_API_KEY ? 'Configurada' : 'NÃO CONFIGURADA',
   listId: CLICKUP_LIST_ID || 'NÃO CONFIGURADO',
-  teamId: CLICKUP_TEAM_ID || 'NÃO CONFIGURADO'
+  teamId: CLICKUP_TEAM_ID
 });
 
 // Verificar se ClickUp está configurado
