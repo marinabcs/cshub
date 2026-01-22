@@ -1,10 +1,97 @@
 import { useState } from 'react';
-import { collection, getDocs, query, limit, doc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, query, limit, doc, deleteDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Database, RefreshCw, Copy, Check, Trash2, Download, AlertTriangle, FolderDown } from 'lucide-react';
+import { Database, RefreshCw, Copy, Check, Trash2, Download, AlertTriangle, FolderDown, Plus } from 'lucide-react';
 
-const COLLECTIONS_TO_CLEAN = ['usuarios_lookup', 'times', 'clientes'];
+const COLLECTIONS_TO_CLEAN = ['usuarios_lookup', 'times', 'clientes', 'usuarios'];
+
+// Dados de teste para popular o Firebase
+const TEST_DATA = {
+  times: [
+    {
+      id: 'time_teste_01',
+      data: {
+        team_id: 'time_teste_01',
+        team_name: 'Cliente Teste A',
+        team_type: 'BR LCS',
+        total_usuarios: 2
+      }
+    },
+    {
+      id: 'time_teste_02',
+      data: {
+        team_id: 'time_teste_02',
+        team_name: 'Cliente Teste B',
+        team_type: 'BR MMS',
+        total_usuarios: 1
+      }
+    },
+    {
+      id: 'time_teste_03',
+      data: {
+        team_id: 'time_teste_03',
+        team_name: 'Cliente Teste C',
+        team_type: 'SPLA LCS',
+        total_usuarios: 1
+      }
+    }
+  ],
+  usuarios_lookup: [
+    {
+      id: 'user_01',
+      data: {
+        user_id: 'user_01',
+        email: 'joao@clientea.com.br',
+        nome: 'João Silva',
+        dominio: 'clientea.com.br',
+        team_id: 'time_teste_01',
+        team_name: 'Cliente Teste A',
+        team_type: 'BR LCS',
+        dominio_conflito: false
+      }
+    },
+    {
+      id: 'user_02',
+      data: {
+        user_id: 'user_02',
+        email: 'maria@clientea.com.br',
+        nome: 'Maria Santos',
+        dominio: 'clientea.com.br',
+        team_id: 'time_teste_01',
+        team_name: 'Cliente Teste A',
+        team_type: 'BR LCS',
+        dominio_conflito: false
+      }
+    },
+    {
+      id: 'user_03',
+      data: {
+        user_id: 'user_03',
+        email: 'pedro@clienteb.com',
+        nome: 'Pedro Oliveira',
+        dominio: 'clienteb.com',
+        team_id: 'time_teste_02',
+        team_name: 'Cliente Teste B',
+        team_type: 'BR MMS',
+        dominio_conflito: false
+      }
+    },
+    {
+      id: 'user_04',
+      data: {
+        user_id: 'user_04',
+        email: 'ana@clientec.io',
+        nome: 'Ana Costa',
+        dominio: 'clientec.io',
+        team_id: 'time_teste_03',
+        team_name: 'Cliente Teste C',
+        team_type: 'SPLA LCS',
+        dominio_conflito: false
+      }
+    }
+  ]
+};
 
 export default function DebugFirestore() {
   const { user } = useAuth();
@@ -26,6 +113,51 @@ export default function DebugFirestore() {
   const [fullCleanupStep, setFullCleanupStep] = useState(0); // 0: not started, 1: backing up, 2: ready to delete, 3: deleting, 4: done
   const [fullCleanupResults, setFullCleanupResults] = useState(null);
 
+  // Seed state
+  const [seedLoading, setSeedLoading] = useState(false);
+  const [seedResults, setSeedResults] = useState(null);
+
+  // Seed test data
+  const seedTestData = async () => {
+    setSeedLoading(true);
+    setSeedResults(null);
+    const results = { times: { success: 0, errors: [] }, usuarios_lookup: { success: 0, errors: [] } };
+
+    try {
+      // Seed times
+      for (const item of TEST_DATA.times) {
+        try {
+          await setDoc(doc(db, 'times', item.id), {
+            ...item.data,
+            updated_at: Timestamp.now()
+          });
+          results.times.success++;
+        } catch (e) {
+          results.times.errors.push({ id: item.id, error: e.message });
+        }
+      }
+
+      // Seed usuarios_lookup
+      for (const item of TEST_DATA.usuarios_lookup) {
+        try {
+          await setDoc(doc(db, 'usuarios_lookup', item.id), {
+            ...item.data,
+            updated_at: Timestamp.now()
+          });
+          results.usuarios_lookup.success++;
+        } catch (e) {
+          results.usuarios_lookup.errors.push({ id: item.id, error: e.message });
+        }
+      }
+
+      setSeedResults(results);
+    } catch (e) {
+      setSeedResults({ error: e.message });
+    }
+
+    setSeedLoading(false);
+  };
+
   const runCheck = async () => {
     setLoading(true);
     const output = {
@@ -35,7 +167,7 @@ export default function DebugFirestore() {
     };
 
     // Check each collection
-    for (const collName of [...COLLECTIONS_TO_CLEAN, 'usuarios', 'config']) {
+    for (const collName of [...COLLECTIONS_TO_CLEAN, 'config']) {
       try {
         const collSnap = await getDocs(collection(db, collName));
         output.collections[collName] = {
@@ -326,7 +458,7 @@ export default function DebugFirestore() {
         <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '16px' }}>
           Collections que serão limpas: <strong style={{ color: 'white' }}>{COLLECTIONS_TO_CLEAN.join(', ')}</strong>
           <br />
-          <span style={{ color: '#10b981' }}>Collections protegidas: usuarios, config</span>
+          <span style={{ color: '#10b981' }}>Collection protegida: config</span>
         </p>
 
         {fullCleanupStep === 0 && (
@@ -534,6 +666,142 @@ export default function DebugFirestore() {
             >
               Verificar Novamente
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* Seed Test Data Section */}
+      <div style={{
+        background: 'rgba(16, 185, 129, 0.05)',
+        border: '1px solid rgba(16, 185, 129, 0.2)',
+        borderRadius: '20px',
+        padding: '24px',
+        marginBottom: '32px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <Plus style={{ width: '24px', height: '24px', color: '#10b981' }} />
+          <h2 style={{ color: '#10b981', fontSize: '18px', margin: 0 }}>Popular Dados de Teste</h2>
+        </div>
+
+        <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '16px' }}>
+          Dados que serão criados:
+          <br />
+          <span style={{ color: 'white' }}>• times:</span> 3 documentos (time_teste_01, time_teste_02, time_teste_03)
+          <br />
+          <span style={{ color: 'white' }}>• usuarios_lookup:</span> 4 documentos (user_01, user_02, user_03, user_04)
+          <br />
+          <span style={{ color: '#64748b' }}>• clientes: será deixado vazio (criar via interface)</span>
+        </p>
+
+        {!seedResults && (
+          <button
+            onClick={seedTestData}
+            disabled={seedLoading}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: seedLoading ? 'rgba(16, 185, 129, 0.5)' : 'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontWeight: '600',
+              cursor: seedLoading ? 'not-allowed' : 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            {seedLoading ? (
+              <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Plus style={{ width: '18px', height: '18px' }} />
+            )}
+            {seedLoading ? 'Populando...' : 'Popular Dados de Teste'}
+          </button>
+        )}
+
+        {seedResults && !seedResults.error && (
+          <div style={{
+            padding: '20px',
+            background: 'rgba(16, 185, 129, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(16, 185, 129, 0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <Check style={{ width: '24px', height: '24px', color: '#10b981' }} />
+              <span style={{ color: '#10b981', fontSize: '18px', fontWeight: '600' }}>Dados Criados!</span>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: 'rgba(15, 10, 31, 0.4)',
+                borderRadius: '8px',
+                marginBottom: '8px'
+              }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>times</span>
+                <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '500' }}>
+                  {seedResults.times.success} documentos criados
+                </span>
+              </div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: 'rgba(15, 10, 31, 0.4)',
+                borderRadius: '8px',
+                marginBottom: '8px'
+              }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>usuarios_lookup</span>
+                <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '500' }}>
+                  {seedResults.usuarios_lookup.success} documentos criados
+                </span>
+              </div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: 'rgba(15, 10, 31, 0.4)',
+                borderRadius: '8px'
+              }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>clientes</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: '500' }}>
+                  0 documentos (vazio)
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setSeedResults(null);
+                runCheck();
+              }}
+              style={{
+                padding: '10px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '10px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Verificar Novamente
+            </button>
+          </div>
+        )}
+
+        {seedResults && seedResults.error && (
+          <div style={{
+            padding: '16px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(239, 68, 68, 0.3)'
+          }}>
+            <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {seedResults.error}</span>
           </div>
         )}
       </div>
