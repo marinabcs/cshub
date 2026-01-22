@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { collection, getDocs, query, limit, doc, deleteDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, limit, doc, deleteDoc, setDoc, Timestamp, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Database, RefreshCw, Copy, Check, Trash2, Download, AlertTriangle, FolderDown, Plus } from 'lucide-react';
+import { Database, RefreshCw, Copy, Check, Trash2, Download, AlertTriangle, FolderDown, Plus, Calendar } from 'lucide-react';
 
 const COLLECTIONS_TO_CLEAN = ['usuarios_lookup', 'times', 'clientes', 'usuarios'];
 
@@ -116,6 +116,64 @@ export default function DebugFirestore() {
   // Seed state
   const [seedLoading, setSeedLoading] = useState(false);
   const [seedResults, setSeedResults] = useState(null);
+
+  // Clean old clients state
+  const [cleanOldLoading, setCleanOldLoading] = useState(false);
+  const [cleanOldResults, setCleanOldResults] = useState(null);
+  const [oldClientsFound, setOldClientsFound] = useState(null);
+
+  // Find and delete old clients (created before today)
+  const findOldClients = async () => {
+    setCleanOldLoading(true);
+    setCleanOldResults(null);
+
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayTimestamp = Timestamp.fromDate(today);
+
+      const clientsSnap = await getDocs(collection(db, 'clientes'));
+      const oldClients = [];
+
+      clientsSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.created_at && data.created_at.toDate() < today) {
+          oldClients.push({
+            id: docSnap.id,
+            nome: data.nome,
+            created_at: data.created_at.toDate().toLocaleDateString('pt-BR')
+          });
+        }
+      });
+
+      setOldClientsFound(oldClients);
+    } catch (e) {
+      setCleanOldResults({ error: e.message });
+    }
+
+    setCleanOldLoading(false);
+  };
+
+  const deleteOldClients = async () => {
+    if (!oldClientsFound || oldClientsFound.length === 0) return;
+
+    setCleanOldLoading(true);
+    let deleted = 0;
+    const errors = [];
+
+    for (const client of oldClientsFound) {
+      try {
+        await deleteDoc(doc(db, 'clientes', client.id));
+        deleted++;
+      } catch (e) {
+        errors.push({ id: client.id, error: e.message });
+      }
+    }
+
+    setCleanOldResults({ deleted, total: oldClientsFound.length, errors: errors.length > 0 ? errors : null });
+    setOldClientsFound(null);
+    setCleanOldLoading(false);
+  };
 
   // Seed test data
   const seedTestData = async () => {
@@ -802,6 +860,212 @@ export default function DebugFirestore() {
             border: '1px solid rgba(239, 68, 68, 0.3)'
           }}>
             <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {seedResults.error}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Clean Old Clients Section */}
+      <div style={{
+        background: 'rgba(245, 158, 11, 0.05)',
+        border: '1px solid rgba(245, 158, 11, 0.2)',
+        borderRadius: '20px',
+        padding: '24px',
+        marginBottom: '32px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <Calendar style={{ width: '24px', height: '24px', color: '#f59e0b' }} />
+          <h2 style={{ color: '#f59e0b', fontSize: '18px', margin: 0 }}>Limpar Clientes Antigos</h2>
+        </div>
+
+        <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '16px' }}>
+          Exclui todos os documentos da collection <strong style={{ color: 'white' }}>clientes</strong> que foram criados antes de hoje.
+        </p>
+
+        {!oldClientsFound && !cleanOldResults && (
+          <button
+            onClick={findOldClients}
+            disabled={cleanOldLoading}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: cleanOldLoading ? 'rgba(245, 158, 11, 0.5)' : 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: '12px',
+              color: '#f59e0b',
+              fontWeight: '600',
+              cursor: cleanOldLoading ? 'not-allowed' : 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            {cleanOldLoading ? (
+              <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Calendar style={{ width: '18px', height: '18px' }} />
+            )}
+            {cleanOldLoading ? 'Buscando...' : 'Buscar Clientes Antigos'}
+          </button>
+        )}
+
+        {oldClientsFound && oldClientsFound.length === 0 && (
+          <div style={{
+            padding: '16px',
+            background: 'rgba(16, 185, 129, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(16, 185, 129, 0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Check style={{ width: '20px', height: '20px', color: '#10b981' }} />
+              <span style={{ color: '#10b981', fontWeight: '500' }}>Nenhum cliente antigo encontrado!</span>
+            </div>
+            <button
+              onClick={() => setOldClientsFound(null)}
+              style={{
+                marginTop: '12px',
+                padding: '8px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '8px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              OK
+            </button>
+          </div>
+        )}
+
+        {oldClientsFound && oldClientsFound.length > 0 && (
+          <div style={{
+            padding: '16px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(239, 68, 68, 0.3)'
+          }}>
+            <p style={{ color: '#ef4444', fontSize: '14px', fontWeight: '600', margin: '0 0 12px 0' }}>
+              {oldClientsFound.length} cliente(s) encontrado(s) criados antes de hoje:
+            </p>
+            <div style={{ marginBottom: '16px', maxHeight: '150px', overflowY: 'auto' }}>
+              {oldClientsFound.map(client => (
+                <div key={client.id} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  background: 'rgba(15, 10, 31, 0.4)',
+                  borderRadius: '8px',
+                  marginBottom: '6px'
+                }}>
+                  <span style={{ color: 'white', fontSize: '13px' }}>{client.nome}</span>
+                  <span style={{ color: '#64748b', fontSize: '12px' }}>{client.created_at}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => setOldClientsFound(null)}
+                style={{
+                  padding: '10px 20px',
+                  background: 'rgba(100, 116, 139, 0.1)',
+                  border: '1px solid rgba(100, 116, 139, 0.3)',
+                  borderRadius: '10px',
+                  color: '#94a3b8',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  fontSize: '13px'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={deleteOldClients}
+                disabled={cleanOldLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  background: cleanOldLoading ? 'rgba(239, 68, 68, 0.5)' : '#ef4444',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: 'white',
+                  fontWeight: '600',
+                  cursor: cleanOldLoading ? 'not-allowed' : 'pointer',
+                  fontSize: '13px'
+                }}
+              >
+                {cleanOldLoading ? (
+                  <RefreshCw style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                ) : (
+                  <Trash2 style={{ width: '16px', height: '16px' }} />
+                )}
+                {cleanOldLoading ? 'Excluindo...' : 'Excluir Todos'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {cleanOldResults && !cleanOldResults.error && (
+          <div style={{
+            padding: '20px',
+            background: 'rgba(16, 185, 129, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(16, 185, 129, 0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <Check style={{ width: '24px', height: '24px', color: '#10b981' }} />
+              <span style={{ color: '#10b981', fontSize: '18px', fontWeight: '600' }}>
+                {cleanOldResults.deleted}/{cleanOldResults.total} clientes excluídos!
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setCleanOldResults(null);
+                runCheck();
+              }}
+              style={{
+                padding: '10px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '10px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Verificar Novamente
+            </button>
+          </div>
+        )}
+
+        {cleanOldResults && cleanOldResults.error && (
+          <div style={{
+            padding: '16px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(239, 68, 68, 0.3)'
+          }}>
+            <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {cleanOldResults.error}</span>
+            <button
+              onClick={() => setCleanOldResults(null)}
+              style={{
+                marginTop: '12px',
+                display: 'block',
+                padding: '8px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '8px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Tentar Novamente
+            </button>
           </div>
         )}
       </div>
