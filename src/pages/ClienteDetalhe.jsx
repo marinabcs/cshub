@@ -9,6 +9,7 @@ import { getHealthColor, getHealthLabel, getComponenteLabel } from '../utils/hea
 import { useClassificarThread } from '../hooks/useClassificarThread';
 import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../services/openai';
 import PlaybooksSection from '../components/Cliente/PlaybooksSection';
+import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
 
 export default function ClienteDetalhe() {
   const { id } = useParams();
@@ -22,10 +23,6 @@ export default function ClienteDetalhe() {
   const [usuarios, setUsuarios] = useState([]);
   const [showAllUsuarios, setShowAllUsuarios] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  // Filtros de threads
-  const [filtroCategoria, setFiltroCategoria] = useState('todos');
-  const [filtroSentimento, setFiltroSentimento] = useState('todos');
 
   // Health Score hook
   const { healthData, calculating, calcularESalvar } = useHealthScore(id);
@@ -356,13 +353,6 @@ export default function ClienteDetalhe() {
   };
 
   const displayedUsuarios = showAllUsuarios ? usuarios : usuarios.slice(0, 20);
-
-  // Filtrar threads
-  const filteredThreads = threads.filter(thread => {
-    const matchesCategoria = filtroCategoria === 'todos' || thread.categoria === filtroCategoria;
-    const matchesSentimento = filtroSentimento === 'todos' || thread.sentimento === filtroSentimento;
-    return matchesCategoria && matchesSentimento;
-  });
 
   if (loading) {
     return (
@@ -755,80 +745,12 @@ export default function ClienteDetalhe() {
         )}
       </div>
 
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <MessageSquare style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Timeline de Conversas</h2>
-            <span style={{ padding: '4px 10px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', borderRadius: '10px', fontSize: '12px' }}>
-              {filteredThreads.length} de {threads.length}
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <select
-              value={filtroCategoria}
-              onChange={(e) => setFiltroCategoria(e.target.value)}
-              style={{ padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', color: 'white', fontSize: '12px', outline: 'none', cursor: 'pointer' }}
-            >
-              <option value="todos" style={{ background: '#1e1b4b' }}>Todas categorias</option>
-              {Object.values(THREAD_CATEGORIAS).map(cat => (
-                <option key={cat.value} value={cat.value} style={{ background: '#1e1b4b' }}>{cat.label}</option>
-              ))}
-            </select>
-            <select
-              value={filtroSentimento}
-              onChange={(e) => setFiltroSentimento(e.target.value)}
-              style={{ padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', color: 'white', fontSize: '12px', outline: 'none', cursor: 'pointer' }}
-            >
-              <option value="todos" style={{ background: '#1e1b4b' }}>Todos sentimentos</option>
-              {Object.values(THREAD_SENTIMENTOS).map(sent => (
-                <option key={sent.value} value={sent.value} style={{ background: '#1e1b4b' }}>{sent.emoji} {sent.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        {filteredThreads.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {filteredThreads.map((thread) => (
-              <div key={thread.id} onClick={() => handleThreadClick(thread)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.1)', borderRadius: '12px', cursor: 'pointer' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flex: 1 }}>
-                  <div style={{ width: '40px', height: '40px', background: `${getSentimentColor(thread.sentimento)}20`, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
-                    <Mail style={{ width: '20px', height: '20px', color: getSentimentColor(thread.sentimento) }} />
-                    {thread.sentimento === 'urgente' && (
-                      <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '12px', height: '12px', background: '#ef4444', borderRadius: '50%', border: '2px solid #1a1033', animation: 'pulse 2s infinite' }}></span>
-                    )}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                      <span style={{ color: 'white', fontWeight: '500', fontSize: '14px' }}>{thread.assunto || 'Sem assunto'}</span>
-                      <span style={{ padding: '2px 8px', background: `${getStatusColor(thread.status)}20`, color: getStatusColor(thread.status), borderRadius: '6px', fontSize: '11px', fontWeight: '500' }}>{getStatusLabel(thread.status)}</span>
-                      {thread.categoria && (
-                        <span style={{ padding: '2px 8px', background: `${getCategoryColor(thread.categoria)}20`, color: getCategoryColor(thread.categoria), borderRadius: '6px', fontSize: '10px', fontWeight: '500' }}>{getCategoryLabel(thread.categoria)}</span>
-                      )}
-                      {thread.sentimento && (
-                        <span style={{ padding: '2px 8px', background: `${getSentimentColor(thread.sentimento)}20`, color: getSentimentColor(thread.sentimento), borderRadius: '6px', fontSize: '10px' }}>{getSentimentoInfo(thread.sentimento).emoji} {getSentimentoInfo(thread.sentimento).label}</span>
-                      )}
-                    </div>
-                    <p style={{ color: '#64748b', fontSize: '13px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{thread.resumo_ia || thread.resumo_chat || 'Sem resumo'}</p>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: '16px' }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>{thread.total_mensagens || 0} msgs</p>
-                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{formatRelativeDate(thread.updated_at)}</p>
-                  </div>
-                  <ChevronRight style={{ width: '18px', height: '18px', color: '#64748b' }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ padding: '48px', textAlign: 'center' }}>
-            <MessageSquare style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
-            <p style={{ color: '#94a3b8', fontSize: '16px', margin: 0 }}>Nenhuma conversa encontrada</p>
-          </div>
-        )}
-      </div>
+      {/* Timeline de Conversas */}
+      <ThreadsTimeline
+        threads={threads}
+        onThreadClick={handleThreadClick}
+        cliente={cliente}
+      />
 
       {selectedThread && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '32px' }}>
