@@ -306,12 +306,12 @@ export async function seedDatabase() {
       }
     }
 
-    // 3. Criar threads
+    // 3. Criar threads (em times/{teamId}/threads)
     for (const [teamId, threadList] of Object.entries(threads)) {
       for (const thread of threadList) {
         try {
-          const threadRef = doc(db, 'clientes', teamId, 'threads', thread.thread_id)
-          await setDoc(threadRef, thread)
+          const threadRef = doc(db, 'times', teamId, 'threads', thread.thread_id)
+          await setDoc(threadRef, { ...thread, team_id: teamId })
           results.threads++
           console.log(`Thread criada: ${thread.assunto}`)
         } catch (err) {
@@ -320,7 +320,7 @@ export async function seedDatabase() {
       }
     }
 
-    // 4. Criar mensagens
+    // 4. Criar mensagens (em times/{teamId}/threads/{threadId}/mensagens)
     for (const [threadId, msgList] of Object.entries(mensagens)) {
       // Encontrar o teamId da thread
       let teamId = null
@@ -334,7 +334,7 @@ export async function seedDatabase() {
       if (teamId) {
         for (const msg of msgList) {
           try {
-            const msgRef = doc(db, 'clientes', teamId, 'threads', threadId, 'mensagens', msg.message_id)
+            const msgRef = doc(db, 'times', teamId, 'threads', threadId, 'mensagens', msg.message_id)
             await setDoc(msgRef, msg)
             results.mensagens++
             console.log(`Mensagem criada: ${msg.message_id}`)

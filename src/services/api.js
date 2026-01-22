@@ -56,16 +56,16 @@ export async function getUsuariosCliente(teamId) {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 }
 
-// Threads
+// Threads - agora buscam de times/{teamId}/threads
 export async function getThreadsCliente(teamId) {
-  const threadsRef = collection(db, 'clientes', teamId, 'threads')
+  const threadsRef = collection(db, 'times', teamId, 'threads')
   const q = query(threadsRef, orderBy('updated_at', 'desc'))
   const snapshot = await getDocs(q)
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 }
 
 export async function getThreadById(teamId, threadId) {
-  const docRef = doc(db, 'clientes', teamId, 'threads', threadId)
+  const docRef = doc(db, 'times', teamId, 'threads', threadId)
   const docSnap = await getDoc(docRef)
   if (docSnap.exists()) {
     return { id: docSnap.id, ...docSnap.data() }
@@ -73,9 +73,9 @@ export async function getThreadById(teamId, threadId) {
   return null
 }
 
-// Mensagens
+// Mensagens - agora buscam de times/{teamId}/threads/{threadId}/mensagens
 export async function getMensagensThread(teamId, threadId) {
-  const mensagensRef = collection(db, 'clientes', teamId, 'threads', threadId, 'mensagens')
+  const mensagensRef = collection(db, 'times', teamId, 'threads', threadId, 'mensagens')
   const q = query(mensagensRef, orderBy('data', 'asc'))
   const snapshot = await getDocs(q)
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))

@@ -24,15 +24,35 @@ export default function ClienteDetalhe() {
         const docRef = doc(db, 'clientes', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setCliente({ id: docSnap.id, ...docSnap.data() });
-          const threadsRef = collection(db, 'clientes', id, 'threads');
-          const threadsSnap = await getDocs(threadsRef);
-          const threadsData = threadsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setThreads(threadsData.sort((a, b) => {
-            const dateA = a.updated_at?.toDate?.() || new Date(0);
-            const dateB = b.updated_at?.toDate?.() || new Date(0);
-            return dateB - dateA;
-          }));
+          const clienteData = { id: docSnap.id, ...docSnap.data() };
+          setCliente(clienteData);
+
+          // Fetch threads from linked times (times/{teamId}/threads)
+          const teamIds = clienteData.times || [];
+          if (teamIds.length > 0) {
+            const threadPromises = teamIds.map(async (teamId) => {
+              try {
+                const threadsRef = collection(db, 'times', teamId, 'threads');
+                const threadsSnap = await getDocs(threadsRef);
+                return threadsSnap.docs.map(doc => ({
+                  id: doc.id,
+                  ...doc.data(),
+                  _teamId: teamId // Store teamId for reference
+                }));
+              } catch {
+                return [];
+              }
+            });
+            const threadResults = await Promise.all(threadPromises);
+            const allThreads = threadResults.flat();
+            setThreads(allThreads.sort((a, b) => {
+              const dateA = a.updated_at?.toDate?.() || new Date(0);
+              const dateB = b.updated_at?.toDate?.() || new Date(0);
+              return dateB - dateA;
+            }));
+          } else {
+            setThreads([]);
+          }
 
           // Fetch health history (last 30 days)
           const healthRef = collection(db, 'clientes', id, 'health_history');
@@ -140,9 +160,16 @@ export default function ClienteDetalhe() {
     fetchCliente();
   }, [id]);
 
-  const fetchMensagens = async (threadId) => {
+  const fetchMensagens = async (thread) => {
     try {
-      const mensagensRef = collection(db, 'clientes', id, 'threads', threadId, 'mensagens');
+      // Use _teamId from thread to fetch from times/{teamId}/threads/{threadId}/mensagens
+      const teamId = thread._teamId || thread.team_id;
+      if (!teamId) {
+        console.error('Thread sem team_id:', thread);
+        setMensagens([]);
+        return;
+      }
+      const mensagensRef = collection(db, 'times', teamId, 'threads', thread.id, 'mensagens');
       const mensagensSnap = await getDocs(mensagensRef);
       const mensagensData = mensagensSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMensagens(mensagensData.sort((a, b) => {
@@ -157,7 +184,7 @@ export default function ClienteDetalhe() {
 
   const handleThreadClick = (thread) => {
     setSelectedThread(thread);
-    fetchMensagens(thread.id);
+    fetchMensagens(thread);
   };
 
   const getHealthColor = (status) => {
