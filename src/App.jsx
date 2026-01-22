@@ -12,6 +12,7 @@ import Alertas from './pages/Alertas'
 import ClienteForm from './pages/ClienteForm'
 import Usuarios from './pages/Usuarios'
 import Auditoria from './pages/Auditoria'
+import DebugFirestore from './pages/DebugFirestore'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -69,6 +70,7 @@ function AppRoutes() {
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/configuracoes/usuarios" element={<Usuarios />} />
         <Route path="/configuracoes/auditoria" element={<Auditoria />} />
+        <Route path="/debug" element={<DebugFirestore />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
