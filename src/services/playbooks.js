@@ -35,13 +35,13 @@ export const ETAPA_STATUS = {
 export async function buscarPlaybooks() {
   try {
     const playbooksRef = collection(db, 'playbooks');
-    const q = query(playbooksRef, where('ativo', '==', true), orderBy('nome', 'asc'));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocs(playbooksRef);
 
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    // Filtrar e ordenar no cliente para evitar necessidade de índice
+    return snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(p => p.ativo !== false) // Inclui se ativo=true ou não definido
+      .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
   } catch (error) {
     console.error('Erro ao buscar playbooks:', error);
     throw error;
