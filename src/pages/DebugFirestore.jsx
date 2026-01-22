@@ -282,14 +282,23 @@ export default function DebugFirestore() {
         try {
           const threadData = { ...item.data };
           // Convert Date objects to Timestamps
-          if (threadData.data_inicio) threadData.data_inicio = Timestamp.fromDate(threadData.data_inicio);
-          if (threadData.ultima_msg_cliente) threadData.ultima_msg_cliente = Timestamp.fromDate(threadData.ultima_msg_cliente);
-          if (threadData.ultima_msg_equipe) threadData.ultima_msg_equipe = Timestamp.fromDate(threadData.ultima_msg_equipe);
+          if (threadData.data_inicio instanceof Date) {
+            threadData.data_inicio = Timestamp.fromDate(threadData.data_inicio);
+          }
+          if (threadData.ultima_msg_cliente instanceof Date) {
+            threadData.ultima_msg_cliente = Timestamp.fromDate(threadData.ultima_msg_cliente);
+          }
+          if (threadData.ultima_msg_equipe instanceof Date) {
+            threadData.ultima_msg_equipe = Timestamp.fromDate(threadData.ultima_msg_equipe);
+          }
           threadData.updated_at = Timestamp.now();
 
+          console.log('Creating thread:', item.teamId, item.id, threadData);
           await setDoc(doc(db, 'times', item.teamId, 'threads', item.id), threadData);
+          console.log('Thread created successfully:', item.id);
           results.threads.success++;
         } catch (e) {
+          console.error('Error creating thread:', item.id, e);
           results.threads.errors.push({ id: item.id, error: e.message });
         }
       }
@@ -914,10 +923,26 @@ export default function DebugFirestore() {
                 marginBottom: '8px'
               }}>
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>threads (subcollections)</span>
-                <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '500' }}>
+                <span style={{ color: seedResults.threads?.success > 0 ? '#10b981' : '#ef4444', fontSize: '13px', fontWeight: '500' }}>
                   {seedResults.threads?.success || 0} documentos criados
+                  {seedResults.threads?.errors?.length > 0 && ` (${seedResults.threads.errors.length} erros)`}
                 </span>
               </div>
+              {seedResults.threads?.errors?.length > 0 && (
+                <div style={{
+                  padding: '10px 12px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  borderRadius: '8px',
+                  marginBottom: '8px'
+                }}>
+                  <span style={{ color: '#ef4444', fontSize: '12px', fontWeight: '500' }}>Erros em threads:</span>
+                  {seedResults.threads.errors.map((err, i) => (
+                    <div key={i} style={{ color: '#94a3b8', fontSize: '11px', marginTop: '4px' }}>
+                      • {err.id}: {err.error}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
