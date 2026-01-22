@@ -4,6 +4,7 @@ import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
 import { Users, Search, ChevronRight, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link } from 'lucide-react';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
+import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 
 // Função para normalizar texto (remove acentos)
 const normalizeText = (text) => {
@@ -19,7 +20,8 @@ export default function Clientes() {
   const [times, setTimes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('todos');
+  const [filterHealthStatus, setFilterHealthStatus] = useState('todos');
+  const [filterClienteStatus, setFilterClienteStatus] = useState(DEFAULT_VISIBLE_STATUS);
   const [filterType, setFilterType] = useState('todos');
   const [showOrphanModal, setShowOrphanModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -81,9 +83,10 @@ export default function Clientes() {
     const nameNormalized = normalizeText(cliente.team_name || '');
     const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
     const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
-    const matchesStatus = filterStatus === 'todos' || cliente.health_status === filterStatus;
+    const matchesHealthStatus = filterHealthStatus === 'todos' || cliente.health_status === filterHealthStatus;
+    const matchesClienteStatus = filterClienteStatus.length === 0 || filterClienteStatus.includes(cliente.status || 'ativo');
     const matchesType = filterType === 'todos' || cliente.team_type === filterType;
-    return matchesSearch && matchesStatus && matchesType;
+    return matchesSearch && matchesHealthStatus && matchesClienteStatus && matchesType;
   });
 
   const teamTypes = [...new Set(clientes.map(c => c.team_type).filter(Boolean))];
@@ -249,15 +252,15 @@ export default function Clientes() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
           <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px', color: '#64748b' }} />
           <input type="text" placeholder="Buscar por nome ou responsável..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
             style={{ width: '100%', padding: '12px 16px 12px 48px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
         </div>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+        <select value={filterHealthStatus} onChange={(e) => setFilterHealthStatus(e.target.value)}
           style={{ padding: '12px 16px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', cursor: 'pointer', minWidth: '150px' }}>
-          <option value="todos" style={{ background: '#1e1b4b' }}>Todos os status</option>
+          <option value="todos" style={{ background: '#1e1b4b' }}>Health: Todos</option>
           <option value="saudavel" style={{ background: '#1e1b4b' }}>Saudável</option>
           <option value="atencao" style={{ background: '#1e1b4b' }}>Atenção</option>
           <option value="risco" style={{ background: '#1e1b4b' }}>Risco</option>
@@ -268,8 +271,53 @@ export default function Clientes() {
           <option value="todos" style={{ background: '#1e1b4b' }}>Todos os tipos</option>
           {teamTypes.map(type => (<option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>))}
         </select>
-        {(searchTerm || filterStatus !== 'todos' || filterType !== 'todos') && (
-          <span style={{ color: '#64748b', fontSize: '13px', alignSelf: 'center' }}>
+      </div>
+
+      {/* Filtro de Status do Cliente */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ color: '#94a3b8', fontSize: '13px', marginRight: '8px' }}>Status:</span>
+        {STATUS_OPTIONS.map(opt => {
+          const isSelected = filterClienteStatus.includes(opt.value);
+          return (
+            <button
+              key={opt.value}
+              onClick={() => {
+                if (isSelected) {
+                  setFilterClienteStatus(filterClienteStatus.filter(s => s !== opt.value));
+                } else {
+                  setFilterClienteStatus([...filterClienteStatus, opt.value]);
+                }
+              }}
+              style={{
+                padding: '6px 12px',
+                background: isSelected ? `${opt.color}20` : 'transparent',
+                border: `1px solid ${isSelected ? opt.color : 'rgba(139, 92, 246, 0.2)'}`,
+                borderRadius: '16px',
+                color: isSelected ? opt.color : '#64748b',
+                fontSize: '12px',
+                fontWeight: isSelected ? '500' : '400',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s'
+              }}
+            >
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: opt.color
+              }}></span>
+              {opt.label}
+              <span style={{ color: isSelected ? opt.color : '#64748b', opacity: 0.7 }}>
+                ({clientes.filter(c => (c.status || 'ativo') === opt.value).length})
+              </span>
+            </button>
+          );
+        })}
+        {(searchTerm || filterHealthStatus !== 'todos' || filterType !== 'todos' || filterClienteStatus.length !== DEFAULT_VISIBLE_STATUS.length) && (
+          <span style={{ color: '#64748b', fontSize: '13px', marginLeft: '16px' }}>
             {filteredClientes.length} de {clientes.length} clientes
           </span>
         )}
@@ -293,6 +341,20 @@ export default function Clientes() {
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  padding: '4px 10px',
+                  background: `${getStatusColor(cliente.status || 'ativo')}20`,
+                  color: getStatusColor(cliente.status || 'ativo'),
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: getStatusColor(cliente.status || 'ativo') }}></span>
+                  {getStatusLabel(cliente.status || 'ativo')}
+                </span>
                 <span style={{ padding: '4px 10px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
                   {getHealthLabel(cliente.health_status)}
                 </span>

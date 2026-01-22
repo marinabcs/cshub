@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, Calendar, UserCircle, Phone, Mail, Briefcase } from 'lucide-react';
+import { STATUS_OPTIONS, DEFAULT_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 
 const TAGS_CONTEXTO = [
   'Onboarding',
@@ -37,6 +38,7 @@ export default function ClienteForm() {
 
   // Form state
   const [nome, setNome] = useState('');
+  const [status, setStatus] = useState(DEFAULT_STATUS);
   const [responsaveis, setResponsaveis] = useState([]);
   const [tags, setTags] = useState([]);
   const [timesSelecionados, setTimesSelecionados] = useState([]);
@@ -77,6 +79,7 @@ export default function ClienteForm() {
           if (clienteDoc.exists()) {
             const data = clienteDoc.data();
             setNome(data.nome || data.team_name || '');
+            setStatus(data.status || DEFAULT_STATUS);
             setResponsaveis(data.responsaveis || (data.responsavel_email ? [{ email: data.responsavel_email, nome: data.responsavel_nome }] : []));
             setTags(data.tags || []);
             setTimesSelecionados(data.times || []);
@@ -217,6 +220,7 @@ export default function ClienteForm() {
       const clienteData = {
         nome: nome.trim(),
         team_name: nome.trim(),
+        status,
         responsaveis,
         responsavel_email: responsaveis[0]?.email || '',
         responsavel_nome: responsaveis[0]?.nome || '',
@@ -330,6 +334,43 @@ export default function ClienteForm() {
                     boxSizing: 'border-box'
                   }}
                 />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
+                  Status do Cliente
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {STATUS_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setStatus(opt.value)}
+                      style={{
+                        padding: '8px 16px',
+                        background: status === opt.value ? `${opt.color}30` : 'rgba(15, 10, 31, 0.6)',
+                        border: status === opt.value ? `2px solid ${opt.color}` : '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '20px',
+                        color: status === opt.value ? opt.color : '#94a3b8',
+                        fontSize: '13px',
+                        fontWeight: status === opt.value ? '600' : '400',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <span style={{
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%',
+                        background: opt.color
+                      }}></span>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>

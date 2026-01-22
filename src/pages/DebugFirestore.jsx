@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { collection, getDocs, query, limit, doc, deleteDoc, setDoc, Timestamp, where } from 'firebase/firestore';
+import { collection, getDocs, query, limit, doc, deleteDoc, setDoc, updateDoc, Timestamp, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Database, RefreshCw, Copy, Check, Trash2, Download, AlertTriangle, FolderDown, Plus, Calendar, Activity } from 'lucide-react';
+import { Database, RefreshCw, Copy, Check, Trash2, Download, AlertTriangle, FolderDown, Plus, Calendar, Activity, Circle } from 'lucide-react';
 import { useCalcularTodosHealthScores } from '../hooks/useHealthScore';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
+import { STATUS_OPTIONS, getStatusColor, getStatusLabel, DEFAULT_STATUS } from '../utils/clienteStatus';
 
 const COLLECTIONS_TO_CLEAN = ['usuarios_lookup', 'times', 'clientes', 'usuarios'];
 
@@ -191,6 +192,10 @@ export default function DebugFirestore() {
 
   // Health Score calculation
   const { calculating: healthCalculating, results: healthResults, calcularTodos: calcularTodosHealthScores } = useCalcularTodosHealthScores();
+
+  // Status update state
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [statusResults, setStatusResults] = useState(null);
 
   // Find and delete old clients (created before today)
   const findOldClients = async () => {
@@ -498,6 +503,56 @@ export default function DebugFirestore() {
   };
 
   const allBackupsReady = COLLECTIONS_TO_CLEAN.every(c => backupComplete[c]);
+
+  // Update all clients to have status "ativo"
+  const updateAllClientesStatus = async () => {
+    setStatusUpdating(true);
+    setStatusResults(null);
+    const results = [];
+
+    try {
+      const clientesSnap = await getDocs(collection(db, 'clientes'));
+
+      for (const docSnap of clientesSnap.docs) {
+        const data = docSnap.data();
+        try {
+          // Only update if status is missing
+          if (!data.status) {
+            await updateDoc(doc(db, 'clientes', docSnap.id), {
+              status: DEFAULT_STATUS
+            });
+            results.push({
+              id: docSnap.id,
+              nome: data.nome || data.team_name,
+              success: true,
+              wasUpdated: true
+            });
+          } else {
+            results.push({
+              id: docSnap.id,
+              nome: data.nome || data.team_name,
+              success: true,
+              wasUpdated: false,
+              currentStatus: data.status
+            });
+          }
+        } catch (e) {
+          results.push({
+            id: docSnap.id,
+            nome: data.nome || data.team_name,
+            success: false,
+            error: e.message
+          });
+        }
+      }
+
+      setStatusResults(results);
+    } catch (e) {
+      setStatusResults([{ error: e.message }]);
+    }
+
+    setStatusUpdating(false);
+  };
 
   return (
     <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
@@ -1456,6 +1511,167 @@ export default function DebugFirestore() {
               }}
             >
               Calcular Novamente
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Set Default Status Section */}
+      <div style={{
+        background: 'rgba(16, 185, 129, 0.05)',
+        border: '1px solid rgba(16, 185, 129, 0.2)',
+        borderRadius: '20px',
+        padding: '24px',
+        marginTop: '32px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <Circle style={{ width: '24px', height: '24px', color: '#10b981' }} />
+          <h2 style={{ color: '#10b981', fontSize: '18px', margin: 0 }}>Definir Status dos Clientes</h2>
+        </div>
+
+        <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '16px' }}>
+          Define o status como <strong style={{ color: '#10b981' }}>"Ativo"</strong> para todos os clientes que ainda não têm um status definido.
+          <br />
+          <span style={{ color: '#64748b', fontSize: '12px' }}>
+            Status disponíveis: {STATUS_OPTIONS.map(s => s.label).join(', ')}
+          </span>
+        </p>
+
+        {!statusResults && (
+          <button
+            onClick={updateAllClientesStatus}
+            disabled={statusUpdating}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: statusUpdating ? 'rgba(16, 185, 129, 0.5)' : 'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontWeight: '600',
+              cursor: statusUpdating ? 'not-allowed' : 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            {statusUpdating ? (
+              <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Circle style={{ width: '18px', height: '18px' }} />
+            )}
+            {statusUpdating ? 'Atualizando...' : 'Definir Status "Ativo" para Todos'}
+          </button>
+        )}
+
+        {statusResults && statusResults.length > 0 && !statusResults[0].error && (
+          <div style={{
+            padding: '20px',
+            background: 'rgba(16, 185, 129, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(16, 185, 129, 0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <Check style={{ width: '24px', height: '24px', color: '#10b981' }} />
+              <span style={{ color: '#10b981', fontSize: '18px', fontWeight: '600' }}>
+                {statusResults.filter(r => r.wasUpdated).length} clientes atualizados!
+              </span>
+            </div>
+
+            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px' }}>
+              {statusResults.map((result, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    background: 'rgba(15, 10, 31, 0.4)',
+                    borderRadius: '8px',
+                    marginBottom: '8px'
+                  }}
+                >
+                  <span style={{ color: 'white', fontSize: '14px' }}>{result.nome}</span>
+                  {result.success ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {result.wasUpdated ? (
+                        <span style={{
+                          padding: '4px 10px',
+                          background: 'rgba(16, 185, 129, 0.2)',
+                          color: '#10b981',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: '500'
+                        }}>
+                          Atualizado para Ativo
+                        </span>
+                      ) : (
+                        <span style={{
+                          padding: '4px 10px',
+                          background: `${getStatusColor(result.currentStatus)}20`,
+                          color: getStatusColor(result.currentStatus),
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: getStatusColor(result.currentStatus) }}></span>
+                          Já tinha: {getStatusLabel(result.currentStatus)}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span style={{ color: '#ef4444', fontSize: '12px' }}>{result.error}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setStatusResults(null)}
+              style={{
+                padding: '10px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '10px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Atualizar Novamente
+            </button>
+          </div>
+        )}
+
+        {statusResults && statusResults[0] && statusResults[0].error && (
+          <div style={{
+            padding: '16px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(239, 68, 68, 0.3)'
+          }}>
+            <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {statusResults[0].error}</span>
+            <button
+              onClick={() => setStatusResults(null)}
+              style={{
+                marginTop: '12px',
+                display: 'block',
+                padding: '8px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '8px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Tentar Novamente
             </button>
           </div>
         )}

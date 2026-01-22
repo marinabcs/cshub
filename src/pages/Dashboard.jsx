@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
-import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, Calendar, ChevronRight, Filter, Search } from 'lucide-react';
+import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, Calendar, ChevronRight, Filter, Search, Circle } from 'lucide-react';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
+import { STATUS_OPTIONS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 
 // Função para normalizar texto (remove acentos)
 const normalizeText = (text) => {
@@ -62,6 +63,15 @@ export default function Dashboard() {
     atencao: filteredClientes.filter(c => c.health_status === 'atencao').length,
     risco: filteredClientes.filter(c => c.health_status === 'risco').length,
     critico: filteredClientes.filter(c => c.health_status === 'critico').length
+  };
+
+  // Stats by client status (lifecycle)
+  const statusStats = {
+    ativo: filteredClientes.filter(c => (c.status || 'ativo') === 'ativo').length,
+    onboarding: filteredClientes.filter(c => c.status === 'onboarding').length,
+    aviso_previo: filteredClientes.filter(c => c.status === 'aviso_previo').length,
+    inativo: filteredClientes.filter(c => c.status === 'inativo').length,
+    cancelado: filteredClientes.filter(c => c.status === 'cancelado').length
   };
 
   const clientesAtencao = filteredClientes
@@ -495,7 +505,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Distribuição por Status */}
+        {/* Distribuição por Health Score */}
         <div style={{
           background: 'rgba(30, 27, 75, 0.4)',
           border: '1px solid rgba(139, 92, 246, 0.15)',
@@ -510,7 +520,7 @@ export default function Dashboard() {
           }}>
             <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
             <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>
-              Distribuição por Status
+              Distribuição por Health Score
             </h2>
           </div>
 
@@ -572,6 +582,73 @@ export default function Dashboard() {
               </span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Resumo por Status do Cliente */}
+      <div style={{
+        marginTop: '24px',
+        background: 'rgba(30, 27, 75, 0.4)',
+        border: '1px solid rgba(139, 92, 246, 0.15)',
+        borderRadius: '20px',
+        padding: '24px'
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          marginBottom: '20px'
+        }}>
+          <Circle style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>
+            Clientes por Ciclo de Vida
+          </h2>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(5, 1fr)',
+          gap: '16px'
+        }}>
+          {STATUS_OPTIONS.map(opt => {
+            const count = statusStats[opt.value] || 0;
+            return (
+              <div
+                key={opt.value}
+                style={{
+                  padding: '20px',
+                  background: `${opt.color}10`,
+                  border: `1px solid ${opt.color}30`,
+                  borderRadius: '16px',
+                  textAlign: 'center'
+                }}
+              >
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  background: `${opt.color}20`,
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 12px'
+                }}>
+                  <span style={{
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    background: opt.color
+                  }}></span>
+                </div>
+                <p style={{ color: 'white', fontSize: '28px', fontWeight: 'bold', margin: '0 0 4px 0' }}>
+                  {count}
+                </p>
+                <p style={{ color: opt.color, fontSize: '13px', fontWeight: '500', margin: 0 }}>
+                  {opt.label}
+                </p>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
