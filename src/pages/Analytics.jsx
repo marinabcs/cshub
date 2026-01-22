@@ -1,297 +1,472 @@
-// Atualizado em 21/01/2026
+// Analytics - Dashboard Gerencial Completo
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { BarChart3, Users, TrendingUp, AlertTriangle, Search, Filter, Download, X, ChevronDown, LogIn, FileImage, Sparkles, Calendar } from 'lucide-react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-
-// Função para normalizar texto (remove acentos)
-const normalizeText = (text) => {
-  if (!text) return '';
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-};
+import * as XLSX from 'xlsx';
+import {
+  BarChart3, Users, TrendingUp, AlertTriangle, MessageSquare,
+  Download, Filter, X, ChevronDown, Activity, Clock,
+  ExternalLink, FileSpreadsheet, RefreshCw
+} from 'lucide-react';
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line, Area, AreaChart
+} from 'recharts';
 
 const STATUS_COLORS = {
   saudavel: '#10B981',
   atencao: '#F59E0B',
-  risco: '#EF4444',
-  critico: '#7C3AED'
+  risco: '#f97316',
+  critico: '#EF4444'
+};
+
+const CATEGORIA_COLORS = {
+  'erro_bug': '#EF4444',
+  'problema_tecnico': '#f97316',
+  'feedback': '#10B981',
+  'duvida': '#3B82F6',
+  'solicitacao': '#8b5cf6',
+  'outro': '#64748b'
+};
+
+const SENTIMENTO_COLORS = {
+  positivo: '#10B981',
+  neutro: '#64748b',
+  negativo: '#EF4444',
+  urgente: '#f97316'
+};
+
+const STATUS_CLIENTE_COLORS = {
+  ativo: '#10B981',
+  onboarding: '#3B82F6',
+  aviso_previo: '#f59e0b',
+  inativo: '#64748b',
+  cancelado: '#EF4444'
 };
 
 export default function Analytics() {
+  const navigate = useNavigate();
   const [clientes, setClientes] = useState([]);
-  const [usageData, setUsageData] = useState({});
+  const [alertas, setAlertas] = useState([]);
+  const [threads, setThreads] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filtros
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedStatuses, setSelectedStatuses] = useState([]);
-  const [selectedType, setSelectedType] = useState('todos');
-  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  // Filtros globais
+  const [periodo, setPeriodo] = useState('30');
+  const [responsavel, setResponsavel] = useState('todos');
+  const [teamType, setTeamType] = useState('todos');
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Date range filter (default: last 30 days)
-  const getDefaultDates = () => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 30);
-    return {
-      start: start.toISOString().split('T')[0],
-      end: end.toISOString().split('T')[0]
-    };
-  };
-  const defaultDates = getDefaultDates();
-  const [startDate, setStartDate] = useState(defaultDates.start);
-  const [endDate, setEndDate] = useState(defaultDates.end);
-
-  // Get periods (YYYY-MM) for a date range
-  const getPeriodsForDateRange = (start, end) => {
-    const periods = new Set();
-    const startD = new Date(start);
-    const endD = new Date(end);
-    const current = new Date(startD);
-    while (current <= endD) {
-      const period = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
-      periods.add(period);
-      current.setDate(current.getDate() + 1);
-    }
-    return Array.from(periods);
-  };
-
-  // For initial fetch, get periods for last 30 days
-  const getPeriodsForDays = (days) => {
-    const periods = new Set();
-    const now = new Date();
-    for (let i = 0; i < days; i++) {
-      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      periods.add(period);
-    }
-    return Array.from(periods);
-  };
+  // Dados de tendência
+  const [tendenciaData, setTendenciaData] = useState([]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch clientes
-        const clientesSnapshot = await getDocs(collection(db, 'clientes'));
-        const clientesData = clientesSnapshot.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }));
-        setClientes(clientesData);
-
-        // Get periods to fetch (current month + previous if needed)
-        const periods = getPeriodsForDays(30); // Fetch max period data
-
-        // Fetch uso_plataforma for each cliente's linked teams
-        // Each cliente has a "times" array with team IDs
-        // Usage data is stored in clientes/{team_id}/uso_plataforma/{period}
-        const usagePromises = clientesData.map(async (cliente) => {
-          try {
-            const teamIds = cliente.times || [];
-            if (teamIds.length === 0) {
-              return { clienteId: cliente.id, usage: [] };
-            }
-
-            // Fetch usage data from all linked teams for all periods
-            const teamUsagePromises = teamIds.flatMap((teamId) =>
-              periods.map(async (period) => {
-                try {
-                  const usageDoc = await getDoc(doc(db, 'clientes', teamId, 'uso_plataforma', period));
-                  if (usageDoc.exists()) {
-                    return { id: usageDoc.id, teamId, period, ...usageDoc.data() };
-                  }
-                  return null;
-                } catch {
-                  return null;
-                }
-              })
-            );
-
-            const teamUsageResults = await Promise.all(teamUsagePromises);
-            const combinedUsage = teamUsageResults.filter(u => u !== null);
-            return { clienteId: cliente.id, usage: combinedUsage };
-          } catch {
-            return { clienteId: cliente.id, usage: [] };
-          }
-        });
-
-        const usageResults = await Promise.all(usagePromises);
-        const usageMap = {};
-        usageResults.forEach(({ clienteId, usage }) => {
-          usageMap[clienteId] = usage;
-        });
-        setUsageData(usageMap);
-      } catch (error) {
-        console.error('Erro ao buscar dados:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+    fetchAllData();
   }, []);
 
-  // Calculate usage metrics for a client within date range
-  const getClientUsage = (clienteId) => {
-    const usage = usageData[clienteId] || [];
-    const periodsToInclude = getPeriodsForDateRange(startDate, endDate);
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      // Fetch clientes
+      const clientesSnapshot = await getDocs(collection(db, 'clientes'));
+      const clientesData = clientesSnapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setClientes(clientesData);
 
-    // Filter usage by periods within range
-    const filteredUsage = usage.filter(u => periodsToInclude.includes(u.period));
+      // Fetch alertas
+      const alertasSnapshot = await getDocs(collection(db, 'alertas'));
+      const alertasData = alertasSnapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setAlertas(alertasData);
 
-    return filteredUsage.reduce((acc, u) => {
-      const escala = u.escala || {};
-      const ai = u.ai || {};
-      return {
-        logins: acc.logins + (escala.logins || 0),
-        pecas_criadas: acc.pecas_criadas + (escala.pecas_criadas || 0),
-        downloads: acc.downloads + (escala.downloads || 0),
-        usuarios_ativos: Math.max(acc.usuarios_ativos, escala.usuarios_ativos || 0),
-        ai_total: acc.ai_total + (ai.total_uso || ai.total || 0),
-        ai_remover_fundo: acc.ai_remover_fundo + (ai.remover_fundo || 0),
-        ai_gerar_imagem: acc.ai_gerar_imagem + (ai.gerar_imagem || 0),
-        ai_escrever_texto: acc.ai_escrever_texto + (ai.escrever_texto || 0)
-      };
-    }, { logins: 0, pecas_criadas: 0, downloads: 0, usuarios_ativos: 0, ai_total: 0, ai_remover_fundo: 0, ai_gerar_imagem: 0, ai_escrever_texto: 0 });
+      // Fetch threads from all clientes
+      const allThreads = [];
+      for (const cliente of clientesData) {
+        try {
+          const threadsRef = collection(db, 'clientes', cliente.id, 'threads');
+          const threadsSnapshot = await getDocs(threadsRef);
+          threadsSnapshot.docs.forEach(doc => {
+            allThreads.push({
+              id: doc.id,
+              clienteId: cliente.id,
+              clienteNome: cliente.team_name,
+              responsavel: cliente.responsavel_nome,
+              ...doc.data()
+            });
+          });
+        } catch (e) {
+          // Ignore errors for individual clientes
+        }
+      }
+      setThreads(allThreads);
+
+      // Fetch usuarios
+      const usuariosSnapshot = await getDocs(collection(db, 'usuarios_sistema'));
+      const usuariosData = usuariosSnapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setUsuarios(usuariosData);
+
+      // Gerar dados de tendência
+      generateTendenciaData(clientesData, allThreads, alertasData);
+
+    } catch (error) {
+      console.error('Erro ao buscar dados:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const teamTypes = useMemo(() => [...new Set(clientes.map(c => c.team_type).filter(Boolean))], [clientes]);
+  // Gerar dados de tendência dos últimos 30 dias
+  const generateTendenciaData = (clientesData, threadsData, alertasData) => {
+    const hoje = new Date();
+    const data = [];
 
-  const filteredClientes = useMemo(() => {
-    return clientes.filter(cliente => {
-      const searchNormalized = normalizeText(searchTerm);
-      const nameNormalized = normalizeText(cliente.team_name || '');
-      const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
-      const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(hoje);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
 
-      const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(cliente.health_status);
-      const matchesType = selectedType === 'todos' || cliente.team_type === selectedType;
+      // Threads do dia
+      const threadsDoDia = threadsData.filter(t => {
+        const threadDate = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
+        return threadDate.toISOString().split('T')[0] === dateStr;
+      });
 
-      return matchesSearch && matchesStatus && matchesType;
+      // Alertas criados e resolvidos
+      const alertasCriados = alertasData.filter(a => {
+        const alertaDate = a.created_at?.toDate ? a.created_at.toDate() : new Date(a.created_at);
+        return alertaDate.toISOString().split('T')[0] === dateStr;
+      });
+
+      const alertasResolvidos = alertasData.filter(a => {
+        if (a.status !== 'resolvido' || !a.resolved_at) return false;
+        const resolvedDate = a.resolved_at?.toDate ? a.resolved_at.toDate() : new Date(a.resolved_at);
+        return resolvedDate.toISOString().split('T')[0] === dateStr;
+      });
+
+      data.push({
+        data: date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        threads: threadsDoDia.length,
+        alertasCriados: alertasCriados.length,
+        alertasResolvidos: alertasResolvidos.length
+      });
+    }
+
+    setTendenciaData(data);
+  };
+
+  // Filtrar dados por período
+  const getDataDoPeriodo = () => {
+    const hoje = new Date();
+    const diasAtras = new Date(hoje);
+    diasAtras.setDate(diasAtras.getDate() - parseInt(periodo));
+    return diasAtras;
+  };
+
+  // Clientes filtrados
+  const clientesFiltrados = useMemo(() => {
+    return clientes.filter(c => {
+      const matchesResponsavel = responsavel === 'todos' || c.responsavel_nome === responsavel;
+      const matchesType = teamType === 'todos' || c.team_type === teamType;
+      return matchesResponsavel && matchesType;
     });
-  }, [clientes, searchTerm, selectedStatuses, selectedType]);
+  }, [clientes, responsavel, teamType]);
 
-  // Aggregated metrics
-  const aggregatedMetrics = useMemo(() => {
-    return filteredClientes.reduce((acc, cliente) => {
-      const usage = getClientUsage(cliente.id);
-      return {
-        totalLogins: acc.totalLogins + usage.logins,
-        totalPecas: acc.totalPecas + usage.pecas_criadas,
-        totalDownloads: acc.totalDownloads + usage.downloads,
-        totalAI: acc.totalAI + usage.ai_total,
-        aiRemoverFundo: acc.aiRemoverFundo + usage.ai_remover_fundo,
-        aiGerarImagem: acc.aiGerarImagem + usage.ai_gerar_imagem,
-        aiEscreverTexto: acc.aiEscreverTexto + usage.ai_escrever_texto
-      };
-    }, { totalLogins: 0, totalPecas: 0, totalDownloads: 0, totalAI: 0, aiRemoverFundo: 0, aiGerarImagem: 0, aiEscreverTexto: 0 });
-  }, [filteredClientes, usageData, startDate, endDate]);
+  // Threads filtradas por período
+  const threadsFiltradas = useMemo(() => {
+    const dataLimite = getDataDoPeriodo();
+    return threads.filter(t => {
+      const threadDate = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
+      const matchesPeriodo = threadDate >= dataLimite;
+      const cliente = clientes.find(c => c.id === t.clienteId);
+      const matchesResponsavel = responsavel === 'todos' || cliente?.responsavel_nome === responsavel;
+      const matchesType = teamType === 'todos' || cliente?.team_type === teamType;
+      return matchesPeriodo && matchesResponsavel && matchesType;
+    });
+  }, [threads, clientes, periodo, responsavel, teamType]);
 
-  // Stats for cards
-  const stats = useMemo(() => {
-    const total = filteredClientes.length;
-    const avgScore = total > 0 ? Math.round(filteredClientes.reduce((sum, c) => sum + (c.health_score || 0), 0) / total) : 0;
-    const saudaveis = filteredClientes.filter(c => c.health_status === 'saudavel').length;
-    const atencao = filteredClientes.filter(c => c.health_status === 'atencao').length;
-    const risco = filteredClientes.filter(c => c.health_status === 'risco').length;
-    const critico = filteredClientes.filter(c => c.health_status === 'critico').length;
-    return { total, avgScore, saudaveis, atencao, risco, critico };
-  }, [filteredClientes]);
+  // Alertas filtrados
+  const alertasFiltrados = useMemo(() => {
+    const dataLimite = getDataDoPeriodo();
+    return alertas.filter(a => {
+      const alertaDate = a.created_at?.toDate ? a.created_at.toDate() : new Date(a.created_at);
+      const matchesPeriodo = alertaDate >= dataLimite;
+      const cliente = clientes.find(c => c.id === a.cliente_id);
+      const matchesResponsavel = responsavel === 'todos' || cliente?.responsavel_nome === responsavel;
+      const matchesType = teamType === 'todos' || cliente?.team_type === teamType;
+      return matchesPeriodo && matchesResponsavel && matchesType;
+    });
+  }, [alertas, clientes, periodo, responsavel, teamType]);
 
-  // Pie chart data
-  const pieData = useMemo(() => [
-    { name: 'Saudável', value: stats.saudaveis, color: STATUS_COLORS.saudavel },
-    { name: 'Atenção', value: stats.atencao, color: STATUS_COLORS.atencao },
-    { name: 'Risco', value: stats.risco, color: STATUS_COLORS.risco },
-    { name: 'Crítico', value: stats.critico, color: STATUS_COLORS.critico }
-  ].filter(d => d.value > 0), [stats]);
+  // Lista de responsáveis
+  const responsaveis = useMemo(() => {
+    return [...new Set(clientes.map(c => c.responsavel_nome).filter(Boolean))];
+  }, [clientes]);
 
-  // Top 10 clients by usage
-  const top10Clientes = useMemo(() => {
-    return [...filteredClientes]
-      .map(c => ({ ...c, usage: getClientUsage(c.id) }))
-      .sort((a, b) => b.usage.logins - a.usage.logins)
-      .slice(0, 10)
-      .map(c => ({ name: c.team_name?.substring(0, 15) || 'N/A', logins: c.usage.logins, pecas: c.usage.pecas_criadas }));
-  }, [filteredClientes, usageData, startDate, endDate]);
+  // Lista de tipos
+  const teamTypes = useMemo(() => {
+    return [...new Set(clientes.map(c => c.team_type).filter(Boolean))];
+  }, [clientes]);
 
-  const clearFilters = () => {
-    setSearchTerm('');
-    setSelectedStatuses([]);
-    setSelectedType('todos');
-    const defaults = getDefaultDates();
-    setStartDate(defaults.start);
-    setEndDate(defaults.end);
+  // ========== SEÇÃO 1: VISÃO GERAL ==========
+  const visaoGeral = useMemo(() => {
+    const clientesAtivos = clientesFiltrados.filter(c => c.status === 'ativo' || !c.status).length;
+    const totalTimes = clientesFiltrados.length;
+    const totalThreads = threadsFiltradas.length;
+    const alertasPendentes = alertasFiltrados.filter(a => a.status === 'pendente').length;
+    const healthScoreTotal = clientesFiltrados.reduce((sum, c) => sum + (c.health_score || 0), 0);
+    const healthScoreMedio = clientesFiltrados.length > 0 ? Math.round(healthScoreTotal / clientesFiltrados.length) : 0;
+
+    return { clientesAtivos, totalTimes, totalThreads, alertasPendentes, healthScoreMedio };
+  }, [clientesFiltrados, threadsFiltradas, alertasFiltrados]);
+
+  // ========== SEÇÃO 2: DISTRIBUIÇÃO POR STATUS DO CLIENTE ==========
+  const statusClienteData = useMemo(() => {
+    const counts = {
+      ativo: clientesFiltrados.filter(c => c.status === 'ativo' || !c.status).length,
+      onboarding: clientesFiltrados.filter(c => c.status === 'onboarding').length,
+      aviso_previo: clientesFiltrados.filter(c => c.status === 'aviso_previo').length,
+      inativo: clientesFiltrados.filter(c => c.status === 'inativo').length,
+      cancelado: clientesFiltrados.filter(c => c.status === 'cancelado').length
+    };
+
+    return [
+      { name: 'Ativos', value: counts.ativo, color: STATUS_CLIENTE_COLORS.ativo },
+      { name: 'Em Onboarding', value: counts.onboarding, color: STATUS_CLIENTE_COLORS.onboarding },
+      { name: 'Aviso Prévio', value: counts.aviso_previo, color: STATUS_CLIENTE_COLORS.aviso_previo },
+      { name: 'Inativos', value: counts.inativo, color: STATUS_CLIENTE_COLORS.inativo },
+      { name: 'Cancelados', value: counts.cancelado, color: STATUS_CLIENTE_COLORS.cancelado }
+    ].filter(d => d.value > 0);
+  }, [clientesFiltrados]);
+
+  // ========== SEÇÃO 3: DISTRIBUIÇÃO POR HEALTH SCORE ==========
+  const healthScoreData = useMemo(() => {
+    const faixas = {
+      saudavel: clientesFiltrados.filter(c => (c.health_score || 0) >= 80).length,
+      atencao: clientesFiltrados.filter(c => (c.health_score || 0) >= 60 && (c.health_score || 0) < 80).length,
+      risco: clientesFiltrados.filter(c => (c.health_score || 0) >= 40 && (c.health_score || 0) < 60).length,
+      critico: clientesFiltrados.filter(c => (c.health_score || 0) < 40).length
+    };
+
+    return [
+      { name: 'Saudável (80-100)', value: faixas.saudavel, color: STATUS_COLORS.saudavel },
+      { name: 'Atenção (60-79)', value: faixas.atencao, color: STATUS_COLORS.atencao },
+      { name: 'Risco (40-59)', value: faixas.risco, color: STATUS_COLORS.risco },
+      { name: 'Crítico (0-39)', value: faixas.critico, color: STATUS_COLORS.critico }
+    ].filter(d => d.value > 0);
+  }, [clientesFiltrados]);
+
+  // ========== SEÇÃO 4: TIMES EM RISCO ==========
+  const timesEmRisco = useMemo(() => {
+    return clientesFiltrados
+      .filter(c => c.health_status === 'risco' || c.health_status === 'critico')
+      .sort((a, b) => (a.health_score || 0) - (b.health_score || 0))
+      .slice(0, 10);
+  }, [clientesFiltrados]);
+
+  // ========== SEÇÃO 5: PERFORMANCE POR RESPONSÁVEL ==========
+  const performancePorResponsavel = useMemo(() => {
+    const responsaveisMap = {};
+
+    clientesFiltrados.forEach(cliente => {
+      const resp = cliente.responsavel_nome || 'Não atribuído';
+      if (!responsaveisMap[resp]) {
+        responsaveisMap[resp] = {
+          nome: resp,
+          qtdClientes: 0,
+          healthScoreTotal: 0,
+          alertasPendentes: 0,
+          threadsAguardando: 0
+        };
+      }
+      responsaveisMap[resp].qtdClientes++;
+      responsaveisMap[resp].healthScoreTotal += cliente.health_score || 0;
+    });
+
+    // Contar alertas pendentes por responsável
+    alertasFiltrados.filter(a => a.status === 'pendente').forEach(alerta => {
+      const cliente = clientes.find(c => c.id === alerta.cliente_id);
+      const resp = cliente?.responsavel_nome || 'Não atribuído';
+      if (responsaveisMap[resp]) {
+        responsaveisMap[resp].alertasPendentes++;
+      }
+    });
+
+    // Contar threads aguardando por responsável
+    threadsFiltradas.filter(t => t.status === 'aguardando_equipe').forEach(thread => {
+      const cliente = clientes.find(c => c.id === thread.clienteId);
+      const resp = cliente?.responsavel_nome || 'Não atribuído';
+      if (responsaveisMap[resp]) {
+        responsaveisMap[resp].threadsAguardando++;
+      }
+    });
+
+    return Object.values(responsaveisMap).map(r => ({
+      ...r,
+      healthScoreMedio: r.qtdClientes > 0 ? Math.round(r.healthScoreTotal / r.qtdClientes) : 0
+    })).sort((a, b) => b.qtdClientes - a.qtdClientes);
+  }, [clientesFiltrados, alertasFiltrados, threadsFiltradas, clientes]);
+
+  // ========== SEÇÃO 7: THREADS POR CATEGORIA ==========
+  const threadsPorCategoria = useMemo(() => {
+    const categorias = {
+      'erro_bug': 0,
+      'problema_tecnico': 0,
+      'feedback': 0,
+      'duvida': 0,
+      'solicitacao': 0,
+      'outro': 0
+    };
+
+    threadsFiltradas.forEach(t => {
+      const cat = t.categoria || 'outro';
+      if (categorias.hasOwnProperty(cat)) {
+        categorias[cat]++;
+      } else {
+        categorias['outro']++;
+      }
+    });
+
+    const labels = {
+      'erro_bug': 'Erro/Bug',
+      'problema_tecnico': 'Problema Técnico',
+      'feedback': 'Feedback',
+      'duvida': 'Dúvida',
+      'solicitacao': 'Solicitação',
+      'outro': 'Outro'
+    };
+
+    return Object.entries(categorias)
+      .map(([key, value]) => ({
+        name: labels[key],
+        value,
+        color: CATEGORIA_COLORS[key]
+      }))
+      .filter(d => d.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [threadsFiltradas]);
+
+  // ========== SEÇÃO 8: SENTIMENTO DAS CONVERSAS ==========
+  const sentimentoData = useMemo(() => {
+    const sentimentos = {
+      positivo: 0,
+      neutro: 0,
+      negativo: 0,
+      urgente: 0
+    };
+
+    threadsFiltradas.forEach(t => {
+      const sent = t.sentimento || 'neutro';
+      if (sentimentos.hasOwnProperty(sent)) {
+        sentimentos[sent]++;
+      }
+    });
+
+    return [
+      { name: 'Positivo', value: sentimentos.positivo, color: SENTIMENTO_COLORS.positivo },
+      { name: 'Neutro', value: sentimentos.neutro, color: SENTIMENTO_COLORS.neutro },
+      { name: 'Negativo', value: sentimentos.negativo, color: SENTIMENTO_COLORS.negativo },
+      { name: 'Urgente', value: sentimentos.urgente, color: SENTIMENTO_COLORS.urgente }
+    ].filter(d => d.value > 0);
+  }, [threadsFiltradas]);
+
+  // ========== EXPORTAÇÃO EXCEL ==========
+  const exportToExcel = (sectionName, data) => {
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sectionName);
+    XLSX.writeFile(wb, `${sectionName}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const hasFilters = searchTerm || selectedStatuses.length > 0 || selectedType !== 'todos' || startDate !== defaultDates.start || endDate !== defaultDates.end;
+  const exportCompleteReport = () => {
+    const wb = XLSX.utils.book_new();
 
-  const toggleStatus = (status) => {
-    setSelectedStatuses(prev =>
-      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
-    );
+    // Aba Resumo
+    const resumoData = [{
+      'Total Clientes': visaoGeral.clientesAtivos,
+      'Total Times': visaoGeral.totalTimes,
+      'Threads (período)': visaoGeral.totalThreads,
+      'Alertas Pendentes': visaoGeral.alertasPendentes,
+      'Health Score Médio': visaoGeral.healthScoreMedio
+    }];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumoData), 'Resumo');
+
+    // Aba Clientes
+    const clientesExport = clientesFiltrados.map(c => ({
+      'Nome': c.team_name,
+      'Tipo': c.team_type || '-',
+      'Status': c.status || 'ativo',
+      'Responsável': c.responsavel_nome || '-',
+      'Health Score': c.health_score || 0,
+      'Health Status': c.health_status || '-'
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clientesExport), 'Clientes');
+
+    // Aba Times em Risco
+    const riscoExport = timesEmRisco.map(c => ({
+      'Nome': c.team_name,
+      'Health Score': c.health_score || 0,
+      'Health Status': c.health_status,
+      'Responsável': c.responsavel_nome || '-'
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(riscoExport), 'Times em Risco');
+
+    // Aba Threads
+    const threadsExport = threadsFiltradas.map(t => ({
+      'Cliente': t.clienteNome,
+      'Assunto': t.subject || '-',
+      'Categoria': t.categoria || '-',
+      'Sentimento': t.sentimento || '-',
+      'Status': t.status || '-',
+      'Data': t.created_at?.toDate ? t.created_at.toDate().toLocaleDateString('pt-BR') : '-'
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(threadsExport), 'Threads');
+
+    // Aba Alertas
+    const alertasExport = alertasFiltrados.map(a => ({
+      'Tipo': a.tipo || '-',
+      'Descrição': a.descricao || '-',
+      'Status': a.status || '-',
+      'Prioridade': a.prioridade || '-',
+      'Data': a.created_at?.toDate ? a.created_at.toDate().toLocaleDateString('pt-BR') : '-'
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(alertasExport), 'Alertas');
+
+    // Aba Performance por Responsável
+    const perfExport = performancePorResponsavel.map(p => ({
+      'Responsável': p.nome,
+      'Qtd Clientes': p.qtdClientes,
+      'Health Score Médio': p.healthScoreMedio,
+      'Alertas Pendentes': p.alertasPendentes,
+      'Threads Aguardando': p.threadsAguardando
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(perfExport), 'Performance');
+
+    XLSX.writeFile(wb, `relatorio_completo_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const getHealthColor = (status) => STATUS_COLORS[status] || '#64748b';
-
   const getHealthLabel = (status) => {
     const labels = { saudavel: 'Saudável', atencao: 'Atenção', risco: 'Risco', critico: 'Crítico' };
     return labels[status] || status;
   };
 
-  const formatDate = (timestamp) => {
-    if (!timestamp) return '-';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const clearFilters = () => {
+    setPeriodo('30');
+    setResponsavel('todos');
+    setTeamType('todos');
   };
 
-  // Format date range for display
-  const formatDateRangeLabel = () => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffTime = Math.abs(end - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    return `${diffDays}d`;
-  };
-
-  const formatNumber = (num) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toLocaleString('pt-BR');
-  };
-
-  const exportToCSV = () => {
-    const headers = ['Cliente', 'Tipo', 'Responsável', 'Usuários Ativos', 'Logins', 'Peças Criadas', 'Downloads', 'Uso AI', 'Health Score', 'Status'];
-    const rows = filteredClientes.map(c => {
-      const usage = getClientUsage(c.id);
-      return [
-        c.team_name || '',
-        c.team_type || '',
-        c.responsavel_nome || '',
-        usage.usuarios_ativos,
-        usage.logins,
-        usage.pecas_criadas,
-        usage.downloads,
-        usage.ai_total,
-        c.health_score || 0,
-        getHealthLabel(c.health_status)
-      ];
-    });
-
-    const csvContent = [
-      headers.join(';'),
-      ...rows.map(row => row.join(';'))
-    ].join('\n');
-
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `analytics_clientes_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
+  const hasFilters = periodo !== '30' || responsavel !== 'todos' || teamType !== 'todos';
 
   if (loading) {
     return (
@@ -307,36 +482,55 @@ export default function Analytics() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>Analytics</h1>
-          <p style={{ color: '#94a3b8', margin: 0 }}>Análise detalhada de uso da plataforma</p>
+          <p style={{ color: '#94a3b8', margin: 0 }}>Dashboard gerencial completo</p>
         </div>
-        <button
-          onClick={exportToCSV}
-          disabled={filteredClientes.length === 0}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '12px 20px',
-            background: filteredClientes.length > 0 ? 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)' : 'rgba(100, 116, 139, 0.3)',
-            border: 'none',
-            borderRadius: '12px',
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: filteredClientes.length > 0 ? 'pointer' : 'not-allowed'
-          }}
-        >
-          <Download style={{ width: '18px', height: '18px' }} />
-          Exportar CSV
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={() => fetchAllData()}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: 'rgba(30, 27, 75, 0.4)',
+              border: '1px solid rgba(139, 92, 246, 0.15)',
+              borderRadius: '12px',
+              color: '#94a3b8',
+              fontSize: '14px',
+              cursor: 'pointer'
+            }}
+          >
+            <RefreshCw style={{ width: '16px', height: '16px' }} />
+            Atualizar
+          </button>
+          <button
+            onClick={exportCompleteReport}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            <FileSpreadsheet style={{ width: '18px', height: '18px' }} />
+            Exportar Relatório Completo
+          </button>
+        </div>
       </div>
 
-      {/* Filtros */}
+      {/* Filtros Globais */}
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Filter style={{ width: '18px', height: '18px', color: '#8b5cf6' }} />
-            <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>Filtros</span>
+            <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>Filtros Globais</span>
           </div>
           {hasFilters && (
             <button onClick={clearFilters} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: '#ef4444', fontSize: '13px', cursor: 'pointer', padding: 0 }}>
@@ -346,182 +540,136 @@ export default function Analytics() {
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: '12px' }}>
-          {/* Busca */}
-          <div style={{ position: 'relative' }}>
-            <Search style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', width: '18px', height: '18px', color: '#64748b' }} />
-            <input
-              type="text"
-              placeholder="Buscar cliente..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ width: '100%', padding: '10px 14px 10px 42px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
-            />
-          </div>
-
-          {/* Status Multi-select */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
-              style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: selectedStatuses.length > 0 ? 'white' : '#64748b', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxSizing: 'border-box' }}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+          {/* Período */}
+          <div>
+            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Período</label>
+            <select
+              value={periodo}
+              onChange={(e) => setPeriodo(e.target.value)}
+              style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
             >
-              <span>{selectedStatuses.length > 0 ? `${selectedStatuses.length} status` : 'Status'}</span>
-              <ChevronDown style={{ width: '16px', height: '16px' }} />
-            </button>
-            {statusDropdownOpen && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', padding: '8px', zIndex: 10 }}>
-                {['saudavel', 'atencao', 'risco', 'critico'].map(status => (
-                  <label key={status} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', cursor: 'pointer', borderRadius: '6px', background: selectedStatuses.includes(status) ? 'rgba(139, 92, 246, 0.2)' : 'transparent' }}>
-                    <input type="checkbox" checked={selectedStatuses.includes(status)} onChange={() => toggleStatus(status)} style={{ accentColor: '#8b5cf6' }} />
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '8px', height: '8px', background: getHealthColor(status), borderRadius: '50%' }}></span>
-                      <span style={{ color: 'white', fontSize: '13px' }}>{getHealthLabel(status)}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
+              <option value="7" style={{ background: '#1e1b4b' }}>Últimos 7 dias</option>
+              <option value="30" style={{ background: '#1e1b4b' }}>Últimos 30 dias</option>
+              <option value="90" style={{ background: '#1e1b4b' }}>Últimos 90 dias</option>
+              <option value="365" style={{ background: '#1e1b4b' }}>Último ano</option>
+            </select>
           </div>
 
-          {/* Tipo */}
-          <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} style={{ padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: selectedType !== 'todos' ? 'white' : '#64748b', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
-            <option value="todos" style={{ background: '#1e1b4b' }}>Todos tipos</option>
-            {teamTypes.map(type => (<option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>))}
-          </select>
-
-          {/* Data Inicial */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ color: '#64748b', fontSize: '11px' }}>Data Inicial</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              style={{ padding: '8px 12px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
-            />
+          {/* Responsável */}
+          <div>
+            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Responsável</label>
+            <select
+              value={responsavel}
+              onChange={(e) => setResponsavel(e.target.value)}
+              style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
+            >
+              <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
+              {responsaveis.map(r => (
+                <option key={r} value={r} style={{ background: '#1e1b4b' }}>{r}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Data Final */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ color: '#64748b', fontSize: '11px' }}>Data Final</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              style={{ padding: '8px 12px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
-            />
+          {/* Team Type */}
+          <div>
+            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Tipo de Time</label>
+            <select
+              value={teamType}
+              onChange={(e) => setTeamType(e.target.value)}
+              style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
+            >
+              <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
+              {teamTypes.map(t => (
+                <option key={t} value={t} style={{ background: '#1e1b4b' }}>{t}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
 
-      {/* Cards de Métricas Agregadas */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      {/* SEÇÃO 1: Visão Geral - Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
         <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <LogIn style={{ width: '22px', height: '22px', color: 'white' }} />
+              <Users style={{ width: '22px', height: '22px', color: 'white' }} />
             </div>
             <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Logins ({formatDateRangeLabel()})</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{formatNumber(aggregatedMetrics.totalLogins)}</p>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Clientes Ativos</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.clientesAtivos}</p>
             </div>
           </div>
         </div>
 
         <div style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <FileImage style={{ width: '22px', height: '22px', color: 'white' }} />
+              <Users style={{ width: '22px', height: '22px', color: 'white' }} />
             </div>
             <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Peças Criadas ({formatDateRangeLabel()})</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{formatNumber(aggregatedMetrics.totalPecas)}</p>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Times</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.totalTimes}</p>
             </div>
           </div>
         </div>
 
         <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Download style={{ width: '22px', height: '22px', color: 'white' }} />
+              <MessageSquare style={{ width: '22px', height: '22px', color: 'white' }} />
             </div>
             <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Downloads ({formatDateRangeLabel()})</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{formatNumber(aggregatedMetrics.totalDownloads)}</p>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Threads ({periodo}d)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.totalThreads}</p>
             </div>
           </div>
         </div>
 
         <div style={{ background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Sparkles style={{ width: '22px', height: '22px', color: 'white' }} />
+              <AlertTriangle style={{ width: '22px', height: '22px', color: 'white' }} />
             </div>
             <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Uso AI ({formatDateRangeLabel()})</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{formatNumber(aggregatedMetrics.totalAI)}</p>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Alertas Pendentes</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.alertasPendentes}</p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
-            <span style={{ padding: '2px 8px', background: 'rgba(249, 115, 22, 0.2)', borderRadius: '6px', fontSize: '10px', color: '#fb923c' }}>Fundo: {formatNumber(aggregatedMetrics.aiRemoverFundo)}</span>
-            <span style={{ padding: '2px 8px', background: 'rgba(249, 115, 22, 0.2)', borderRadius: '6px', fontSize: '10px', color: '#fb923c' }}>Imagem: {formatNumber(aggregatedMetrics.aiGerarImagem)}</span>
-            <span style={{ padding: '2px 8px', background: 'rgba(249, 115, 22, 0.2)', borderRadius: '6px', fontSize: '10px', color: '#fb923c' }}>Texto: {formatNumber(aggregatedMetrics.aiEscreverTexto)}</span>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #3B82F6 0%, #2563eb 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Activity style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Health Score Médio</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.healthScoreMedio}%</p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Cards de Status */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '40px', height: '40px', background: 'rgba(139, 92, 246, 0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Users style={{ width: '20px', height: '20px', color: '#a78bfa' }} />
-          </div>
-          <div>
-            <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Clientes</p>
-            <p style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{stats.total}</p>
-          </div>
-        </div>
-
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '40px', height: '40px', background: 'rgba(6, 182, 212, 0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <BarChart3 style={{ width: '20px', height: '20px', color: '#22d3ee' }} />
-          </div>
-          <div>
-            <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Score Médio</p>
-            <p style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{stats.avgScore}%</p>
-          </div>
-        </div>
-
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '40px', height: '40px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <TrendingUp style={{ width: '20px', height: '20px', color: '#34d399' }} />
-          </div>
-          <div>
-            <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Saudáveis</p>
-            <p style={{ color: '#10b981', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{stats.saudaveis}</p>
-          </div>
-        </div>
-
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '40px', height: '40px', background: 'rgba(239, 68, 68, 0.2)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <AlertTriangle style={{ width: '20px', height: '20px', color: '#f87171' }} />
-          </div>
-          <div>
-            <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Em Risco</p>
-            <p style={{ color: '#ef4444', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{stats.risco + stats.critico}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Gráficos */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px', marginBottom: '24px' }}>
-        {/* Pie Chart - Distribuição por Status */}
+      {/* SEÇÃO 2 e 3: Distribuições */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        {/* Distribuição por Status do Cliente */}
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Status</h3>
-          {pieData.length > 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Distribuição por Status</h3>
+            <button
+              onClick={() => exportToExcel('Status_Cliente', statusClienteData)}
+              style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
+              title="Exportar Excel"
+            >
+              <Download style={{ width: '16px', height: '16px' }} />
+            </button>
+          </div>
+          {statusClienteData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
-                  data={pieData}
+                  data={statusClienteData}
                   cx="50%"
                   cy="50%"
                   innerRadius={50}
@@ -529,7 +677,7 @@ export default function Analytics() {
                   paddingAngle={3}
                   dataKey="value"
                 >
-                  {pieData.map((entry, index) => (
+                  {statusClienteData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -549,22 +697,33 @@ export default function Analytics() {
           )}
         </div>
 
-        {/* Bar Chart - Top 10 Clientes */}
+        {/* Distribuição por Health Score */}
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Top 10 Clientes por Uso</h3>
-          {top10Clientes.length > 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Distribuição por Health Score</h3>
+            <button
+              onClick={() => exportToExcel('Health_Score', healthScoreData)}
+              style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
+              title="Exportar Excel"
+            >
+              <Download style={{ width: '16px', height: '16px' }} />
+            </button>
+          </div>
+          {healthScoreData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={top10Clientes} layout="vertical" margin={{ left: 20, right: 20 }}>
+              <BarChart data={healthScoreData} layout="vertical" margin={{ left: 20, right: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
                 <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
-                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={80} />
+                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={100} />
                 <Tooltip
                   contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
                   itemStyle={{ color: 'white' }}
-                  labelStyle={{ color: '#94a3b8' }}
                 />
-                <Bar dataKey="logins" name="Logins" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-                <Bar dataKey="pecas" name="Peças" fill="#06b6d4" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" name="Clientes" radius={[0, 4, 4, 0]}>
+                  {healthScoreData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -573,70 +732,322 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Tabela Expandida */}
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Uso por Cliente</h3>
+      {/* SEÇÃO 4: Times em Risco */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <AlertTriangle style={{ width: '20px', height: '20px', color: '#ef4444' }} />
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Times em Risco</h3>
+            <span style={{ padding: '4px 10px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>
+              {timesEmRisco.length}
+            </span>
+          </div>
+          <button
+            onClick={() => exportToExcel('Times_Risco', timesEmRisco.map(t => ({
+              Nome: t.team_name,
+              'Health Score': t.health_score,
+              Status: t.health_status,
+              Responsável: t.responsavel_nome
+            })))}
+            style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
+            title="Exportar Excel"
+          >
+            <Download style={{ width: '16px', height: '16px' }} />
+          </button>
+        </div>
+
+        {timesEmRisco.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
+            {timesEmRisco.map(time => (
+              <div
+                key={time.id}
+                onClick={() => navigate(`/clientes/${time.id}`)}
+                style={{
+                  background: 'rgba(15, 10, 31, 0.6)',
+                  border: `1px solid ${getHealthColor(time.health_status)}30`,
+                  borderRadius: '12px',
+                  padding: '16px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{
+                    width: '32px',
+                    height: '32px',
+                    background: `${getHealthColor(time.health_status)}20`,
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: getHealthColor(time.health_status),
+                    fontSize: '14px',
+                    fontWeight: '600'
+                  }}>
+                    {time.health_score || 0}
+                  </span>
+                  <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                </div>
+                <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {time.team_name}
+                </p>
+                <span style={{
+                  padding: '2px 8px',
+                  background: `${getHealthColor(time.health_status)}20`,
+                  color: getHealthColor(time.health_status),
+                  borderRadius: '4px',
+                  fontSize: '10px',
+                  fontWeight: '500'
+                }}>
+                  {getHealthLabel(time.health_status)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+            <TrendingUp style={{ width: '32px', height: '32px', margin: '0 auto 8px', color: '#10b981' }} />
+            <p>Nenhum time em situação de risco</p>
+          </div>
+        )}
+      </div>
+
+      {/* SEÇÃO 5: Performance por Responsável */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', overflow: 'hidden', marginBottom: '24px' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Performance por Responsável</h3>
+          <button
+            onClick={() => exportToExcel('Performance_Responsavel', performancePorResponsavel.map(p => ({
+              Responsável: p.nome,
+              'Qtd Clientes': p.qtdClientes,
+              'Health Score Médio': p.healthScoreMedio,
+              'Alertas Pendentes': p.alertasPendentes,
+              'Threads Aguardando': p.threadsAguardando
+            })))}
+            style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
+            title="Exportar Excel"
+          >
+            <Download style={{ width: '16px', height: '16px' }} />
+          </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'rgba(15, 10, 31, 0.6)' }}>
-                <th style={{ padding: '14px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cliente</th>
-                <th style={{ padding: '14px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tipo</th>
-                <th style={{ padding: '14px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Usuários</th>
-                <th style={{ padding: '14px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Logins</th>
-                <th style={{ padding: '14px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Peças</th>
-                <th style={{ padding: '14px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Downloads</th>
-                <th style={{ padding: '14px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Uso AI</th>
-                <th style={{ padding: '14px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Score</th>
-                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
+                <th style={{ padding: '14px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Responsável</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Clientes</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Health Score Médio</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Alertas Pendentes</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Threads Aguardando</th>
               </tr>
             </thead>
             <tbody>
-              {filteredClientes.length > 0 ? filteredClientes.map((cliente, index) => {
-                const usage = getClientUsage(cliente.id);
-                return (
-                  <tr key={cliente.id} style={{ background: index % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
-                    <td style={{ padding: '14px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '600', fontSize: '13px' }}>
-                          {cliente.team_name?.charAt(0) || 'C'}
-                        </div>
-                        <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>{cliente.team_name}</span>
+              {performancePorResponsavel.map((resp, index) => (
+                <tr key={resp.nome} style={{ background: index % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
+                  <td style={{ padding: '14px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '600', fontSize: '13px' }}>
+                        {resp.nome.charAt(0).toUpperCase()}
                       </div>
-                    </td>
-                    <td style={{ padding: '14px 16px', color: '#94a3b8', fontSize: '12px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{cliente.team_type || '-'}</td>
-                    <td style={{ padding: '14px 12px', textAlign: 'center', color: 'white', fontSize: '13px', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{usage.usuarios_ativos}</td>
-                    <td style={{ padding: '14px 12px', textAlign: 'center', color: 'white', fontSize: '13px', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{formatNumber(usage.logins)}</td>
-                    <td style={{ padding: '14px 12px', textAlign: 'center', color: 'white', fontSize: '13px', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{formatNumber(usage.pecas_criadas)}</td>
-                    <td style={{ padding: '14px 12px', textAlign: 'center', color: 'white', fontSize: '13px', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{formatNumber(usage.downloads)}</td>
-                    <td style={{ padding: '14px 12px', textAlign: 'center', color: 'white', fontSize: '13px', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{formatNumber(usage.ai_total)}</td>
-                    <td style={{ padding: '14px 12px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                        <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ width: `${cliente.health_score || 0}%`, height: '100%', background: getHealthColor(cliente.health_status), borderRadius: '3px' }}></div>
-                        </div>
-                        <span style={{ color: getHealthColor(cliente.health_status), fontSize: '12px', fontWeight: '600', minWidth: '32px' }}>{cliente.health_score || 0}%</span>
+                      <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>{resp.nome}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', color: 'white', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    {resp.qtdClientes}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                      <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{
+                          width: `${resp.healthScoreMedio}%`,
+                          height: '100%',
+                          background: resp.healthScoreMedio >= 80 ? STATUS_COLORS.saudavel :
+                            resp.healthScoreMedio >= 60 ? STATUS_COLORS.atencao :
+                            resp.healthScoreMedio >= 40 ? STATUS_COLORS.risco : STATUS_COLORS.critico,
+                          borderRadius: '3px'
+                        }}></div>
                       </div>
-                    </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                      <span style={{ padding: '4px 10px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '6px', fontSize: '11px', fontWeight: '500' }}>
-                        {getHealthLabel(cliente.health_status)}
+                      <span style={{
+                        color: resp.healthScoreMedio >= 80 ? STATUS_COLORS.saudavel :
+                          resp.healthScoreMedio >= 60 ? STATUS_COLORS.atencao :
+                          resp.healthScoreMedio >= 40 ? STATUS_COLORS.risco : STATUS_COLORS.critico,
+                        fontSize: '12px',
+                        fontWeight: '600'
+                      }}>{resp.healthScoreMedio}%</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    {resp.alertasPendentes > 0 ? (
+                      <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.2)', color: '#f97316', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>
+                        {resp.alertasPendentes}
                       </span>
-                    </td>
-                  </tr>
-                );
-              }) : (
+                    ) : (
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>0</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    {resp.threadsAguardando > 0 ? (
+                      <span style={{ padding: '4px 10px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>
+                        {resp.threadsAguardando}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>0</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {performancePorResponsavel.length === 0 && (
                 <tr>
-                  <td colSpan="9" style={{ padding: '48px', textAlign: 'center' }}>
-                    <Users style={{ width: '40px', height: '40px', color: '#64748b', margin: '0 auto 12px' }} />
-                    <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>Nenhum cliente encontrado</p>
+                  <td colSpan="5" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+                    Nenhum responsável encontrado
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* SEÇÃO 6: Tendências */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Tendências (últimos 30 dias)</h3>
+          </div>
+          <button
+            onClick={() => exportToExcel('Tendencias', tendenciaData)}
+            style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
+            title="Exportar Excel"
+          >
+            <Download style={{ width: '16px', height: '16px' }} />
+          </button>
+        </div>
+
+        <ResponsiveContainer width="100%" height={300}>
+          <AreaChart data={tendenciaData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorThreads" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+              </linearGradient>
+              <linearGradient id="colorAlertasCriados" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#f97316" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+              </linearGradient>
+              <linearGradient id="colorAlertasResolvidos" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" />
+            <XAxis dataKey="data" stroke="#64748b" fontSize={11} tickLine={false} />
+            <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+            <Tooltip
+              contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
+              labelStyle={{ color: '#94a3b8' }}
+              itemStyle={{ color: 'white' }}
+            />
+            <Legend
+              verticalAlign="top"
+              height={36}
+              formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>}
+            />
+            <Area type="monotone" dataKey="threads" name="Threads" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorThreads)" />
+            <Area type="monotone" dataKey="alertasCriados" name="Alertas Criados" stroke="#f97316" fillOpacity={1} fill="url(#colorAlertasCriados)" />
+            <Area type="monotone" dataKey="alertasResolvidos" name="Alertas Resolvidos" stroke="#10b981" fillOpacity={1} fill="url(#colorAlertasResolvidos)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* SEÇÃO 7 e 8: Threads por Categoria e Sentimento */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+        {/* Threads por Categoria */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Threads por Categoria</h3>
+            <button
+              onClick={() => exportToExcel('Threads_Categoria', threadsPorCategoria)}
+              style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
+              title="Exportar Excel"
+            >
+              <Download style={{ width: '16px', height: '16px' }} />
+            </button>
+          </div>
+          {threadsPorCategoria.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={threadsPorCategoria} layout="vertical" margin={{ left: 20, right: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
+                <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
+                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={100} />
+                <Tooltip
+                  contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
+                  itemStyle={{ color: 'white' }}
+                />
+                <Bar dataKey="value" name="Threads" radius={[0, 4, 4, 0]}>
+                  {threadsPorCategoria.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+              <div style={{ textAlign: 'center' }}>
+                <MessageSquare style={{ width: '32px', height: '32px', margin: '0 auto 8px' }} />
+                <p>Sem threads no período</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Sentimento das Conversas */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Sentimento das Conversas</h3>
+            <button
+              onClick={() => exportToExcel('Sentimento', sentimentoData)}
+              style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
+              title="Exportar Excel"
+            >
+              <Download style={{ width: '16px', height: '16px' }} />
+            </button>
+          </div>
+          {sentimentoData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={sentimentoData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={85}
+                  paddingAngle={3}
+                  dataKey="value"
+                >
+                  {sentimentoData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
+                  itemStyle={{ color: 'white' }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+              <div style={{ textAlign: 'center' }}>
+                <MessageSquare style={{ width: '32px', height: '32px', margin: '0 auto 8px' }} />
+                <p>Sem dados de sentimento</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
