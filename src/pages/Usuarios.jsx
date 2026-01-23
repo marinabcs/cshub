@@ -238,17 +238,24 @@ export default function Usuarios() {
         await secondaryApp.delete();
 
         // Create user document in Firestore
-        await setDoc(doc(db, 'usuarios_sistema', newUid), {
-          uid: newUid,
-          nome: formData.nome,
-          email: formData.email.toLowerCase(),
-          cargo: formData.cargo,
-          role: formData.role,
-          ativo: formData.ativo,
-          created_at: serverTimestamp(),
-          created_by: user?.email || 'sistema',
-          updated_at: serverTimestamp()
-        });
+        try {
+          await setDoc(doc(db, 'usuarios_sistema', newUid), {
+            uid: newUid,
+            nome: formData.nome,
+            email: formData.email.toLowerCase(),
+            cargo: formData.cargo,
+            role: formData.role,
+            ativo: formData.ativo,
+            created_at: serverTimestamp(),
+            created_by: user?.email || 'sistema',
+            updated_at: serverTimestamp()
+          });
+        } catch (firestoreError) {
+          console.error('Erro ao criar documento no Firestore:', firestoreError);
+          setFormError(`Usuário criado no Auth, mas falhou ao salvar dados: ${firestoreError.message}. Verifique as regras do Firestore.`);
+          setFormLoading(false);
+          return;
+        }
 
         // Log audit for creation
         await logAction('create', 'usuario_sistema', newUid, formData.nome, {

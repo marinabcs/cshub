@@ -1,0 +1,107 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Função para verificar se é admin ou super_admin
+    function isAdmin() {
+      return request.auth != null &&
+        (get(/databases/$(database)/documents/usuarios_sistema/$(request.auth.uid)).data.role in ['admin', 'super_admin'] ||
+         request.auth.token.email == 'marina@trakto.io');
+    }
+
+    // Função para verificar se o usuário está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Função para verificar se é o super admin principal
+    function isSuperAdmin() {
+      return request.auth != null && request.auth.token.email == 'marina@trakto.io';
+    }
+
+    // Função para verificar se é usuário ativo do sistema
+    function isActiveUser() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/usuarios_sistema/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/usuarios_sistema/$(request.auth.uid)).data.ativo == true;
+    }
+
+    // usuarios_sistema - Usuários do sistema (admins, CS, etc)
+    match /usuarios_sistema/{userId} {
+      // Qualquer usuário autenticado pode ler (para verificar permissões)
+      allow read: if isAuthenticated();
+
+      // Apenas admins podem criar/editar/deletar
+      // OU o super admin pode criar seu próprio registro
+      allow create: if isAdmin() || (isSuperAdmin() && userId == request.auth.uid);
+      allow update: if isAdmin();
+      allow delete: if isAdmin() && !isSuperAdmin(); // Não pode deletar super admin
+    }
+
+    // clientes - Dados dos clientes
+    match /clientes/{clienteId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isActiveUser();
+
+      // Subcoleções do cliente
+      match /{subcollection}/{docId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // times - Times/equipes vinculados aos clientes
+    match /times/{timeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isActiveUser();
+
+      // Subcoleções do time (threads, mensagens, etc)
+      match /{subcollection}/{docId} {
+        allow read, write: if isAuthenticated();
+
+        // Mensagens dentro das threads
+        match /{subsubcollection}/{subDocId} {
+          allow read, write: if isAuthenticated();
+        }
+      }
+    }
+
+    // alertas - Sistema de alertas
+    match /alertas/{alertaId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // audit_logs - Logs de auditoria
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated(); // Qualquer usuário autenticado pode criar logs
+      allow update, delete: if false; // Logs são imutáveis
+    }
+
+    // playbooks - Playbooks de clientes
+    match /playbooks/{playbookId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // usuarios_lookup - Lookup de usuários da plataforma (não do sistema)
+    match /usuarios_lookup/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // configuracoes - Configurações do sistema
+    match /configuracoes/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Regra padrão - negar tudo que não foi especificado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
