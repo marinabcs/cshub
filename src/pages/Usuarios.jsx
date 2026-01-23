@@ -180,9 +180,16 @@ export default function Usuarios() {
 
   const openCarteiraModal = (usuario) => {
     setCarteiraUser(usuario);
-    // Find clients currently assigned to this user
+    // Find clients currently assigned to this user (check responsaveis array)
     const assignedClientes = clientes
-      .filter(c => c.responsavel_email === usuario.email || c.responsavel_nome === usuario.nome)
+      .filter(c => {
+        // Check in responsaveis array first
+        if (c.responsaveis && Array.isArray(c.responsaveis)) {
+          return c.responsaveis.some(r => r.email === usuario.email);
+        }
+        // Fallback to old single-value fields
+        return c.responsavel_email === usuario.email;
+      })
       .map(c => c.id);
     setSelectedClientes(assignedClientes);
     setCarteiraSearch('');
@@ -322,30 +329,37 @@ export default function Usuarios() {
     setSavingCarteira(true);
     try {
       const batch = writeBatch(db);
+      const userResp = { email: carteiraUser.email, nome: carteiraUser.nome };
 
-      // First, remove this user from all clients that are not in selectedClientes
-      const clientesToRemove = clientes.filter(c =>
-        (c.responsavel_email === carteiraUser.email || c.responsavel_nome === carteiraUser.nome) &&
-        !selectedClientes.includes(c.id)
-      );
-
-      clientesToRemove.forEach(cliente => {
+      // Process each client
+      clientes.forEach(cliente => {
         const clienteRef = doc(db, 'clientes', cliente.id);
-        batch.update(clienteRef, {
-          responsavel_email: null,
-          responsavel_nome: null,
-          updated_at: serverTimestamp()
-        });
-      });
+        const currentResponsaveis = cliente.responsaveis || [];
+        const isCurrentlyAssigned = currentResponsaveis.some(r => r.email === carteiraUser.email);
+        const shouldBeAssigned = selectedClientes.includes(cliente.id);
 
-      // Then, assign this user to all selected clients
-      selectedClientes.forEach(clienteId => {
-        const clienteRef = doc(db, 'clientes', clienteId);
-        batch.update(clienteRef, {
-          responsavel_email: carteiraUser.email,
-          responsavel_nome: carteiraUser.nome,
-          updated_at: serverTimestamp()
-        });
+        if (isCurrentlyAssigned && !shouldBeAssigned) {
+          // Remove this user from the client's responsaveis array
+          const newResponsaveis = currentResponsaveis.filter(r => r.email !== carteiraUser.email);
+          batch.update(clienteRef, {
+            responsaveis: newResponsaveis,
+            // Update legacy fields with first responsavel or null
+            responsavel_email: newResponsaveis[0]?.email || null,
+            responsavel_nome: newResponsaveis[0]?.nome || null,
+            updated_at: serverTimestamp()
+          });
+        } else if (!isCurrentlyAssigned && shouldBeAssigned) {
+          // Add this user to the client's responsaveis array
+          const newResponsaveis = [...currentResponsaveis, userResp];
+          batch.update(clienteRef, {
+            responsaveis: newResponsaveis,
+            // Update legacy fields (keep first responsavel for compatibility)
+            responsavel_email: newResponsaveis[0]?.email || carteiraUser.email,
+            responsavel_nome: newResponsaveis[0]?.nome || carteiraUser.nome,
+            updated_at: serverTimestamp()
+          });
+        }
+        // If already assigned and should stay, or not assigned and shouldn't be, do nothing
       });
 
       await batch.commit();
@@ -417,9 +431,14 @@ export default function Usuarios() {
   });
 
   const getClientesCount = (usuario) => {
-    return clientes.filter(c =>
-      c.responsavel_email === usuario.email || c.responsavel_nome === usuario.nome
-    ).length;
+    return clientes.filter(c => {
+      // Check in responsaveis array first
+      if (c.responsaveis && Array.isArray(c.responsaveis)) {
+        return c.responsaveis.some(r => r.email === usuario.email);
+      }
+      // Fallback to old single-value fields
+      return c.responsavel_email === usuario.email;
+    }).length;
   };
 
   const formatDate = (timestamp) => {
@@ -1093,7 +1112,11 @@ export default function Usuarios() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {filteredClientesForCarteira.map(cliente => {
                   const isSelected = selectedClientes.includes(cliente.id);
-                  const isAssignedToOther = cliente.responsavel_email && cliente.responsavel_email !== carteiraUser.email;
+                  // Get other responsáveis (not the current user being edited)
+                  const otherResponsaveis = (cliente.responsaveis || [])
+                    .filter(r => r.email !== carteiraUser.email)
+                    .map(r => r.nome)
+                    .filter(Boolean);
 
                   return (
                     <button
@@ -1128,9 +1151,9 @@ export default function Usuarios() {
                         <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>
                           {cliente.team_name}
                         </p>
-                        {isAssignedToOther && (
-                          <p style={{ color: '#f59e0b', fontSize: '11px', margin: '2px 0 0 0' }}>
-                            Atualmente com: {cliente.responsavel_nome}
+                        {otherResponsaveis.length > 0 && (
+                          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '2px 0 0 0' }}>
+                            Também com: {otherResponsaveis.join(', ')}
                           </p>
                         )}
                       </div>
