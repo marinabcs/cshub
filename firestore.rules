@@ -5,7 +5,7 @@ service cloud.firestore {
     // Função para verificar se é usuário Trakto autenticado
     function isTraktoUser() {
       return request.auth != null &&
-             request.auth.token.email.matches('.*@trakto[.]io$');
+             request.auth.token.email.matches('.*@trakto\\.io$');
     }
 
     // Usuários do Sistema (admins, CS, gestores)
