@@ -4,6 +4,8 @@ import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/fi
 import { db } from '../services/firebase';
 import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, Calendar, UserCircle, Phone, Mail, Briefcase } from 'lucide-react';
 import { STATUS_OPTIONS, DEFAULT_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
+import { logAction, calculateChanges } from '../utils/audit';
+import { useAuth } from '../contexts/AuthContext';
 
 const TAGS_CONTEXTO = [
   'Onboarding',
@@ -37,6 +39,7 @@ const TIPOS_REUNIAO = ['Kickoff', 'Review', 'Suporte', 'Treinamento', 'QBR'];
 export default function ClienteForm() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const isEditing = Boolean(id);
 
   const [loading, setLoading] = useState(true);
@@ -278,6 +281,13 @@ export default function ClienteForm() {
             await updateDoc(doc(db, 'times', teamId), { cliente_id: id });
           } catch (e) { /* ignore */ }
         }
+
+        // Log audit
+        await logAction('update', 'cliente', id, nome, {
+          status: { old: null, new: status },
+          responsaveis: { old: null, new: responsaveis.map(r => r.nome).join(', ') },
+          times: { old: timesOriginais.length, new: timesSelecionados.length }
+        }, { email: user?.email, name: user?.email?.split('@')[0] });
       } else {
         // Create new client
         const newClientRef = doc(collection(db, 'clientes'));
@@ -292,6 +302,9 @@ export default function ClienteForm() {
             await updateDoc(doc(db, 'times', teamId), { cliente_id: newClientRef.id });
           } catch (e) { /* ignore */ }
         }
+
+        // Log audit
+        await logAction('create', 'cliente', newClientRef.id, nome, {}, { email: user?.email, name: user?.email?.split('@')[0] });
       }
 
       navigate('/clientes');

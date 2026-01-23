@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Clock, UserX, AlertTriangle, AlertOctagon, Bug, RefreshCw, Check, ChevronRight, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2 } from 'lucide-react';
+import { Bell, Clock, UserX, AlertTriangle, AlertOctagon, Bug, RefreshCw, Check, ChevronRight, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye } from 'lucide-react';
 import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas } from '../hooks/useAlertas';
 import {
   ALERTA_TIPOS,
@@ -34,6 +34,13 @@ export default function Alertas() {
   const [filtroStatus, setFiltroStatus] = useState(['pendente', 'em_andamento']);
   const [filtroResponsavel, setFiltroResponsavel] = useState('todos');
   const [filtroTeamType, setFiltroTeamType] = useState('todos');
+
+  // Detail/Edit Modal
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailAlerta, setDetailAlerta] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editData, setEditData] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // ClickUp Modal
   const [showClickUpModal, setShowClickUpModal] = useState(false);
@@ -117,6 +124,61 @@ export default function Alertas() {
     setFiltroStatus(['pendente', 'em_andamento']);
     setFiltroResponsavel('todos');
     setFiltroTeamType('todos');
+  };
+
+  // Detail/Edit functions
+  const abrirDetalhes = (alerta) => {
+    setDetailAlerta(alerta);
+    setEditData({
+      titulo: alerta.titulo || '',
+      mensagem: alerta.mensagem || '',
+      prioridade: alerta.prioridade || 'media',
+      status: alerta.status || 'pendente',
+      notas: alerta.notas || ''
+    });
+    setEditMode(false);
+    setShowDetailModal(true);
+  };
+
+  const fecharDetalhes = () => {
+    setShowDetailModal(false);
+    setDetailAlerta(null);
+    setEditMode(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!detailAlerta) return;
+
+    setSavingEdit(true);
+    try {
+      const alertaRef = doc(db, 'alertas', detailAlerta.id);
+      const updateData = {
+        titulo: editData.titulo,
+        mensagem: editData.mensagem,
+        prioridade: editData.prioridade,
+        notas: editData.notas,
+        updated_at: new Date()
+      };
+
+      // If status changed to resolvido, add resolved_at
+      if (editData.status !== detailAlerta.status) {
+        updateData.status = editData.status;
+        if (editData.status === 'resolvido') {
+          updateData.resolved_at = new Date();
+        }
+      }
+
+      await updateDoc(alertaRef, updateData);
+      setEditMode(false);
+      refetch();
+      // Update local detail
+      setDetailAlerta({ ...detailAlerta, ...updateData });
+    } catch (error) {
+      console.error('Erro ao salvar alerta:', error);
+      alert('Erro ao salvar alterações');
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   // ClickUp functions
@@ -592,18 +654,63 @@ export default function Alertas() {
                 </div>
 
                 {/* Ações */}
-                {(alerta.status === 'pendente' || alerta.status === 'em_andamento') && (
-                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                    {alerta.status === 'pendente' && (
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
+                  {/* Botão Ver Detalhes */}
+                  <button
+                    onClick={() => abrirDetalhes(alerta)}
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(139, 92, 246, 0.1)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '8px',
+                      color: '#a78bfa',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="Ver detalhes"
+                  >
+                    <ExternalLink style={{ width: '14px', height: '14px' }} />
+                    Detalhes
+                  </button>
+
+                  {(alerta.status === 'pendente' || alerta.status === 'em_andamento') && (
+                    <>
+                      {alerta.status === 'pendente' && (
+                        <button
+                          onClick={() => handleAtualizarStatus(alerta.id, 'em_andamento')}
+                          disabled={updating}
+                          style={{
+                            padding: '8px 12px',
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                            borderRadius: '8px',
+                            color: '#3b82f6',
+                            fontSize: '12px',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          title="Em andamento"
+                        >
+                          <Play style={{ width: '14px', height: '14px' }} />
+                          Em andamento
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleAtualizarStatus(alerta.id, 'em_andamento')}
+                        onClick={() => handleAtualizarStatus(alerta.id, 'resolvido')}
                         disabled={updating}
                         style={{
                           padding: '8px 12px',
-                          background: 'rgba(59, 130, 246, 0.1)',
-                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                          background: 'rgba(16, 185, 129, 0.1)',
+                          border: '1px solid rgba(16, 185, 129, 0.3)',
                           borderRadius: '8px',
-                          color: '#3b82f6',
+                          color: '#10b981',
                           fontSize: '12px',
                           fontWeight: '500',
                           cursor: 'pointer',
@@ -611,56 +718,35 @@ export default function Alertas() {
                           alignItems: 'center',
                           gap: '4px'
                         }}
-                        title="Em andamento"
+                        title="Resolver"
                       >
-                        <Play style={{ width: '14px', height: '14px' }} />
-                        Em andamento
+                        <CheckCircle style={{ width: '14px', height: '14px' }} />
+                        Resolver
                       </button>
-                    )}
-                    <button
-                      onClick={() => handleAtualizarStatus(alerta.id, 'resolvido')}
-                      disabled={updating}
-                      style={{
-                        padding: '8px 12px',
-                        background: 'rgba(16, 185, 129, 0.1)',
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
-                        borderRadius: '8px',
-                        color: '#10b981',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title="Resolver"
-                    >
-                      <CheckCircle style={{ width: '14px', height: '14px' }} />
-                      Resolver
-                    </button>
-                    <button
-                      onClick={() => handleAtualizarStatus(alerta.id, 'ignorado')}
-                      disabled={updating}
-                      style={{
-                        padding: '8px 12px',
-                        background: 'rgba(100, 116, 139, 0.1)',
-                        border: '1px solid rgba(100, 116, 139, 0.3)',
-                        borderRadius: '8px',
-                        color: '#64748b',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title="Ignorar"
-                    >
-                      <XCircle style={{ width: '14px', height: '14px' }} />
-                      Ignorar
-                    </button>
-                  </div>
-                )}
+                      <button
+                        onClick={() => handleAtualizarStatus(alerta.id, 'ignorado')}
+                        disabled={updating}
+                        style={{
+                          padding: '8px 12px',
+                          background: 'rgba(100, 116, 139, 0.1)',
+                          border: '1px solid rgba(100, 116, 139, 0.3)',
+                          borderRadius: '8px',
+                          color: '#64748b',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title="Ignorar"
+                      >
+                        <XCircle style={{ width: '14px', height: '14px' }} />
+                        Ignorar
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -917,6 +1003,459 @@ export default function Alertas() {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalhes/Edição do Alerta */}
+      {showDetailModal && detailAlerta && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#1e1b4b',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '600px',
+            maxHeight: '90vh',
+            overflow: 'auto'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid rgba(139, 92, 246, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  background: `${getTipoInfo(detailAlerta.tipo).color}20`,
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {editMode ? (
+                    <Pencil style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+                  ) : (
+                    <Eye style={{ width: '20px', height: '20px', color: getTipoInfo(detailAlerta.tipo).color }} />
+                  )}
+                </div>
+                <div>
+                  <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>
+                    {editMode ? 'Editar Alerta' : 'Detalhes do Alerta'}
+                  </h3>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>
+                    {getTipoInfo(detailAlerta.tipo).label}
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {!editMode && (detailAlerta.status === 'pendente' || detailAlerta.status === 'em_andamento') && (
+                  <button
+                    onClick={() => setEditMode(true)}
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(139, 92, 246, 0.1)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '8px',
+                      color: '#a78bfa',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <Pencil style={{ width: '14px', height: '14px' }} />
+                    Editar
+                  </button>
+                )}
+                <button
+                  onClick={fecharDetalhes}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    padding: '8px'
+                  }}
+                >
+                  <X style={{ width: '20px', height: '20px' }} />
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px' }}>
+              {editMode ? (
+                // Edit Mode
+                <>
+                  {/* Título */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                      Título
+                    </label>
+                    <input
+                      type="text"
+                      value={editData.titulo}
+                      onChange={(e) => setEditData({ ...editData, titulo: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        background: '#0f0a1f',
+                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                        borderRadius: '12px',
+                        color: 'white',
+                        fontSize: '14px',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Mensagem */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                      Mensagem
+                    </label>
+                    <textarea
+                      value={editData.mensagem}
+                      onChange={(e) => setEditData({ ...editData, mensagem: e.target.value })}
+                      rows={4}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        background: '#0f0a1f',
+                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                        borderRadius: '12px',
+                        color: 'white',
+                        fontSize: '14px',
+                        outline: 'none',
+                        resize: 'vertical',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Prioridade e Status */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                    <div>
+                      <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                        Prioridade
+                      </label>
+                      <select
+                        value={editData.prioridade}
+                        onChange={(e) => setEditData({ ...editData, prioridade: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '12px 16px',
+                          background: '#0f0a1f',
+                          border: '1px solid rgba(139, 92, 246, 0.2)',
+                          borderRadius: '12px',
+                          color: 'white',
+                          fontSize: '14px',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {Object.values(ALERTA_PRIORIDADES).map(p => (
+                          <option key={p.value} value={p.value} style={{ background: '#1e1b4b' }}>{p.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                        Status
+                      </label>
+                      <select
+                        value={editData.status}
+                        onChange={(e) => setEditData({ ...editData, status: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '12px 16px',
+                          background: '#0f0a1f',
+                          border: '1px solid rgba(139, 92, 246, 0.2)',
+                          borderRadius: '12px',
+                          color: 'white',
+                          fontSize: '14px',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {Object.values(ALERTA_STATUS).map(s => (
+                          <option key={s.value} value={s.value} style={{ background: '#1e1b4b' }}>{s.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Notas */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+                      Notas internas
+                    </label>
+                    <textarea
+                      value={editData.notas}
+                      onChange={(e) => setEditData({ ...editData, notas: e.target.value })}
+                      rows={3}
+                      placeholder="Adicione notas ou observações..."
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        background: '#0f0a1f',
+                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                        borderRadius: '12px',
+                        color: 'white',
+                        fontSize: '14px',
+                        outline: 'none',
+                        resize: 'vertical',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                </>
+              ) : (
+                // View Mode
+                <>
+                  {/* Badges */}
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                    <span style={{
+                      padding: '4px 10px',
+                      background: `${getPrioridadeInfo(detailAlerta.prioridade).color}20`,
+                      color: getPrioridadeInfo(detailAlerta.prioridade).color,
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: '600'
+                    }}>
+                      {getPrioridadeInfo(detailAlerta.prioridade).label}
+                    </span>
+                    <span style={{
+                      padding: '4px 10px',
+                      background: `${getStatusInfo(detailAlerta.status).color}20`,
+                      color: getStatusInfo(detailAlerta.status).color,
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: '500'
+                    }}>
+                      {getStatusInfo(detailAlerta.status).label}
+                    </span>
+                  </div>
+
+                  {/* Título */}
+                  <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 12px 0' }}>
+                    {detailAlerta.titulo}
+                  </h2>
+
+                  {/* Mensagem */}
+                  <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 20px 0', lineHeight: '1.6' }}>
+                    {detailAlerta.mensagem}
+                  </p>
+
+                  {/* Informações do alerta */}
+                  <div style={{
+                    background: 'rgba(15, 10, 31, 0.6)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    marginBottom: '16px'
+                  }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                      {detailAlerta.cliente_nome && (
+                        <div>
+                          <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Cliente</span>
+                          <span style={{ color: 'white', fontSize: '14px' }}>{detailAlerta.cliente_nome}</span>
+                        </div>
+                      )}
+                      {detailAlerta.time_name && (
+                        <div>
+                          <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Time</span>
+                          <span style={{ color: 'white', fontSize: '14px' }}>{detailAlerta.time_name}</span>
+                        </div>
+                      )}
+                      {detailAlerta.responsavel_nome && (
+                        <div>
+                          <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Responsável</span>
+                          <span style={{ color: 'white', fontSize: '14px' }}>{detailAlerta.responsavel_nome}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Criado em</span>
+                        <span style={{ color: 'white', fontSize: '14px' }}>
+                          {detailAlerta.created_at ? (
+                            (detailAlerta.created_at.toDate ? detailAlerta.created_at.toDate() : new Date(detailAlerta.created_at)).toLocaleString('pt-BR')
+                          ) : '-'}
+                        </span>
+                      </div>
+                      {detailAlerta.resolved_at && (
+                        <div>
+                          <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Resolvido em</span>
+                          <span style={{ color: '#10b981', fontSize: '14px' }}>
+                            {(detailAlerta.resolved_at.toDate ? detailAlerta.resolved_at.toDate() : new Date(detailAlerta.resolved_at)).toLocaleString('pt-BR')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Notas */}
+                  {detailAlerta.notas && (
+                    <div style={{
+                      background: 'rgba(139, 92, 246, 0.05)',
+                      border: '1px solid rgba(139, 92, 246, 0.1)',
+                      borderRadius: '12px',
+                      padding: '16px',
+                      marginBottom: '16px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <FileText style={{ width: '14px', height: '14px', color: '#8b5cf6' }} />
+                        <span style={{ color: '#8b5cf6', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase' }}>Notas</span>
+                      </div>
+                      <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>{detailAlerta.notas}</p>
+                    </div>
+                  )}
+
+                  {/* ClickUp link */}
+                  {detailAlerta.clickup_task_url && (
+                    <a
+                      href={detailAlerta.clickup_task_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '12px 16px',
+                        background: 'rgba(124, 58, 237, 0.1)',
+                        border: '1px solid rgba(124, 58, 237, 0.3)',
+                        borderRadius: '12px',
+                        color: '#7c3aed',
+                        fontSize: '14px',
+                        textDecoration: 'none'
+                      }}
+                    >
+                      <ListTodo style={{ width: '16px', height: '16px' }} />
+                      Ver tarefa no ClickUp
+                      <ExternalLink style={{ width: '14px', height: '14px', marginLeft: 'auto' }} />
+                    </a>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid rgba(139, 92, 246, 0.15)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px'
+            }}>
+              {editMode ? (
+                <>
+                  <button
+                    onClick={() => setEditMode(false)}
+                    style={{
+                      padding: '10px 20px',
+                      background: 'transparent',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '10px',
+                      color: '#94a3b8',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={savingEdit}
+                    style={{
+                      padding: '10px 20px',
+                      background: savingEdit ? 'rgba(16, 185, 129, 0.5)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      border: 'none',
+                      borderRadius: '10px',
+                      color: 'white',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      cursor: savingEdit ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    {savingEdit ? (
+                      <>
+                        <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <Save style={{ width: '16px', height: '16px' }} />
+                        Salvar
+                      </>
+                    )}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {(detailAlerta.status === 'pendente' || detailAlerta.status === 'em_andamento') && !detailAlerta.clickup_task_url && isClickUpConfigured() && (
+                    <button
+                      onClick={() => {
+                        fecharDetalhes();
+                        abrirModalClickUp(detailAlerta);
+                      }}
+                      style={{
+                        padding: '10px 20px',
+                        background: 'rgba(124, 58, 237, 0.1)',
+                        border: '1px solid rgba(124, 58, 237, 0.3)',
+                        borderRadius: '10px',
+                        color: '#7c3aed',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <ListTodo style={{ width: '16px', height: '16px' }} />
+                      Criar Tarefa ClickUp
+                    </button>
+                  )}
+                  <button
+                    onClick={fecharDetalhes}
+                    style={{
+                      padding: '10px 20px',
+                      background: 'rgba(139, 92, 246, 0.1)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '10px',
+                      color: '#a78bfa',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Fechar
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

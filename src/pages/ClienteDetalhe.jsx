@@ -24,6 +24,9 @@ export default function ClienteDetalhe() {
   const [showAllUsuarios, setShowAllUsuarios] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState('resumo');
+
   // Health Score hook
   const { healthData, calculating, calcularESalvar } = useHealthScore(id);
 
@@ -433,6 +436,71 @@ export default function ClienteDetalhe() {
         </div>
       </div>
 
+      {/* Tabs Navigation */}
+      <div style={{
+        display: 'flex',
+        gap: '4px',
+        marginBottom: '24px',
+        background: 'rgba(30, 27, 75, 0.4)',
+        padding: '6px',
+        borderRadius: '16px',
+        border: '1px solid rgba(139, 92, 246, 0.15)'
+      }}>
+        {[
+          { id: 'resumo', label: 'Resumo', icon: Activity },
+          { id: 'conversas', label: 'Conversas', icon: MessageSquare, count: threads.length },
+          { id: 'playbook', label: 'Playbooks', icon: FileText },
+          { id: 'pessoas', label: 'Pessoas', icon: Users, count: usuarios.length }
+        ].map(tab => {
+          const TabIcon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '12px 20px',
+                background: isActive
+                  ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(6, 182, 212, 0.15) 100%)'
+                  : 'transparent',
+                border: isActive
+                  ? '1px solid rgba(139, 92, 246, 0.3)'
+                  : '1px solid transparent',
+                borderRadius: '12px',
+                color: isActive ? 'white' : '#94a3b8',
+                fontSize: '14px',
+                fontWeight: isActive ? '600' : '500',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <TabIcon style={{ width: '18px', height: '18px' }} />
+              {tab.label}
+              {tab.count !== undefined && (
+                <span style={{
+                  padding: '2px 8px',
+                  background: isActive ? 'rgba(139, 92, 246, 0.3)' : 'rgba(100, 116, 139, 0.3)',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: isActive ? '#a78bfa' : '#64748b'
+                }}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab Content: Resumo */}
+      {activeTab === 'resumo' && (
+        <>
       {/* Health Score Section */}
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
@@ -564,11 +632,16 @@ export default function ClienteDetalhe() {
           </div>
         </div>
       </div>
+        </>
+      )}
 
-      {/* Seção de Playbooks */}
-      <PlaybooksSection clienteId={id} />
+      {/* Tab Content: Playbooks */}
+      {activeTab === 'playbook' && (
+        <PlaybooksSection clienteId={id} />
+      )}
 
-      {/* Seção de Usuários */}
+      {/* Tab Content: Pessoas */}
+      {activeTab === 'pessoas' && (
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -685,7 +758,11 @@ export default function ClienteDetalhe() {
           </div>
         )}
       </div>
+      )}
 
+      {/* Tab Content: Resumo - Evolução do Health Score */}
+      {activeTab === 'resumo' && (
+      <>
       {/* Evolução do Health Score */}
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
@@ -752,13 +829,17 @@ export default function ClienteDetalhe() {
           </div>
         )}
       </div>
+      </>
+      )}
 
-      {/* Timeline de Conversas */}
+      {/* Tab Content: Conversas */}
+      {activeTab === 'conversas' && (
       <ThreadsTimeline
         threads={threads}
         onThreadClick={handleThreadClick}
         cliente={cliente}
       />
+      )}
 
       {selectedThread && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '32px' }}>

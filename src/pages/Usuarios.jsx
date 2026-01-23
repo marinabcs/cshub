@@ -7,6 +7,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { db, auth, firebaseConfig } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { logAction } from '../utils/audit';
 import {
   ArrowLeft, Users, Plus, Pencil, Trash2, Key, Shield, ShieldCheck, Eye, X,
   AlertTriangle, Check, Briefcase, Search, UserCheck
@@ -76,10 +77,42 @@ export default function Usuarios() {
       // Fetch usuarios
       const usuariosRef = collection(db, 'usuarios_sistema');
       const usuariosSnapshot = await getDocs(usuariosRef);
-      const usuariosData = usuariosSnapshot.docs.map(doc => ({
+      let usuariosData = usuariosSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+
+      // Check if super admin exists in usuarios_sistema, if not create it
+      const superAdminExists = usuariosData.find(u => u.email === SUPER_ADMIN_EMAIL);
+      if (!superAdminExists && user?.email === SUPER_ADMIN_EMAIL) {
+        // Create super admin record if logged in as super admin
+        try {
+          await setDoc(doc(db, 'usuarios_sistema', user.uid), {
+            uid: user.uid,
+            nome: 'Marina (Super Admin)',
+            email: SUPER_ADMIN_EMAIL,
+            cargo: 'Administradora',
+            role: 'super_admin',
+            ativo: true,
+            created_at: serverTimestamp(),
+            created_by: 'sistema',
+            updated_at: serverTimestamp()
+          });
+          // Add to local data
+          usuariosData.push({
+            id: user.uid,
+            uid: user.uid,
+            nome: 'Marina (Super Admin)',
+            email: SUPER_ADMIN_EMAIL,
+            cargo: 'Administradora',
+            role: 'super_admin',
+            ativo: true
+          });
+        } catch (err) {
+          console.error('Erro ao criar registro do super admin:', err);
+        }
+      }
+
       usuariosData.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
       setUsuarios(usuariosData);
 
@@ -217,6 +250,12 @@ export default function Usuarios() {
           updated_at: serverTimestamp()
         });
 
+        // Log audit for creation
+        await logAction('create', 'usuario_sistema', newUid, formData.nome, {
+          email: { old: null, new: formData.email },
+          role: { old: null, new: formData.role }
+        }, { email: user?.email, name: user?.email?.split('@')[0] });
+
       } else {
         // Edit mode
         if (!formData.nome) {
@@ -244,6 +283,12 @@ export default function Usuarios() {
         };
 
         await updateDoc(doc(db, 'usuarios_sistema', selectedUser.id), updateData);
+
+        // Log audit for update
+        await logAction('update', 'usuario_sistema', selectedUser.id, formData.nome, {
+          role: { old: selectedUser.role, new: formData.role },
+          ativo: { old: selectedUser.ativo, new: formData.ativo }
+        }, { email: user?.email, name: user?.email?.split('@')[0] });
       }
 
       setShowModal(false);
@@ -315,6 +360,12 @@ export default function Usuarios() {
     setDeleteLoading(true);
     try {
       await deleteDoc(doc(db, 'usuarios_sistema', userToDelete.id));
+
+      // Log audit for deletion
+      await logAction('delete', 'usuario_sistema', userToDelete.id, userToDelete.nome, {
+        email: { old: userToDelete.email, new: null }
+      }, { email: user?.email, name: user?.email?.split('@')[0] });
+
       setShowDeleteConfirm(false);
       setUserToDelete(null);
       fetchData();
