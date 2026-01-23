@@ -151,6 +151,9 @@ export default function Usuarios() {
   };
 
   const canEditRole = (targetUser) => {
+    // Allow super admin to edit their own profile
+    if (targetUser.email === SUPER_ADMIN_EMAIL && user?.email === SUPER_ADMIN_EMAIL) return true;
+    // Prevent others from editing the super admin
     if (targetUser.email === SUPER_ADMIN_EMAIL) return false;
     if (targetUser.role === 'super_admin' && user?.email !== SUPER_ADMIN_EMAIL) return false;
     return canManageUsers();
