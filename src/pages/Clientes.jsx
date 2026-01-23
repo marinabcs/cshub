@@ -351,16 +351,37 @@ export default function Clientes() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '16px' }}>
-        {filteredClientes.length > 0 ? filteredClientes.map((cliente) => (
+        {filteredClientes.length > 0 ? filteredClientes.map((cliente) => {
+          const isInativo = cliente.status === 'inativo';
+          return (
           <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)}
-            style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', cursor: 'pointer', transition: 'all 0.2s' }}>
+            style={{
+              background: isInativo ? 'rgba(55, 65, 81, 0.3)' : 'rgba(30, 27, 75, 0.4)',
+              border: isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(139, 92, 246, 0.15)',
+              borderRadius: '16px',
+              padding: '20px',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              opacity: isInativo ? 0.7 : 1
+            }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '48px', height: '48px', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '600', fontSize: '18px' }}>
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  background: isInativo ? 'rgba(107, 114, 128, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: isInativo ? '#9ca3af' : 'white',
+                  fontWeight: '600',
+                  fontSize: '18px'
+                }}>
                   {cliente.team_name?.charAt(0) || 'C'}
                 </div>
                 <div>
-                  <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>{cliente.team_name}</h3>
+                  <h3 style={{ color: isInativo ? '#9ca3af' : 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>{cliente.team_name}</h3>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Building2 style={{ width: '14px', height: '14px', color: '#64748b' }} />
                     <span style={{ color: '#64748b', fontSize: '13px' }}>{cliente.team_type || 'Sem tipo'}</span>
@@ -382,16 +403,18 @@ export default function Clientes() {
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: getStatusColor(cliente.status || 'ativo') }}></span>
                   {getStatusLabel(cliente.status || 'ativo')}
                 </span>
-                <span style={{ padding: '4px 10px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
-                  {getHealthLabel(cliente.health_status)}
-                </span>
+                {!isInativo && (
+                  <span style={{ padding: '4px 10px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
+                    {getHealthLabel(cliente.health_status)}
+                  </span>
+                )}
                 <button
                   onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${cliente.id}/editar`); }}
                   style={{
                     width: '32px',
                     height: '32px',
-                    background: 'rgba(139, 92, 246, 0.2)',
-                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    background: isInativo ? 'rgba(107, 114, 128, 0.2)' : 'rgba(139, 92, 246, 0.2)',
+                    border: isInativo ? '1px solid rgba(107, 114, 128, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)',
                     borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
@@ -400,7 +423,7 @@ export default function Clientes() {
                   }}
                   title="Editar cliente"
                 >
-                  <Pencil style={{ width: '14px', height: '14px', color: '#a78bfa' }} />
+                  <Pencil style={{ width: '14px', height: '14px', color: isInativo ? '#9ca3af' : '#a78bfa' }} />
                 </button>
                 <button
                   onClick={(e) => handleDeleteClick(e, cliente)}
@@ -421,26 +444,32 @@ export default function Clientes() {
                 </button>
               </div>
             </div>
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ color: '#94a3b8', fontSize: '13px' }}>Health Score</span>
-                <span style={{ color: getHealthColor(cliente.health_status), fontSize: '16px', fontWeight: '700' }}>{cliente.health_score || 0}%</span>
+            {isInativo ? (
+              <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(107, 114, 128, 0.1)', borderRadius: '8px', textAlign: 'center' }}>
+                <span style={{ color: '#9ca3af', fontSize: '13px' }}>Health Score pausado - Cliente inativo</span>
               </div>
-              <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ width: `${cliente.health_score || 0}%`, height: '100%', background: getHealthColor(cliente.health_status), borderRadius: '4px', transition: 'width 0.3s ease' }}></div>
+            ) : (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>Health Score</span>
+                  <span style={{ color: getHealthColor(cliente.health_status), fontSize: '16px', fontWeight: '700' }}>{cliente.health_score || 0}%</span>
+                </div>
+                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${cliente.health_score || 0}%`, height: '100%', background: getHealthColor(cliente.health_status), borderRadius: '4px', transition: 'width 0.3s ease' }}></div>
+                </div>
               </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: '1px solid rgba(139, 92, 246, 0.1)' }}>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: isInativo ? '1px solid rgba(107, 114, 128, 0.1)' : '1px solid rgba(139, 92, 246, 0.1)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Users style={{ width: '14px', height: '14px', color: '#a5b4fc' }} />
+                  <div style={{ width: '28px', height: '28px', background: isInativo ? 'rgba(107, 114, 128, 0.2)' : 'rgba(139, 92, 246, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Users style={{ width: '14px', height: '14px', color: isInativo ? '#9ca3af' : '#a5b4fc' }} />
                   </div>
                   <span style={{ color: '#94a3b8', fontSize: '13px' }}>{cliente.responsavel_nome || 'Sem responsável'}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <div style={{ width: '24px', height: '24px', background: 'rgba(6, 182, 212, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Link style={{ width: '12px', height: '12px', color: '#22d3ee' }} />
+                  <div style={{ width: '24px', height: '24px', background: isInativo ? 'rgba(107, 114, 128, 0.2)' : 'rgba(6, 182, 212, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Link style={{ width: '12px', height: '12px', color: isInativo ? '#9ca3af' : '#22d3ee' }} />
                   </div>
                   <span style={{ color: '#94a3b8', fontSize: '12px' }}>{(cliente.times || []).length} times</span>
                 </div>
@@ -448,11 +477,11 @@ export default function Clientes() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '12px' }}>
                 <Clock style={{ width: '14px', height: '14px' }} />
                 {formatDate(cliente.ultima_interacao)}
-                <ChevronRight style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
+                <ChevronRight style={{ width: '16px', height: '16px', color: isInativo ? '#9ca3af' : '#8b5cf6' }} />
               </div>
             </div>
           </div>
-        )) : (
+        )}) : (
           <div style={{ gridColumn: '1 / -1', padding: '48px', textAlign: 'center', background: 'rgba(30, 27, 75, 0.4)', borderRadius: '16px', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
             <Users style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
             <p style={{ color: '#94a3b8', fontSize: '16px', margin: 0 }}>Nenhum cliente encontrado</p>

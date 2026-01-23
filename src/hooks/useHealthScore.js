@@ -87,6 +87,18 @@ export function useHealthScore(clienteId) {
       }
 
       const clienteData = clienteSnap.data();
+
+      // Skip calculation for inactive clients
+      if (clienteData.status === 'inativo') {
+        setCalculating(false);
+        return {
+          score: null,
+          status: 'inativo',
+          skipped: true,
+          message: 'Cliente inativo - cálculo não realizado'
+        };
+      }
+
       const teamIds = clienteData.times || [];
 
       // Fetch threads from all linked teams
@@ -211,6 +223,20 @@ export function useCalcularTodosHealthScores() {
         const clienteData = clienteDoc.data();
         const clienteId = clienteDoc.id;
         const teamIds = clienteData.times || [];
+
+        // Skip inactive clients - don't calculate metrics for them
+        if (clienteData.status === 'inativo') {
+          calculationResults.push({
+            clienteId,
+            nome: clienteData.team_name || clienteData.nome,
+            score: null,
+            status: 'inativo',
+            success: true,
+            skipped: true,
+            message: 'Cliente inativo - cálculo pulado'
+          });
+          continue;
+        }
 
         try {
           // Fetch threads for all teams

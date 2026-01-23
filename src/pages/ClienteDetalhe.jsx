@@ -410,9 +410,15 @@ export default function ClienteDetalhe() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ padding: '8px 16px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '12px', fontSize: '14px', fontWeight: '600', border: `1px solid ${getHealthColor(cliente.health_status)}40` }}>
-              {getHealthLabel(cliente.health_status)}
-            </span>
+            {cliente.status !== 'inativo' ? (
+              <span style={{ padding: '8px 16px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '12px', fontSize: '14px', fontWeight: '600', border: `1px solid ${getHealthColor(cliente.health_status)}40` }}>
+                {getHealthLabel(cliente.health_status)}
+              </span>
+            ) : (
+              <span style={{ padding: '8px 16px', background: 'rgba(107, 114, 128, 0.2)', color: '#9ca3af', borderRadius: '12px', fontSize: '14px', fontWeight: '600', border: '1px solid rgba(107, 114, 128, 0.3)' }}>
+                Inativo
+              </span>
+            )}
             <button
               onClick={() => navigate(`/clientes/${id}/editar`)}
               style={{
@@ -501,7 +507,40 @@ export default function ClienteDetalhe() {
       {/* Tab Content: Resumo */}
       {activeTab === 'resumo' && (
         <>
-      {/* Health Score Section */}
+      {/* Aviso de Cliente Inativo */}
+      {cliente.status === 'inativo' && (
+        <div style={{
+          background: 'rgba(107, 114, 128, 0.15)',
+          border: '1px solid rgba(107, 114, 128, 0.3)',
+          borderRadius: '16px',
+          padding: '24px',
+          marginBottom: '32px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px'
+        }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            background: 'rgba(107, 114, 128, 0.2)',
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <AlertTriangle style={{ width: '24px', height: '24px', color: '#9ca3af' }} />
+          </div>
+          <div>
+            <h3 style={{ color: '#9ca3af', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>Cliente Inativo</h3>
+            <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>
+              As métricas e o Health Score estão pausados enquanto o cliente permanece inativo. Os dados históricos foram preservados.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Health Score Section - Somente para clientes ativos */}
+      {cliente.status !== 'inativo' && (
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -565,8 +604,10 @@ export default function ClienteDetalhe() {
           </div>
         </div>
       </div>
+      )}
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Somente para clientes ativos */}
+      {cliente.status !== 'inativo' && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
           <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Total de Conversas</p>
@@ -581,8 +622,10 @@ export default function ClienteDetalhe() {
           <span style={{ color: 'white', fontSize: '20px', fontWeight: '600' }}>{formatRelativeDate(cliente.ultima_interacao)}</span>
         </div>
       </div>
+      )}
 
-      {/* Métricas de Uso da Plataforma */}
+      {/* Métricas de Uso da Plataforma - Somente para clientes ativos */}
+      {cliente.status !== 'inativo' && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px', marginBottom: '32px' }}>
         <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -632,6 +675,7 @@ export default function ClienteDetalhe() {
           </div>
         </div>
       </div>
+      )}
         </>
       )}
 
@@ -760,8 +804,8 @@ export default function ClienteDetalhe() {
       </div>
       )}
 
-      {/* Tab Content: Resumo - Evolução do Health Score */}
-      {activeTab === 'resumo' && (
+      {/* Tab Content: Resumo - Evolução do Health Score - Somente para clientes ativos */}
+      {activeTab === 'resumo' && cliente.status !== 'inativo' && (
       <>
       {/* Evolução do Health Score */}
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
