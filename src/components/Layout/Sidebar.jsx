@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History, ClipboardList } from 'lucide-react';
 import { useAlertasCount } from '../../hooks/useAlertas';
 
@@ -7,6 +10,26 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { counts: alertaCounts } = useAlertasCount();
+  const [userProfile, setUserProfile] = useState(null);
+
+  // Buscar dados do perfil do usuário logado
+  useEffect(() => {
+    if (!user?.email) return;
+
+    const q = query(
+      collection(db, 'usuarios_sistema'),
+      where('email', '==', user.email)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const userData = snapshot.docs[0].data();
+        setUserProfile(userData);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user?.email]);
 
   const handleLogout = async () => {
     try {
@@ -177,13 +200,15 @@ export default function Sidebar() {
               fontWeight: '600',
               fontSize: '16px'
             }}>
-              {user?.email?.charAt(0).toUpperCase() || 'U'}
+              {(userProfile?.nome || user?.email || 'U').charAt(0).toUpperCase()}
             </div>
             <div>
               <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>
-                {user?.email?.split('@')[0] || 'Usuário'}
+                {userProfile?.nome || user?.email?.split('@')[0] || 'Usuário'}
               </p>
-              <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Administrador</p>
+              <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
+                {userProfile?.cargo || 'Usuário'}
+              </p>
             </div>
           </div>
           <button
