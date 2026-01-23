@@ -12,6 +12,14 @@ export default function Sidebar() {
   const { counts: alertaCounts } = useAlertasCount();
   const [userProfile, setUserProfile] = useState(null);
 
+  // Extrair iniciais do nome (ex: "Marina Barros" → "MB")
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  };
+
   // Buscar dados do perfil do usuário logado
   useEffect(() => {
     if (!user?.email) return;
@@ -198,9 +206,9 @@ export default function Sidebar() {
               justifyContent: 'center',
               color: 'white',
               fontWeight: '600',
-              fontSize: '16px'
+              fontSize: '14px'
             }}>
-              {(userProfile?.nome || user?.email || 'U').charAt(0).toUpperCase()}
+              {getInitials(userProfile?.nome) || user?.email?.charAt(0).toUpperCase() || 'U'}
             </div>
             <div>
               <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>
