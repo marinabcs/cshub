@@ -49,9 +49,9 @@ export async function getClientesCriticos(limite = 5) {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 }
 
-// Usuarios do cliente
-export async function getUsuariosCliente(teamId) {
-  const usuariosRef = collection(db, 'clientes', teamId, 'usuarios')
+// Usuarios do time (métricas de uso)
+export async function getUsuariosTime(teamId) {
+  const usuariosRef = collection(db, 'times', teamId, 'usuarios')
   const snapshot = await getDocs(usuariosRef)
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 }

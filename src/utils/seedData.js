@@ -292,11 +292,11 @@ export async function seedDatabase() {
       }
     }
 
-    // 2. Criar usuários
+    // 2. Criar usuários (em times/{teamId}/usuarios)
     for (const [teamId, userList] of Object.entries(usuarios)) {
       for (const usuario of userList) {
         try {
-          const usuarioRef = doc(db, 'clientes', teamId, 'usuarios', usuario.user_id)
+          const usuarioRef = doc(db, 'times', teamId, 'usuarios', usuario.user_id)
           await setDoc(usuarioRef, usuario)
           results.usuarios++
           console.log(`Usuário criado: ${usuario.nome}`)

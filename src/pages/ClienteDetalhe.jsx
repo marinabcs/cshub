@@ -100,45 +100,28 @@ export default function ClienteDetalhe() {
           // Sort ascending for chart display
           setHealthHistory(healthData.sort((a, b) => a.date - b.date));
 
-          // Fetch usage data from linked teams (reuse teamIds from above)
+          // Fetch usage data from linked teams - now from times/{teamId}/usuarios
           if (teamIds.length > 0) {
-            // Get periods for last 30 days (format: YYYY-MM)
-            const periods = new Set();
-            const now = new Date();
-            for (let i = 0; i < 30; i++) {
-              const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-              const period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-              periods.add(period);
-            }
-            const periodsArray = Array.from(periods);
-
-            // Fetch usage data from each team for each period
-            const teamUsagePromises = teamIds.flatMap((teamId) =>
-              periodsArray.map(async (period) => {
-                try {
-                  const usageDoc = await getDoc(doc(db, 'clientes', teamId, 'uso_plataforma', period));
-                  if (usageDoc.exists()) {
-                    return usageDoc.data();
-                  }
-                  return null;
-                } catch {
-                  return null;
-                }
-              })
-            );
+            const teamUsagePromises = teamIds.map(async (teamId) => {
+              try {
+                const usuariosRef = collection(db, 'times', teamId, 'usuarios');
+                const usuariosSnap = await getDocs(usuariosRef);
+                return usuariosSnap.docs.map(doc => doc.data());
+              } catch {
+                return [];
+              }
+            });
 
             const teamUsageResults = await Promise.all(teamUsagePromises);
-            const allUsage = teamUsageResults.filter(u => u !== null);
+            const allUsuarios = teamUsageResults.flat();
 
-            // Aggregate all usage data
-            const aggregated = allUsage.reduce((acc, u) => {
-              const escala = u.escala || {};
-              const ai = u.ai || {};
+            // Aggregate usage data from all users
+            const aggregated = allUsuarios.reduce((acc, u) => {
               return {
-                logins: acc.logins + (escala.logins || 0),
-                pecas_criadas: acc.pecas_criadas + (escala.pecas_criadas || 0),
-                downloads: acc.downloads + (escala.downloads || 0),
-                ai_total: acc.ai_total + (ai.total_uso || ai.total || 0)
+                logins: acc.logins + (u.logins || 0),
+                pecas_criadas: acc.pecas_criadas + (u.pecas_criadas || 0),
+                downloads: acc.downloads + (u.downloads || 0),
+                ai_total: acc.ai_total + (u.uso_ai_total || 0)
               };
             }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
 
