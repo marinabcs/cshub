@@ -100,28 +100,46 @@ export default function ClienteDetalhe() {
           // Sort ascending for chart display
           setHealthHistory(healthData.sort((a, b) => a.date - b.date));
 
-          // Fetch usage data from linked teams - now from times/{teamId}/usuarios
+          // Fetch usage data from linked teams - from times/{teamId}/usuarios/{userId}/historico/{data}
           if (teamIds.length > 0) {
+            // Calculate date 30 days ago (format: YYYY-MM-DD)
+            const today = new Date();
+            const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+            const formatDate = (d) => d.toISOString().split('T')[0];
+            const minDate = formatDate(thirtyDaysAgo);
+
             const teamUsagePromises = teamIds.map(async (teamId) => {
               try {
+                // Get all usuarios from this team
                 const usuariosRef = collection(db, 'times', teamId, 'usuarios');
                 const usuariosSnap = await getDocs(usuariosRef);
-                return usuariosSnap.docs.map(doc => doc.data());
+
+                // For each usuario, get their historico from last 30 days
+                const historicoPromises = usuariosSnap.docs.map(async (userDoc) => {
+                  const userId = userDoc.id;
+                  const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
+                  const historicoQuery = query(historicoRef, where('data', '>=', minDate));
+                  const historicoSnap = await getDocs(historicoQuery);
+                  return historicoSnap.docs.map(doc => doc.data());
+                });
+
+                const historicoResults = await Promise.all(historicoPromises);
+                return historicoResults.flat();
               } catch {
                 return [];
               }
             });
 
             const teamUsageResults = await Promise.all(teamUsagePromises);
-            const allUsuarios = teamUsageResults.flat();
+            const allHistorico = teamUsageResults.flat();
 
-            // Aggregate usage data from all users
-            const aggregated = allUsuarios.reduce((acc, u) => {
+            // Aggregate usage data from all daily records (last 30 days)
+            const aggregated = allHistorico.reduce((acc, h) => {
               return {
-                logins: acc.logins + (u.logins || 0),
-                pecas_criadas: acc.pecas_criadas + (u.pecas_criadas || 0),
-                downloads: acc.downloads + (u.downloads || 0),
-                ai_total: acc.ai_total + (u.uso_ai_total || 0)
+                logins: acc.logins + (h.logins || 0),
+                pecas_criadas: acc.pecas_criadas + (h.pecas_criadas || 0),
+                downloads: acc.downloads + (h.downloads || 0),
+                ai_total: acc.ai_total + (h.uso_ai_total || 0)
               };
             }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
 
