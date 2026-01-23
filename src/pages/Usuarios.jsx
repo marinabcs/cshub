@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, signInWithEmailAndPassword } from 'firebase/auth';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { db, auth, firebaseConfig } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -235,7 +235,7 @@ export default function Usuarios() {
 
         // Sign out from secondary auth and delete the secondary app
         await signOut(secondaryAuth);
-        await secondaryApp.delete();
+        await deleteApp(secondaryApp);
 
         // Create user document in Firestore
         try {
