@@ -395,6 +395,14 @@ export default function ClienteDetalhe() {
                   <Users style={{ width: '16px', height: '16px', color: '#64748b' }} />
                   <span style={{ color: '#94a3b8', fontSize: '14px' }}>{cliente.responsavel_nome || 'Sem responsável'}</span>
                 </div>
+                {cliente.created_at && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock style={{ width: '16px', height: '16px', color: '#64748b' }} />
+                    <span style={{ color: '#94a3b8', fontSize: '14px' }}>
+                      Criado em {(cliente.created_at.toDate ? cliente.created_at.toDate() : new Date(cliente.created_at)).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -15,6 +15,14 @@ const TAGS_CONTEXTO = [
   'Churn Risk'
 ];
 
+const CATEGORIAS_PRODUTO = [
+  { value: 'studio', label: 'Studio', usaPlatforma: true },
+  { value: 'whitelabel', label: 'Whitelabel', usaPlatforma: false },
+  { value: 'b2c', label: 'B2C', usaPlatforma: false },
+  { value: 'bot', label: 'Bot', usaPlatforma: false },
+  { value: 'servico_criativo', label: 'Serviço Criativo', usaPlatforma: false }
+];
+
 const RESPONSAVEIS_LISTA = [
   { email: 'cesar@trakto.io', nome: 'Cesar' },
   { email: 'natalia@trakto.io', nome: 'Natália' },
@@ -39,6 +47,7 @@ export default function ClienteForm() {
   // Form state
   const [nome, setNome] = useState('');
   const [status, setStatus] = useState(DEFAULT_STATUS);
+  const [categoriaProduto, setCategoriaProduto] = useState('studio');
   const [responsaveis, setResponsaveis] = useState([]);
   const [tags, setTags] = useState([]);
   const [timesSelecionados, setTimesSelecionados] = useState([]);
@@ -80,6 +89,7 @@ export default function ClienteForm() {
             const data = clienteDoc.data();
             setNome(data.nome || data.team_name || '');
             setStatus(data.status || DEFAULT_STATUS);
+            setCategoriaProduto(data.categoria_produto || 'studio');
             setResponsaveis(data.responsaveis || (data.responsavel_email ? [{ email: data.responsavel_email, nome: data.responsavel_nome }] : []));
             setTags(data.tags || []);
             setTimesSelecionados(data.times || []);
@@ -214,13 +224,30 @@ export default function ClienteForm() {
       return;
     }
 
+    // Verificar se já existe cliente com mesmo nome
+    const nomeNormalizado = nome.trim().toLowerCase();
+    const clienteDuplicado = clientes.find(c => {
+      const nomeCliente = (c.nome || c.team_name || '').toLowerCase();
+      // Se estamos editando, ignorar o próprio cliente
+      if (isEditing && c.id === id) return false;
+      return nomeCliente === nomeNormalizado;
+    });
+
+    if (clienteDuplicado) {
+      alert(`Já existe um cliente com o nome "${clienteDuplicado.nome || clienteDuplicado.team_name}". Por favor, escolha outro nome.`);
+      return;
+    }
+
     setSaving(true);
     try {
       const teamTypesArray = getTeamTypes();
+      const categoriaInfo = CATEGORIAS_PRODUTO.find(c => c.value === categoriaProduto);
       const clienteData = {
         nome: nome.trim(),
         team_name: nome.trim(),
         status,
+        categoria_produto: categoriaProduto,
+        usa_metricas_plataforma: categoriaInfo?.usaPlatforma || false,
         responsaveis,
         responsavel_email: responsaveis[0]?.email || '',
         responsavel_nome: responsaveis[0]?.nome || '',
@@ -371,6 +398,42 @@ export default function ClienteForm() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Categoria de Produto */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
+                  Categoria de Produto
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {CATEGORIAS_PRODUTO.map(cat => (
+                    <button
+                      key={cat.value}
+                      type="button"
+                      onClick={() => setCategoriaProduto(cat.value)}
+                      style={{
+                        padding: '8px 16px',
+                        background: categoriaProduto === cat.value ? 'rgba(139, 92, 246, 0.3)' : 'rgba(15, 10, 31, 0.6)',
+                        border: categoriaProduto === cat.value ? '2px solid #8b5cf6' : '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '20px',
+                        color: categoriaProduto === cat.value ? '#a78bfa' : '#94a3b8',
+                        fontSize: '13px',
+                        fontWeight: categoriaProduto === cat.value ? '600' : '400',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+                {categoriaProduto && (
+                  <p style={{ color: '#64748b', fontSize: '12px', marginTop: '8px' }}>
+                    {CATEGORIAS_PRODUTO.find(c => c.value === categoriaProduto)?.usaPlatforma
+                      ? '✓ Usa métricas da plataforma no Health Score'
+                      : '○ Não usa métricas da plataforma no Health Score'}
+                  </p>
+                )}
               </div>
 
               <div>

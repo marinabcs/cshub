@@ -317,9 +317,36 @@ export default function Clientes() {
           );
         })}
         {(searchTerm || filterHealthStatus !== 'todos' || filterType !== 'todos' || filterClienteStatus.length !== DEFAULT_VISIBLE_STATUS.length) && (
-          <span style={{ color: '#64748b', fontSize: '13px', marginLeft: '16px' }}>
-            {filteredClientes.length} de {clientes.length} clientes
-          </span>
+          <>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setFilterHealthStatus('todos');
+                setFilterType('todos');
+                setFilterClienteStatus(DEFAULT_VISIBLE_STATUS);
+              }}
+              style={{
+                padding: '6px 12px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '16px',
+                color: '#ef4444',
+                fontSize: '12px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                marginLeft: '8px'
+              }}
+            >
+              <X style={{ width: '12px', height: '12px' }} />
+              Limpar filtros
+            </button>
+            <span style={{ color: '#64748b', fontSize: '13px', marginLeft: '16px' }}>
+              {filteredClientes.length} de {clientes.length} clientes
+            </span>
+          </>
         )}
       </div>
 
@@ -492,7 +519,11 @@ export default function Clientes() {
                       </div>
                     </div>
                     <button
-                      onClick={() => { setShowOrphanModal(false); navigate('/clientes/novo'); }}
+                      onClick={() => {
+                        setShowOrphanModal(false);
+                        // Navegar para edição do cliente (quando existir) ou mostrar lista
+                        navigate(`/clientes?vincular_time=${time.id}&time_name=${encodeURIComponent(time.team_name)}`);
+                      }}
                       style={{
                         padding: '8px 16px',
                         background: 'rgba(139, 92, 246, 0.2)',
@@ -507,8 +538,8 @@ export default function Clientes() {
                         gap: '6px'
                       }}
                     >
-                      <Plus style={{ width: '14px', height: '14px' }} />
-                      Atribuir
+                      <Link style={{ width: '14px', height: '14px' }} />
+                      Vincular a Cliente
                     </button>
                   </div>
                 ))}

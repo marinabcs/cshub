@@ -33,6 +33,7 @@ export default function Alertas() {
   const [filtroPrioridades, setFiltroPrioridades] = useState([]);
   const [filtroStatus, setFiltroStatus] = useState(['pendente', 'em_andamento']);
   const [filtroResponsavel, setFiltroResponsavel] = useState('todos');
+  const [filtroTeamType, setFiltroTeamType] = useState('todos');
 
   // ClickUp Modal
   const [showClickUpModal, setShowClickUpModal] = useState(false);
@@ -55,13 +56,21 @@ export default function Alertas() {
   const { atualizarStatus, updating } = useAtualizarAlerta();
   const { verificarEGerarAlertas, verificando, resultados } = useVerificarAlertas();
 
-  // Responsáveis únicos
+  // Responsáveis únicos e tipos de time
   const responsaveis = [...new Set(alertas.map(a => a.responsavel_nome).filter(Boolean))].sort();
+  const teamTypes = [...new Set(alertas.map(a => a.team_type).filter(Boolean))].sort();
+
+  // Filtrar alertas por responsável e team_type (localmente)
+  const alertasFiltrados = alertas.filter(a => {
+    const matchResponsavel = filtroResponsavel === 'todos' || a.responsavel_nome === filtroResponsavel;
+    const matchTeamType = filtroTeamType === 'todos' || a.team_type === filtroTeamType;
+    return matchResponsavel && matchTeamType;
+  });
 
   // Contagens filtradas
-  const countPendentes = alertas.filter(a => a.status === 'pendente').length;
-  const countEmAndamento = alertas.filter(a => a.status === 'em_andamento').length;
-  const countResolvidosHoje = alertas.filter(a => {
+  const countPendentes = alertasFiltrados.filter(a => a.status === 'pendente').length;
+  const countEmAndamento = alertasFiltrados.filter(a => a.status === 'em_andamento').length;
+  const countResolvidosHoje = alertasFiltrados.filter(a => {
     if (a.status !== 'resolvido' || !a.resolved_at) return false;
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -107,6 +116,7 @@ export default function Alertas() {
     setFiltroPrioridades([]);
     setFiltroStatus(['pendente', 'em_andamento']);
     setFiltroResponsavel('todos');
+    setFiltroTeamType('todos');
   };
 
   // ClickUp functions
@@ -366,11 +376,61 @@ export default function Alertas() {
             })}
           </div>
         </div>
+
+        {/* Tipo de Time */}
+        <div>
+          <span style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', display: 'block' }}>Tipo de Time:</span>
+          <select
+            value={filtroTeamType}
+            onChange={(e) => setFiltroTeamType(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              background: 'rgba(30, 27, 75, 0.4)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '12px',
+              outline: 'none',
+              cursor: 'pointer',
+              minWidth: '140px'
+            }}
+          >
+            <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
+            {teamTypes.map(type => (
+              <option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Responsável */}
+        <div>
+          <span style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', display: 'block' }}>Responsável:</span>
+          <select
+            value={filtroResponsavel}
+            onChange={(e) => setFiltroResponsavel(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              background: 'rgba(30, 27, 75, 0.4)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '12px',
+              outline: 'none',
+              cursor: 'pointer',
+              minWidth: '140px'
+            }}
+          >
+            <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
+            {responsaveis.map(resp => (
+              <option key={resp} value={resp} style={{ background: '#1e1b4b' }}>{resp}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Lista de Alertas */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {alertas.length > 0 ? alertas.map(alerta => {
+        {alertasFiltrados.length > 0 ? alertasFiltrados.map(alerta => {
           const tipoInfo = getTipoInfo(alerta.tipo);
           const prioridadeInfo = getPrioridadeInfo(alerta.prioridade);
           const statusInfo = getStatusInfo(alerta.status);

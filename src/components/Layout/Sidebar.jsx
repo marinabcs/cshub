@@ -26,7 +26,7 @@ export default function Sidebar() {
   ];
 
   const configItems = [
-    { to: '/configuracoes', icon: Settings, label: 'Configurações' },
+    { to: '/configuracoes', icon: Settings, label: 'Configurações', exact: true },
     { to: '/configuracoes/usuarios', icon: UserCog, label: 'Usuários' },
     { to: '/configuracoes/auditoria', icon: History, label: 'Histórico' },
   ];
@@ -56,7 +56,8 @@ export default function Sidebar() {
       flexDirection: 'column',
       position: 'fixed',
       left: 0,
-      top: 0
+      top: 0,
+      overflow: 'hidden'
     }}>
       {/* Logo */}
       <div style={{
@@ -84,7 +85,7 @@ export default function Sidebar() {
       </div>
 
       {/* Menu Principal */}
-      <div style={{ flex: 1, padding: '20px 12px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, padding: '20px 12px', display: 'flex', flexDirection: 'column', overflowY: 'auto', overflowX: 'hidden' }}>
         <div style={{ marginBottom: '24px' }}>
           <span style={{
             display: 'block',
@@ -141,7 +142,12 @@ export default function Sidebar() {
           }}>Configurações</span>
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {configItems.map((item) => (
-              <NavLink key={item.to} to={item.to} style={({ isActive }) => linkStyle(isActive)}>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.exact}
+                style={({ isActive }) => linkStyle(isActive)}
+              >
                 <item.icon style={{ width: '20px', height: '20px' }} />
                 {item.label}
               </NavLink>
@@ -150,11 +156,12 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Usuário */}
+      {/* Usuário - Fixo no final */}
       <div style={{
         padding: '16px',
         borderTop: '1px solid rgba(139, 92, 246, 0.1)',
-        background: 'rgba(15, 10, 31, 0.5)'
+        background: 'rgba(15, 10, 31, 0.95)',
+        flexShrink: 0
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

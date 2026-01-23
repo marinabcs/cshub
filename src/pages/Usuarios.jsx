@@ -2,8 +2,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { db, auth } from '../services/firebase';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, signInWithEmailAndPassword } from 'firebase/auth';
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { db, auth, firebaseConfig } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import {
   ArrowLeft, Users, Plus, Pencil, Trash2, Key, Shield, ShieldCheck, Eye, X,
@@ -189,9 +191,18 @@ export default function Usuarios() {
           return;
         }
 
-        // Create user in Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.senha);
+        // Create a secondary Firebase app instance for user creation
+        // This prevents the current admin from being signed out
+        const secondaryApp = initializeApp(firebaseConfig, 'secondary');
+        const secondaryAuth = getAuth(secondaryApp);
+
+        // Create user in Firebase Auth using secondary app
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, formData.email, formData.senha);
         const newUid = userCredential.user.uid;
+
+        // Sign out from secondary auth and delete the secondary app
+        await signOut(secondaryAuth);
+        await secondaryApp.delete();
 
         // Create user document in Firestore
         await setDoc(doc(db, 'usuarios_sistema', newUid), {

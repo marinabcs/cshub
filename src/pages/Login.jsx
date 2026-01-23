@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { Users, BarChart3, Bell, MessageSquare, LogIn, Eye, EyeOff } from 'lucide-react';
+import { Users, BarChart3, Bell, MessageSquare, LogIn, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -10,11 +10,22 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validar domínio @trakto.io
+    if (!email.toLowerCase().endsWith('@trakto.io')) {
+      setError('Apenas emails @trakto.io podem acessar o sistema');
+      return;
+    }
+
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
@@ -23,6 +34,31 @@ export default function Login() {
       setError('Email ou senha inválidos');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    if (!forgotEmail) {
+      setError('Digite seu email');
+      return;
+    }
+
+    if (!forgotEmail.toLowerCase().endsWith('@trakto.io')) {
+      setError('Apenas emails @trakto.io podem recuperar senha');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, forgotEmail);
+      setForgotSuccess(true);
+    } catch (err) {
+      setError('Erro ao enviar email. Verifique o endereço e tente novamente.');
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -149,7 +185,7 @@ export default function Login() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="seu@email.trakto.io"
+                  placeholder="seuemail@trakto.io"
                   required
                   style={{
                     width: '100%',
@@ -250,7 +286,16 @@ export default function Login() {
             </form>
 
             <div style={{ textAlign: 'center', marginTop: '24px' }}>
-              <button style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgotPassword(true);
+                  setForgotEmail(email);
+                  setForgotSuccess(false);
+                  setError('');
+                }}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}
+              >
                 Esqueci minha senha
               </button>
             </div>
@@ -261,6 +306,165 @@ export default function Login() {
           </div>
         </div>
       </div>
+
+      {/* Modal Esqueci minha senha */}
+      {showForgotPassword && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'rgba(30, 27, 75, 0.95)',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '20px',
+            padding: '32px',
+            width: '100%',
+            maxWidth: '400px'
+          }}>
+            {forgotSuccess ? (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  background: 'rgba(16, 185, 129, 0.2)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 20px'
+                }}>
+                  <MessageSquare style={{ width: '32px', height: '32px', color: '#10b981' }} />
+                </div>
+                <h3 style={{ color: 'white', fontSize: '20px', fontWeight: '600', margin: '0 0 12px 0' }}>
+                  Email enviado!
+                </h3>
+                <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 24px 0' }}>
+                  Verifique sua caixa de entrada em <strong style={{ color: 'white' }}>{forgotEmail}</strong> para redefinir sua senha.
+                </p>
+                <button
+                  onClick={() => setShowForgotPassword(false)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 20px',
+                    background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                    border: 'none',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Voltar ao Login
+                </button>
+              </div>
+            ) : (
+              <>
+                <h3 style={{ color: 'white', fontSize: '20px', fontWeight: '600', margin: '0 0 8px 0' }}>
+                  Esqueceu sua senha?
+                </h3>
+                <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 24px 0' }}>
+                  Digite seu email @trakto.io e enviaremos um link para redefinir sua senha.
+                </p>
+
+                <form onSubmit={handleForgotPassword}>
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', color: '#e2e8f0', fontSize: '14px', marginBottom: '8px' }}>E-mail</label>
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="seuemail@trakto.io"
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        background: '#0f0a1f',
+                        border: '1px solid #3730a3',
+                        borderRadius: '12px',
+                        color: 'white',
+                        fontSize: '14px',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {error && (
+                    <div style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: '12px',
+                      padding: '12px 16px',
+                      color: '#f87171',
+                      fontSize: '14px',
+                      marginBottom: '20px'
+                    }}>
+                      {error}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForgotPassword(false);
+                        setError('');
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '12px 20px',
+                        background: 'rgba(100, 116, 139, 0.1)',
+                        border: '1px solid rgba(100, 116, 139, 0.3)',
+                        borderRadius: '12px',
+                        color: '#94a3b8',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      style={{
+                        flex: 1,
+                        padding: '12px 20px',
+                        background: forgotLoading ? 'rgba(139, 92, 246, 0.5)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                        border: 'none',
+                        borderRadius: '12px',
+                        color: 'white',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        cursor: forgotLoading ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      {forgotLoading ? (
+                        <>
+                          <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                          Enviando...
+                        </>
+                      ) : 'Enviar Email'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
