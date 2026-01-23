@@ -58,9 +58,19 @@ service cloud.firestore {
       allow read, write: if isTraktoUser();
     }
 
-    // Times com subcollection threads
+    // Times com subcollections
     match /times/{timeId} {
       allow read, write: if isTraktoUser();
+
+      // Usuarios do time (métricas de uso da plataforma)
+      match /usuarios/{userId} {
+        allow read, write: if isTraktoUser();
+
+        // Histórico diário do usuário
+        match /historico/{data} {
+          allow read, write: if isTraktoUser();
+        }
+      }
 
       // Threads dentro de times
       match /threads/{threadId} {
