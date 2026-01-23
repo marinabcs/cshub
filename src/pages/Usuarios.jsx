@@ -144,6 +144,14 @@ export default function Usuarios() {
     return currentUserRole === 'admin' || currentUserRole === 'super_admin' || currentUserRole === 'gestor' || user?.email === SUPER_ADMIN_EMAIL;
   };
 
+  // Extrair iniciais do nome (ex: "Marina Barros" → "MB")
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  };
+
   const canDeleteUser = (targetUser) => {
     if (targetUser.email === SUPER_ADMIN_EMAIL) return false;
     if (targetUser.role === 'super_admin') return false;
@@ -576,10 +584,10 @@ export default function Usuarios() {
                           alignItems: 'center',
                           justifyContent: 'center',
                           color: 'white',
-                          fontSize: '16px',
+                          fontSize: '14px',
                           fontWeight: '600'
                         }}>
-                          {(usuario.nome || 'U').charAt(0).toUpperCase()}
+                          {getInitials(usuario.nome)}
                         </div>
                         <div>
                           <p style={{ color: isAtivo ? 'white' : '#64748b', fontSize: '14px', fontWeight: '500', margin: 0 }}>{usuario.nome || '-'}</p>

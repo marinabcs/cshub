@@ -11,6 +11,14 @@ import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoI
 import PlaybooksSection from '../components/Cliente/PlaybooksSection';
 import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
 
+// Extrair iniciais do nome (ex: "Marina Barros" → "MB")
+const getInitials = (name) => {
+  if (!name) return 'U';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+};
+
 export default function ClienteDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -725,10 +733,10 @@ export default function ClienteDetalhe() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             color: 'white',
-                            fontSize: '12px',
+                            fontSize: '11px',
                             fontWeight: '600'
                           }}>
-                            {(user.nome || user.name || 'U').charAt(0).toUpperCase()}
+                            {getInitials(user.nome || user.name)}
                           </div>
                           <span style={{ color: user.deleted_at ? '#64748b' : 'white', fontSize: '14px', fontWeight: '500' }}>
                             {user.nome || user.name || '-'}

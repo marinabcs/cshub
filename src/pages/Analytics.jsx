@@ -46,6 +46,14 @@ const STATUS_CLIENTE_COLORS = {
   cancelado: '#EF4444'
 };
 
+// Extrair iniciais do nome (ex: "Marina Barros" → "MB")
+const getInitials = (name) => {
+  if (!name) return 'U';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+};
+
 export default function Analytics() {
   const navigate = useNavigate();
   const [clientes, setClientes] = useState([]);
@@ -846,8 +854,8 @@ export default function Analytics() {
                 <tr key={resp.nome} style={{ background: index % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
                   <td style={{ padding: '14px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '600', fontSize: '13px' }}>
-                        {resp.nome.charAt(0).toUpperCase()}
+                      <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '600', fontSize: '12px' }}>
+                        {getInitials(resp.nome)}
                       </div>
                       <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>{resp.nome}</span>
                     </div>
