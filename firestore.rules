@@ -1,107 +1,94 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Função para verificar se é admin ou super_admin
-    function isAdmin() {
+    // Função para verificar se é usuário Trakto autenticado
+    function isTraktoUser() {
       return request.auth != null &&
-        (get(/databases/$(database)/documents/usuarios_sistema/$(request.auth.uid)).data.role in ['admin', 'super_admin'] ||
-         request.auth.token.email == 'marina@trakto.io');
+             request.auth.token.email.matches('.*@trakto[.]io$');
     }
 
-    // Função para verificar se o usuário está autenticado
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    // Função para verificar se é o super admin principal
-    function isSuperAdmin() {
-      return request.auth != null && request.auth.token.email == 'marina@trakto.io';
-    }
-
-    // Função para verificar se é usuário ativo do sistema
-    function isActiveUser() {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/usuarios_sistema/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/usuarios_sistema/$(request.auth.uid)).data.ativo == true;
-    }
-
-    // usuarios_sistema - Usuários do sistema (admins, CS, etc)
+    // Usuários do Sistema (admins, CS, gestores)
     match /usuarios_sistema/{userId} {
-      // Qualquer usuário autenticado pode ler (para verificar permissões)
-      allow read: if isAuthenticated();
-
-      // Apenas admins podem criar/editar/deletar
-      // OU o super admin pode criar seu próprio registro
-      allow create: if isAdmin() || (isSuperAdmin() && userId == request.auth.uid);
-      allow update: if isAdmin();
-      allow delete: if isAdmin() && !isSuperAdmin(); // Não pode deletar super admin
+      allow read, write: if isTraktoUser();
     }
 
-    // clientes - Dados dos clientes
-    match /clientes/{clienteId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isActiveUser();
+    // Usuários (collection original - mantida para compatibilidade)
+    match /usuarios/{userId} {
+      allow read, write: if isTraktoUser();
+    }
 
-      // Subcoleções do cliente
-      match /{subcollection}/{docId} {
-        allow read, write: if isAuthenticated();
+    // Clientes e subcollections
+    match /clientes/{clienteId} {
+      allow read, write: if isTraktoUser();
+
+      // Threads
+      match /threads/{threadId} {
+        allow read, write: if isTraktoUser();
+
+        // Mensagens
+        match /mensagens/{mensagemId} {
+          allow read, write: if isTraktoUser();
+        }
+      }
+
+      // Histórico de Health Score
+      match /health_history/{historyId} {
+        allow read, write: if isTraktoUser();
+      }
+
+      // Uso da Plataforma
+      match /uso_plataforma/{periodoId} {
+        allow read, write: if isTraktoUser();
+      }
+
+      // Playbooks ativos do cliente
+      match /playbooks_ativos/{playbookAtivoId} {
+        allow read, write: if isTraktoUser();
       }
     }
 
-    // times - Times/equipes vinculados aos clientes
+    // Configurações do sistema
+    match /config/{configId} {
+      allow read, write: if isTraktoUser();
+    }
+
+    // Alertas
+    match /alertas/{alertaId} {
+      allow read, write: if isTraktoUser();
+    }
+
+    // Times com subcollection threads
     match /times/{timeId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isActiveUser();
+      allow read, write: if isTraktoUser();
 
-      // Subcoleções do time (threads, mensagens, etc)
-      match /{subcollection}/{docId} {
-        allow read, write: if isAuthenticated();
+      // Threads dentro de times
+      match /threads/{threadId} {
+        allow read, write: if isTraktoUser();
 
-        // Mensagens dentro das threads
-        match /{subsubcollection}/{subDocId} {
-          allow read, write: if isAuthenticated();
+        // Mensagens dentro de threads
+        match /mensagens/{mensagemId} {
+          allow read, write: if isTraktoUser();
         }
       }
     }
 
-    // alertas - Sistema de alertas
-    match /alertas/{alertaId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAdmin();
+    // Usuarios Lookup
+    match /usuarios_lookup/{docId} {
+      allow read, write: if isTraktoUser();
     }
 
-    // audit_logs - Logs de auditoria
-    match /audit_logs/{logId} {
-      allow read: if isAdmin();
-      allow create: if isAuthenticated(); // Qualquer usuário autenticado pode criar logs
-      allow update, delete: if false; // Logs são imutáveis
-    }
-
-    // playbooks - Playbooks de clientes
+    // Playbooks (templates)
     match /playbooks/{playbookId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read, write: if isTraktoUser();
     }
 
-    // usuarios_lookup - Lookup de usuários da plataforma (não do sistema)
-    match /usuarios_lookup/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // configuracoes - Configurações do sistema
-    match /configuracoes/{configId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // Regra padrão - negar tudo que não foi especificado
-    match /{document=**} {
-      allow read, write: if false;
+    // Logs de Auditoria
+    match /audit_logs/{logId} {
+      allow read: if isTraktoUser();
+      allow create: if isTraktoUser();
+      // Logs são imutáveis - não permite update/delete
+      allow update, delete: if false;
     }
   }
 }
