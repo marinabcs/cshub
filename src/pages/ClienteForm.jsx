@@ -22,16 +22,8 @@ const CATEGORIAS_PRODUTO = [
   { value: 'whitelabel', label: 'Whitelabel', usaPlatforma: false },
   { value: 'b2c', label: 'B2C', usaPlatforma: false },
   { value: 'bot', label: 'Bot', usaPlatforma: false },
-  { value: 'servico_criativo', label: 'Serviço Criativo', usaPlatforma: false }
-];
-
-const RESPONSAVEIS_LISTA = [
-  { email: 'cesar@trakto.io', nome: 'Cesar' },
-  { email: 'natalia@trakto.io', nome: 'Natália' },
-  { email: 'valeria@trakto.io', nome: 'Valéria' },
-  { email: 'training@trakto.io', nome: 'Training' },
-  { email: 'gabrielaguiar@trakto.io', nome: 'Gabriel Aguiar' },
-  { email: 'evelyn@trakto.io', nome: 'Evelyn' }
+  { value: 'servico_criativo', label: 'Serviço Criativo', usaPlatforma: false },
+  { value: 'integracao', label: 'Integração', usaPlatforma: false }
 ];
 
 const TIPOS_REUNIAO = ['Kickoff', 'Review', 'Suporte', 'Treinamento', 'QBR'];
@@ -46,11 +38,12 @@ export default function ClienteForm() {
   const [saving, setSaving] = useState(false);
   const [times, setTimes] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [usuariosSistema, setUsuariosSistema] = useState([]);
 
   // Form state
   const [nome, setNome] = useState('');
   const [status, setStatus] = useState(DEFAULT_STATUS);
-  const [categoriaProduto, setCategoriaProduto] = useState('studio');
+  const [categoriasProduto, setCategoriasProduto] = useState(['studio']);
   const [responsaveis, setResponsaveis] = useState([]);
   const [tags, setTags] = useState([]);
   const [timesSelecionados, setTimesSelecionados] = useState([]);
@@ -85,6 +78,14 @@ export default function ClienteForm() {
         const clientesData = clientesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setClientes(clientesData);
 
+        // Fetch system users for responsaveis list
+        const usuariosSnap = await getDocs(collection(db, 'usuarios_sistema'));
+        const usuariosData = usuariosSnap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(u => u.ativo !== false) // Only active users
+          .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+        setUsuariosSistema(usuariosData);
+
         // If editing, fetch client data
         if (isEditing) {
           const clienteDoc = await getDoc(doc(db, 'clientes', id));
@@ -92,7 +93,9 @@ export default function ClienteForm() {
             const data = clienteDoc.data();
             setNome(data.nome || data.team_name || '');
             setStatus(data.status || DEFAULT_STATUS);
-            setCategoriaProduto(data.categoria_produto || 'studio');
+            // Handle both old single value and new array format
+            const produtosData = data.categorias_produto || (data.categoria_produto ? [data.categoria_produto] : ['studio']);
+            setCategoriasProduto(Array.isArray(produtosData) ? produtosData : [produtosData]);
             setResponsaveis(data.responsaveis || (data.responsavel_email ? [{ email: data.responsavel_email, nome: data.responsavel_nome }] : []));
             setTags(data.tags || []);
             setTimesSelecionados(data.times || []);
@@ -173,6 +176,17 @@ export default function ClienteForm() {
     );
   };
 
+  const toggleCategoriaProduto = (categoria) => {
+    setCategoriasProduto(prev => {
+      if (prev.includes(categoria)) {
+        // Don't allow removing last category
+        if (prev.length === 1) return prev;
+        return prev.filter(c => c !== categoria);
+      }
+      return [...prev, categoria];
+    });
+  };
+
   const toggleResponsavel = (resp) => {
     setResponsaveis(prev => {
       const exists = prev.find(r => r.email === resp.email);
@@ -244,13 +258,18 @@ export default function ClienteForm() {
     setSaving(true);
     try {
       const teamTypesArray = getTeamTypes();
-      const categoriaInfo = CATEGORIAS_PRODUTO.find(c => c.value === categoriaProduto);
+      // Check if any selected product uses platform metrics
+      const usaPlataforma = categoriasProduto.some(cat => {
+        const catInfo = CATEGORIAS_PRODUTO.find(c => c.value === cat);
+        return catInfo?.usaPlatforma || false;
+      });
       const clienteData = {
         nome: nome.trim(),
         team_name: nome.trim(),
         status,
-        categoria_produto: categoriaProduto,
-        usa_metricas_plataforma: categoriaInfo?.usaPlatforma || false,
+        categorias_produto: categoriasProduto,
+        categoria_produto: categoriasProduto[0], // Keep for backwards compatibility
+        usa_metricas_plataforma: usaPlataforma,
         responsaveis,
         responsavel_email: responsaveis[0]?.email || '',
         responsavel_nome: responsaveis[0]?.nome || '',
@@ -413,36 +432,45 @@ export default function ClienteForm() {
                 </div>
               </div>
 
-              {/* Categoria de Produto */}
+              {/* Categorias de Produto (múltipla seleção) */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
-                  Categoria de Produto
+                  Categorias de Produto
+                  {categoriasProduto.length > 0 && (
+                    <span style={{ marginLeft: '8px', padding: '2px 8px', background: 'rgba(124, 58, 237, 0.3)', borderRadius: '10px', fontSize: '11px', color: '#a78bfa' }}>
+                      {categoriasProduto.length}
+                    </span>
+                  )}
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {CATEGORIAS_PRODUTO.map(cat => (
-                    <button
-                      key={cat.value}
-                      type="button"
-                      onClick={() => setCategoriaProduto(cat.value)}
-                      style={{
-                        padding: '8px 16px',
-                        background: categoriaProduto === cat.value ? 'rgba(139, 92, 246, 0.3)' : 'rgba(15, 10, 31, 0.6)',
-                        border: categoriaProduto === cat.value ? '2px solid #8b5cf6' : '1px solid rgba(139, 92, 246, 0.3)',
-                        borderRadius: '20px',
-                        color: categoriaProduto === cat.value ? '#a78bfa' : '#94a3b8',
-                        fontSize: '13px',
-                        fontWeight: categoriaProduto === cat.value ? '600' : '400',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
+                  {CATEGORIAS_PRODUTO.map(cat => {
+                    const isSelected = categoriasProduto.includes(cat.value);
+                    return (
+                      <button
+                        key={cat.value}
+                        type="button"
+                        onClick={() => toggleCategoriaProduto(cat.value)}
+                        style={{
+                          padding: '8px 16px',
+                          background: isSelected ? 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' : 'rgba(15, 10, 31, 0.6)',
+                          border: isSelected ? 'none' : '1px solid rgba(139, 92, 246, 0.3)',
+                          borderRadius: '20px',
+                          color: 'white',
+                          fontSize: '13px',
+                          fontWeight: isSelected ? '600' : '400',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {isSelected && <Check style={{ width: '14px', height: '14px', marginRight: '6px', display: 'inline', verticalAlign: 'middle' }} />}
+                        {cat.label}
+                      </button>
+                    );
+                  })}
                 </div>
-                {categoriaProduto && (
+                {categoriasProduto.length > 0 && (
                   <p style={{ color: '#64748b', fontSize: '12px', marginTop: '8px' }}>
-                    {CATEGORIAS_PRODUTO.find(c => c.value === categoriaProduto)?.usaPlatforma
+                    {categoriasProduto.some(cat => CATEGORIAS_PRODUTO.find(c => c.value === cat)?.usaPlatforma)
                       ? '✓ Usa métricas da plataforma no Health Score'
                       : '○ Não usa métricas da plataforma no Health Score'}
                   </p>
@@ -476,31 +504,37 @@ export default function ClienteForm() {
                   </span>
                 )}
               </h2>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {RESPONSAVEIS_LISTA.map(resp => {
-                  const isSelected = responsaveis.some(r => r.email === resp.email);
-                  return (
-                    <button
-                      key={resp.email}
-                      type="button"
-                      onClick={() => toggleResponsavel(resp)}
-                      style={{
-                        padding: '8px 16px',
-                        background: isSelected ? 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' : 'rgba(15, 10, 31, 0.6)',
-                        border: isSelected ? 'none' : '1px solid rgba(139, 92, 246, 0.3)',
-                        borderRadius: '20px',
-                        color: 'white',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      {isSelected && <Check style={{ width: '14px', height: '14px', marginRight: '6px', display: 'inline', verticalAlign: 'middle' }} />}
-                      {resp.nome}
-                    </button>
-                  );
-                })}
-              </div>
+              {usuariosSistema.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {usuariosSistema.map(usuario => {
+                    const isSelected = responsaveis.some(r => r.email === usuario.email);
+                    return (
+                      <button
+                        key={usuario.email}
+                        type="button"
+                        onClick={() => toggleResponsavel({ email: usuario.email, nome: usuario.nome })}
+                        style={{
+                          padding: '8px 16px',
+                          background: isSelected ? 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' : 'rgba(15, 10, 31, 0.6)',
+                          border: isSelected ? 'none' : '1px solid rgba(139, 92, 246, 0.3)',
+                          borderRadius: '20px',
+                          color: 'white',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {isSelected && <Check style={{ width: '14px', height: '14px', marginRight: '6px', display: 'inline', verticalAlign: 'middle' }} />}
+                        {usuario.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '16px' }}>
+                  Nenhum usuário cadastrado no sistema. Cadastre usuários em Configurações → Usuários.
+                </p>
+              )}
             </div>
 
             {/* Tags de Contexto */}
