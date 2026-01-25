@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, Timestamp, query, where, documentId } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { calcularHealthScore, formatHealthHistoryDate } from '../utils/healthScore';
 
@@ -95,13 +95,16 @@ export function useHealthScore(clienteId) {
           totalUsers += usuariosSnap.docs.length;
 
           // For each usuario, get their historico from last 30 days
-          // Note: The document ID IS the date (e.g., "2026-01-21"), so we use documentId() for filtering
+          // Note: The document ID IS the date (e.g., "2026-01-21"), so we filter by doc.id
           for (const userDoc of usuariosSnap.docs) {
             const userId = userDoc.id;
             const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
-            const historicoQuery = query(historicoRef, where(documentId(), '>=', minDate));
-            const historicoSnap = await getDocs(historicoQuery);
-            allHistorico.push(...historicoSnap.docs.map(doc => doc.data()));
+            const historicoSnap = await getDocs(historicoRef);
+            // Filter by doc.id (the date) and include id in the mapped data
+            const filteredDocs = historicoSnap.docs
+              .filter(doc => doc.id >= minDate)
+              .map(doc => ({ id: doc.id, ...doc.data() }));
+            allHistorico.push(...filteredDocs);
           }
         } catch (err) {
           console.error(`Error fetching usage for team ${teamId}:`, err);
@@ -321,12 +324,15 @@ export function useCalcularTodosHealthScores() {
               const usuariosSnap = await getDocs(usuariosRef);
               totalUsers += usuariosSnap.docs.length;
 
-              // Note: The document ID IS the date (e.g., "2026-01-21"), so we use documentId() for filtering
+              // Note: The document ID IS the date (e.g., "2026-01-21"), so we filter by doc.id
               for (const userDoc of usuariosSnap.docs) {
                 const historicoRef = collection(db, 'times', teamId, 'usuarios', userDoc.id, 'historico');
-                const historicoQuery = query(historicoRef, where(documentId(), '>=', minDate));
-                const historicoSnap = await getDocs(historicoQuery);
-                allHistorico.push(...historicoSnap.docs.map(d => d.data()));
+                const historicoSnap = await getDocs(historicoRef);
+                // Filter by doc.id (the date) and include id in the mapped data
+                const filteredDocs = historicoSnap.docs
+                  .filter(d => d.id >= minDate)
+                  .map(d => ({ id: d.id, ...d.data() }));
+                allHistorico.push(...filteredDocs);
               }
             } catch (e) {
               // Ignore errors for individual teams
