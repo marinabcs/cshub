@@ -534,6 +534,7 @@ export default function DebugFirestore() {
     setUsageSeedLoading(true);
     setUsageSeedResults(null);
     const results = {
+      clientes: 0,
       teams: 0,
       usuarios: 0,
       historico: 0,
@@ -543,40 +544,57 @@ export default function DebugFirestore() {
     try {
       console.log('[seedUsageData] Iniciando...');
 
-      // Get all teams
-      const timesSnap = await getDocs(collection(db, 'times'));
-      results.teams = timesSnap.size;
-      console.log(`[seedUsageData] ${timesSnap.size} times encontrados`);
+      // Get all clientes first (they have the team_ids)
+      const clientesSnap = await getDocs(collection(db, 'clientes'));
+      results.clientes = clientesSnap.size;
+      console.log(`[seedUsageData] ${clientesSnap.size} clientes encontrados`);
 
-      if (timesSnap.size === 0) {
-        console.log('[seedUsageData] Nenhum time encontrado. Execute "Popular Dados de Teste" primeiro.');
+      if (clientesSnap.size === 0) {
+        console.log('[seedUsageData] Nenhum cliente encontrado.');
         setUsageSeedResults({
           ...results,
-          warning: 'Nenhum time encontrado. Execute "Popular Dados de Teste" primeiro.'
+          warning: 'Nenhum cliente encontrado na base de dados.'
         });
         setUsageSeedLoading(false);
         return;
       }
 
+      // Collect all unique team_ids from clientes
+      const allTeamIds = new Set();
+      clientesSnap.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        const teamIds = data.times || data.team_ids || [];
+        teamIds.forEach(tid => allTeamIds.add(tid));
+      });
+
+      console.log(`[seedUsageData] ${allTeamIds.size} times únicos encontrados nos clientes`);
+
+      if (allTeamIds.size === 0) {
+        console.log('[seedUsageData] Nenhum time vinculado aos clientes.');
+        setUsageSeedResults({
+          ...results,
+          warning: 'Nenhum time vinculado aos clientes. Vincule times aos clientes primeiro.'
+        });
+        setUsageSeedLoading(false);
+        return;
+      }
+
+      results.teams = allTeamIds.size;
       const dates = generateLast30Days();
       console.log(`[seedUsageData] Gerando dados para ${dates.length} dias`);
 
-      for (const teamDoc of timesSnap.docs) {
-        const teamId = teamDoc.id;
+      for (const teamId of allTeamIds) {
         console.log(`[seedUsageData] Processando time: ${teamId}`);
 
-        // Get usuarios_lookup for this team
-        const usuariosQuery = query(collection(db, 'usuarios_lookup'), where('team_id', '==', teamId));
-        const usuariosSnap = await getDocs(usuariosQuery);
-
-        // Also check times/{teamId}/usuarios subcollection
+        // Check if usuarios already exist in times/{teamId}/usuarios
+        const usuariosRef = collection(db, 'times', teamId, 'usuarios');
+        const usuariosSnap = await getDocs(usuariosRef);
         let usuarios = usuariosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        console.log(`[seedUsageData] ${usuarios.length} usuários encontrados para ${teamId}`);
+        console.log(`[seedUsageData] ${usuarios.length} usuários existentes para ${teamId}`);
 
-        // If no usuarios in lookup, create some default ones for this team
+        // If no usuarios exist, create a default one for this team
         if (usuarios.length === 0) {
-          // Create a default usuario for this team
-          const defaultUserId = `user_${teamId}`;
+          const defaultUserId = `user_${teamId}_default`;
           console.log(`[seedUsageData] Criando usuário padrão: ${defaultUserId}`);
           try {
             await setDoc(doc(db, 'times', teamId, 'usuarios', defaultUserId), {
@@ -598,21 +616,7 @@ export default function DebugFirestore() {
         // For each usuario, create historico data for last 30 days
         for (const usuario of usuarios) {
           const userId = usuario.user_id || usuario.id;
-          console.log(`[seedUsageData] Processando usuário: ${userId}`);
-
-          // Ensure usuario exists in times/{teamId}/usuarios/{userId}
-          try {
-            await setDoc(doc(db, 'times', teamId, 'usuarios', userId), {
-              user_id: userId,
-              team_id: teamId,
-              nome: usuario.nome || usuario.name || 'Usuário',
-              email: usuario.email || null,
-              created_at: Timestamp.now()
-            }, { merge: true });
-          } catch (e) {
-            console.error(`[seedUsageData] Erro ao criar/atualizar usuário:`, e);
-            // Continue anyway
-          }
+          console.log(`[seedUsageData] Criando histórico para usuário: ${userId}`);
 
           // Create historico for each date
           for (const dateStr of dates) {
@@ -1203,13 +1207,13 @@ export default function DebugFirestore() {
         </div>
 
         <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '16px' }}>
-          Cria dados de métricas de uso para os últimos 30 dias para todos os times e usuários.
+          Cria dados de métricas de uso para os últimos 30 dias baseado nos clientes existentes.
+          <br />
+          <span style={{ color: 'white' }}>• Fonte:</span> Clientes cadastrados → array "times" de cada cliente
           <br />
           <span style={{ color: 'white' }}>• Estrutura:</span> times/{'{teamId}'}/usuarios/{'{userId}'}/historico/{'{YYYY-MM-DD}'}
           <br />
           <span style={{ color: 'white' }}>• Métricas:</span> logins, pecas_criadas, downloads, uso_ai_total
-          <br />
-          <span style={{ color: '#64748b' }}>Importante: Execute primeiro "Popular Dados de Teste" para criar os times</span>
         </p>
 
         {!usageSeedResults && (
@@ -1284,6 +1288,19 @@ export default function DebugFirestore() {
             </div>
 
             <div style={{ marginBottom: '16px' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: 'rgba(15, 10, 31, 0.4)',
+                borderRadius: '8px',
+                marginBottom: '8px'
+              }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>Clientes na base</span>
+                <span style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '500' }}>
+                  {usageSeedResults.clientes}
+                </span>
+              </div>
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
