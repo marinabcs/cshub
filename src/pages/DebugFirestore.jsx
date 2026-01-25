@@ -9,6 +9,27 @@ import { STATUS_OPTIONS, getStatusColor, getStatusLabel, DEFAULT_STATUS } from '
 
 const COLLECTIONS_TO_CLEAN = ['usuarios_lookup', 'times', 'clientes', 'usuarios'];
 
+// Gerar datas dos últimos 30 dias (formato YYYY-MM-DD)
+const generateLast30Days = () => {
+  const dates = [];
+  for (let i = 0; i < 30; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    dates.push(date.toISOString().split('T')[0]);
+  }
+  return dates;
+};
+
+// Gerar dados de uso aleatórios realistas
+const generateUsageData = (baseMultiplier = 1) => {
+  return {
+    logins: Math.floor(Math.random() * 50 * baseMultiplier) + 5,
+    pecas_criadas: Math.floor(Math.random() * 30 * baseMultiplier) + 2,
+    downloads: Math.floor(Math.random() * 20 * baseMultiplier) + 1,
+    uso_ai_total: Math.floor(Math.random() * 40 * baseMultiplier) + 3
+  };
+};
+
 // Dados de teste para popular o Firebase
 const TEST_DATA = {
   times: [
@@ -196,6 +217,10 @@ export default function DebugFirestore() {
   // Status update state
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [statusResults, setStatusResults] = useState(null);
+
+  // Usage data seed state
+  const [usageSeedLoading, setUsageSeedLoading] = useState(false);
+  const [usageSeedResults, setUsageSeedResults] = useState(null);
 
   // Find and delete old clients (created before today)
   const findOldClients = async () => {
@@ -503,6 +528,96 @@ export default function DebugFirestore() {
   };
 
   const allBackupsReady = COLLECTIONS_TO_CLEAN.every(c => backupComplete[c]);
+
+  // Seed usage data for all teams/usuarios
+  const seedUsageData = async () => {
+    setUsageSeedLoading(true);
+    setUsageSeedResults(null);
+    const results = {
+      teams: 0,
+      usuarios: 0,
+      historico: 0,
+      errors: []
+    };
+
+    try {
+      // Get all teams
+      const timesSnap = await getDocs(collection(db, 'times'));
+      results.teams = timesSnap.size;
+
+      const dates = generateLast30Days();
+
+      for (const teamDoc of timesSnap.docs) {
+        const teamId = teamDoc.id;
+
+        // Get usuarios_lookup for this team
+        const usuariosQuery = query(collection(db, 'usuarios_lookup'), where('team_id', '==', teamId));
+        const usuariosSnap = await getDocs(usuariosQuery);
+
+        // Also check times/{teamId}/usuarios subcollection
+        let usuarios = usuariosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // If no usuarios in lookup, create some default ones for this team
+        if (usuarios.length === 0) {
+          // Create a default usuario for this team
+          const defaultUserId = `user_${teamId}`;
+          try {
+            await setDoc(doc(db, 'times', teamId, 'usuarios', defaultUserId), {
+              user_id: defaultUserId,
+              team_id: teamId,
+              nome: 'Usuário Padrão',
+              created_at: Timestamp.now()
+            });
+            usuarios = [{ id: defaultUserId }];
+          } catch (e) {
+            results.errors.push({ team: teamId, error: e.message });
+            continue;
+          }
+        }
+
+        results.usuarios += usuarios.length;
+
+        // For each usuario, create historico data for last 30 days
+        for (const usuario of usuarios) {
+          const userId = usuario.user_id || usuario.id;
+
+          // Ensure usuario exists in times/{teamId}/usuarios/{userId}
+          try {
+            await setDoc(doc(db, 'times', teamId, 'usuarios', userId), {
+              user_id: userId,
+              team_id: teamId,
+              nome: usuario.nome || usuario.name || 'Usuário',
+              email: usuario.email || null,
+              created_at: Timestamp.now()
+            }, { merge: true });
+          } catch (e) {
+            // Continue anyway
+          }
+
+          // Create historico for each date
+          for (const dateStr of dates) {
+            try {
+              const usageData = generateUsageData(1);
+              await setDoc(doc(db, 'times', teamId, 'usuarios', userId, 'historico', dateStr), {
+                ...usageData,
+                date: dateStr,
+                updated_at: Timestamp.now()
+              });
+              results.historico++;
+            } catch (e) {
+              results.errors.push({ team: teamId, user: userId, date: dateStr, error: e.message });
+            }
+          }
+        }
+      }
+
+      setUsageSeedResults(results);
+    } catch (e) {
+      setUsageSeedResults({ error: e.message });
+    }
+
+    setUsageSeedLoading(false);
+  };
 
   // Update all clients to have status "ativo"
   const updateAllClientesStatus = async () => {
@@ -1046,6 +1161,169 @@ export default function DebugFirestore() {
             border: '1px solid rgba(239, 68, 68, 0.3)'
           }}>
             <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {seedResults.error}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Seed Usage Data Section */}
+      <div style={{
+        background: 'rgba(6, 182, 212, 0.05)',
+        border: '1px solid rgba(6, 182, 212, 0.2)',
+        borderRadius: '20px',
+        padding: '24px',
+        marginBottom: '32px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <Activity style={{ width: '24px', height: '24px', color: '#06b6d4' }} />
+          <h2 style={{ color: '#06b6d4', fontSize: '18px', margin: 0 }}>Popular Dados de Uso</h2>
+        </div>
+
+        <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '16px' }}>
+          Cria dados de métricas de uso para os últimos 30 dias para todos os times e usuários.
+          <br />
+          <span style={{ color: 'white' }}>• Estrutura:</span> times/{'{teamId}'}/usuarios/{'{userId}'}/historico/{'{YYYY-MM-DD}'}
+          <br />
+          <span style={{ color: 'white' }}>• Métricas:</span> logins, pecas_criadas, downloads, uso_ai_total
+          <br />
+          <span style={{ color: '#64748b' }}>Importante: Execute primeiro "Popular Dados de Teste" para criar os times</span>
+        </p>
+
+        {!usageSeedResults && (
+          <button
+            onClick={seedUsageData}
+            disabled={usageSeedLoading}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: usageSeedLoading ? 'rgba(6, 182, 212, 0.5)' : 'linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontWeight: '600',
+              cursor: usageSeedLoading ? 'not-allowed' : 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            {usageSeedLoading ? (
+              <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Activity style={{ width: '18px', height: '18px' }} />
+            )}
+            {usageSeedLoading ? 'Populando...' : 'Popular Dados de Uso (30 dias)'}
+          </button>
+        )}
+
+        {usageSeedResults && !usageSeedResults.error && (
+          <div style={{
+            padding: '20px',
+            background: 'rgba(6, 182, 212, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(6, 182, 212, 0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <Check style={{ width: '24px', height: '24px', color: '#06b6d4' }} />
+              <span style={{ color: '#06b6d4', fontSize: '18px', fontWeight: '600' }}>Dados de Uso Criados!</span>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: 'rgba(15, 10, 31, 0.4)',
+                borderRadius: '8px',
+                marginBottom: '8px'
+              }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>Times processados</span>
+                <span style={{ color: '#06b6d4', fontSize: '13px', fontWeight: '500' }}>
+                  {usageSeedResults.teams}
+                </span>
+              </div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: 'rgba(15, 10, 31, 0.4)',
+                borderRadius: '8px',
+                marginBottom: '8px'
+              }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>Usuários processados</span>
+                <span style={{ color: '#06b6d4', fontSize: '13px', fontWeight: '500' }}>
+                  {usageSeedResults.usuarios}
+                </span>
+              </div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                background: 'rgba(15, 10, 31, 0.4)',
+                borderRadius: '8px',
+                marginBottom: '8px'
+              }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>Registros de histórico criados</span>
+                <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '500' }}>
+                  {usageSeedResults.historico}
+                </span>
+              </div>
+              {usageSeedResults.errors?.length > 0 && (
+                <div style={{
+                  padding: '10px 12px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  borderRadius: '8px',
+                  marginBottom: '8px'
+                }}>
+                  <span style={{ color: '#ef4444', fontSize: '12px', fontWeight: '500' }}>
+                    {usageSeedResults.errors.length} erros encontrados
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setUsageSeedResults(null)}
+              style={{
+                padding: '10px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '10px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Popular Novamente
+            </button>
+          </div>
+        )}
+
+        {usageSeedResults && usageSeedResults.error && (
+          <div style={{
+            padding: '16px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(239, 68, 68, 0.3)'
+          }}>
+            <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {usageSeedResults.error}</span>
+            <button
+              onClick={() => setUsageSeedResults(null)}
+              style={{
+                marginTop: '12px',
+                display: 'block',
+                padding: '8px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '8px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Tentar Novamente
+            </button>
           </div>
         )}
       </div>
