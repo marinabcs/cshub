@@ -541,26 +541,43 @@ export default function DebugFirestore() {
     };
 
     try {
+      console.log('[seedUsageData] Iniciando...');
+
       // Get all teams
       const timesSnap = await getDocs(collection(db, 'times'));
       results.teams = timesSnap.size;
+      console.log(`[seedUsageData] ${timesSnap.size} times encontrados`);
+
+      if (timesSnap.size === 0) {
+        console.log('[seedUsageData] Nenhum time encontrado. Execute "Popular Dados de Teste" primeiro.');
+        setUsageSeedResults({
+          ...results,
+          warning: 'Nenhum time encontrado. Execute "Popular Dados de Teste" primeiro.'
+        });
+        setUsageSeedLoading(false);
+        return;
+      }
 
       const dates = generateLast30Days();
+      console.log(`[seedUsageData] Gerando dados para ${dates.length} dias`);
 
       for (const teamDoc of timesSnap.docs) {
         const teamId = teamDoc.id;
+        console.log(`[seedUsageData] Processando time: ${teamId}`);
 
         // Get usuarios_lookup for this team
         const usuariosQuery = query(collection(db, 'usuarios_lookup'), where('team_id', '==', teamId));
         const usuariosSnap = await getDocs(usuariosQuery);
 
         // Also check times/{teamId}/usuarios subcollection
-        let usuarios = usuariosSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let usuarios = usuariosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        console.log(`[seedUsageData] ${usuarios.length} usuários encontrados para ${teamId}`);
 
         // If no usuarios in lookup, create some default ones for this team
         if (usuarios.length === 0) {
           // Create a default usuario for this team
           const defaultUserId = `user_${teamId}`;
+          console.log(`[seedUsageData] Criando usuário padrão: ${defaultUserId}`);
           try {
             await setDoc(doc(db, 'times', teamId, 'usuarios', defaultUserId), {
               user_id: defaultUserId,
@@ -568,8 +585,9 @@ export default function DebugFirestore() {
               nome: 'Usuário Padrão',
               created_at: Timestamp.now()
             });
-            usuarios = [{ id: defaultUserId }];
+            usuarios = [{ id: defaultUserId, user_id: defaultUserId }];
           } catch (e) {
+            console.error(`[seedUsageData] Erro ao criar usuário padrão:`, e);
             results.errors.push({ team: teamId, error: e.message });
             continue;
           }
@@ -580,6 +598,7 @@ export default function DebugFirestore() {
         // For each usuario, create historico data for last 30 days
         for (const usuario of usuarios) {
           const userId = usuario.user_id || usuario.id;
+          console.log(`[seedUsageData] Processando usuário: ${userId}`);
 
           // Ensure usuario exists in times/{teamId}/usuarios/{userId}
           try {
@@ -591,6 +610,7 @@ export default function DebugFirestore() {
               created_at: Timestamp.now()
             }, { merge: true });
           } catch (e) {
+            console.error(`[seedUsageData] Erro ao criar/atualizar usuário:`, e);
             // Continue anyway
           }
 
@@ -605,14 +625,18 @@ export default function DebugFirestore() {
               });
               results.historico++;
             } catch (e) {
+              console.error(`[seedUsageData] Erro ao criar histórico:`, e);
               results.errors.push({ team: teamId, user: userId, date: dateStr, error: e.message });
             }
           }
+          console.log(`[seedUsageData] Histórico criado para ${userId}: ${dates.length} registros`);
         }
       }
 
+      console.log('[seedUsageData] Concluído!', results);
       setUsageSeedResults(results);
     } catch (e) {
+      console.error('[seedUsageData] Erro geral:', e);
       setUsageSeedResults({ error: e.message });
     }
 
@@ -1215,7 +1239,39 @@ export default function DebugFirestore() {
           </button>
         )}
 
-        {usageSeedResults && !usageSeedResults.error && (
+        {usageSeedResults && usageSeedResults.warning && (
+          <div style={{
+            padding: '20px',
+            background: 'rgba(245, 158, 11, 0.1)',
+            borderRadius: '12px',
+            border: '1px solid rgba(245, 158, 11, 0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <AlertTriangle style={{ width: '24px', height: '24px', color: '#f59e0b' }} />
+              <span style={{ color: '#f59e0b', fontSize: '18px', fontWeight: '600' }}>Atenção</span>
+            </div>
+            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 16px 0' }}>
+              {usageSeedResults.warning}
+            </p>
+            <button
+              onClick={() => setUsageSeedResults(null)}
+              style={{
+                padding: '10px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '10px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              OK
+            </button>
+          </div>
+        )}
+
+        {usageSeedResults && !usageSeedResults.error && !usageSeedResults.warning && (
           <div style={{
             padding: '20px',
             background: 'rgba(6, 182, 212, 0.1)',
