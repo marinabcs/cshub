@@ -307,8 +307,8 @@ export function useCalcularTodosHealthScores() {
           }
 
           // Fetch usage data for all teams
-          const today = new Date();
-          const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+          const currentDate = new Date();
+          const thirtyDaysAgo = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000);
           const minDate = thirtyDaysAgo.toISOString().split('T')[0];
 
           let totalUsers = 0;
