@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, documentId } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
@@ -115,10 +115,11 @@ export default function ClienteDetalhe() {
                 const usuariosSnap = await getDocs(usuariosRef);
 
                 // For each usuario, get their historico from last 30 days
+                // Note: The document ID IS the date (e.g., "2026-01-21"), so we use documentId() for filtering
                 const historicoPromises = usuariosSnap.docs.map(async (userDoc) => {
                   const userId = userDoc.id;
                   const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
-                  const historicoQuery = query(historicoRef, where('data', '>=', minDate));
+                  const historicoQuery = query(historicoRef, where(documentId(), '>=', minDate));
                   const historicoSnap = await getDocs(historicoQuery);
                   return historicoSnap.docs.map(doc => doc.data());
                 });
