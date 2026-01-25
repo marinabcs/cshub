@@ -94,23 +94,27 @@ export default function Analytics() {
       }));
       setAlertas(alertasData);
 
-      // Fetch threads from all clientes
+      // Fetch threads from all clientes (usando times/{teamId}/threads)
       const allThreads = [];
       for (const cliente of clientesData) {
-        try {
-          const threadsRef = collection(db, 'clientes', cliente.id, 'threads');
-          const threadsSnapshot = await getDocs(threadsRef);
-          threadsSnapshot.docs.forEach(doc => {
-            allThreads.push({
-              id: doc.id,
-              clienteId: cliente.id,
-              clienteNome: cliente.team_name,
-              responsavel: cliente.responsavel_nome,
-              ...doc.data()
+        const teamIds = cliente.times || [];
+        for (const teamId of teamIds) {
+          try {
+            const threadsRef = collection(db, 'times', teamId, 'threads');
+            const threadsSnapshot = await getDocs(threadsRef);
+            threadsSnapshot.docs.forEach(doc => {
+              allThreads.push({
+                id: doc.id,
+                clienteId: cliente.id,
+                clienteNome: cliente.team_name,
+                responsavel: cliente.responsavel_nome,
+                _teamId: teamId,
+                ...doc.data()
+              });
             });
-          });
-        } catch (e) {
-          // Ignore errors for individual clientes
+          } catch (e) {
+            // Ignore errors for individual teams
+          }
         }
       }
       setThreads(allThreads);

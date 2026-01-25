@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, Timestamp, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { calcularHealthScore, formatHealthHistoryDate } from '../utils/healthScore';
 
@@ -69,6 +69,62 @@ export function useHealthScore(clienteId) {
   }, [clienteId]);
 
   /**
+   * Fetch usage data from times/{teamId}/usuarios/{userId}/historico
+   * Returns aggregated usage for last 30 days and total user count
+   */
+  const fetchUsageData = useCallback(async (teamIds) => {
+    if (!teamIds || teamIds.length === 0) {
+      return { usageData: null, totalUsers: 0 };
+    }
+
+    try {
+      // Calculate date 30 days ago (format: YYYY-MM-DD)
+      const today = new Date();
+      const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const formatDate = (d) => d.toISOString().split('T')[0];
+      const minDate = formatDate(thirtyDaysAgo);
+
+      let totalUsers = 0;
+      const allHistorico = [];
+
+      for (const teamId of teamIds) {
+        try {
+          // Get all usuarios from this team
+          const usuariosRef = collection(db, 'times', teamId, 'usuarios');
+          const usuariosSnap = await getDocs(usuariosRef);
+          totalUsers += usuariosSnap.docs.length;
+
+          // For each usuario, get their historico from last 30 days
+          for (const userDoc of usuariosSnap.docs) {
+            const userId = userDoc.id;
+            const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
+            const historicoQuery = query(historicoRef, where('data', '>=', minDate));
+            const historicoSnap = await getDocs(historicoQuery);
+            allHistorico.push(...historicoSnap.docs.map(doc => doc.data()));
+          }
+        } catch (err) {
+          console.error(`Error fetching usage for team ${teamId}:`, err);
+        }
+      }
+
+      // Aggregate usage data from all daily records
+      const usageData = allHistorico.reduce((acc, h) => {
+        return {
+          logins: acc.logins + (h.logins || 0),
+          pecas_criadas: acc.pecas_criadas + (h.pecas_criadas || 0),
+          downloads: acc.downloads + (h.downloads || 0),
+          uso_ai_total: acc.uso_ai_total + (h.uso_ai_total || 0)
+        };
+      }, { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 });
+
+      return { usageData, totalUsers };
+    } catch (err) {
+      console.error('Error fetching usage data:', err);
+      return { usageData: null, totalUsers: 0 };
+    }
+  }, []);
+
+  /**
    * Calculate and save health score
    */
   const calcularESalvar = useCallback(async () => {
@@ -104,8 +160,11 @@ export function useHealthScore(clienteId) {
       // Fetch threads from all linked teams
       const threads = await fetchThreads(teamIds);
 
-      // Calculate health score
-      const result = calcularHealthScore(threads);
+      // Fetch usage data from times/{teamId}/usuarios/{userId}/historico
+      const { usageData, totalUsers } = await fetchUsageData(teamIds);
+
+      // Calculate health score (now includes usage data)
+      const result = calcularHealthScore(threads, usageData, totalUsers);
 
       // Save to client document
       await updateDoc(clienteRef, {
@@ -145,7 +204,7 @@ export function useHealthScore(clienteId) {
     } finally {
       setCalculating(false);
     }
-  }, [clienteId, fetchThreads, fetchHealthHistory]);
+  }, [clienteId, fetchThreads, fetchHealthHistory, fetchUsageData]);
 
   /**
    * Load existing health data on mount
@@ -247,8 +306,40 @@ export function useCalcularTodosHealthScores() {
             allThreads.push(...threadsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           }
 
-          // Calculate score
-          const result = calcularHealthScore(allThreads);
+          // Fetch usage data for all teams
+          const today = new Date();
+          const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+          const minDate = thirtyDaysAgo.toISOString().split('T')[0];
+
+          let totalUsers = 0;
+          const allHistorico = [];
+
+          for (const teamId of teamIds) {
+            try {
+              const usuariosRef = collection(db, 'times', teamId, 'usuarios');
+              const usuariosSnap = await getDocs(usuariosRef);
+              totalUsers += usuariosSnap.docs.length;
+
+              for (const userDoc of usuariosSnap.docs) {
+                const historicoRef = collection(db, 'times', teamId, 'usuarios', userDoc.id, 'historico');
+                const historicoQuery = query(historicoRef, where('data', '>=', minDate));
+                const historicoSnap = await getDocs(historicoQuery);
+                allHistorico.push(...historicoSnap.docs.map(d => d.data()));
+              }
+            } catch (e) {
+              // Ignore errors for individual teams
+            }
+          }
+
+          const usageData = allHistorico.reduce((acc, h) => ({
+            logins: acc.logins + (h.logins || 0),
+            pecas_criadas: acc.pecas_criadas + (h.pecas_criadas || 0),
+            downloads: acc.downloads + (h.downloads || 0),
+            uso_ai_total: acc.uso_ai_total + (h.uso_ai_total || 0)
+          }), { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 });
+
+          // Calculate score with usage data
+          const result = calcularHealthScore(allThreads, usageData, totalUsers);
 
           // Save to client
           await updateDoc(doc(db, 'clientes', clienteId), {

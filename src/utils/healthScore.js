@@ -1,11 +1,12 @@
 /**
  * Health Score Calculator for CS Hub
  *
- * Calculates health score based on thread metrics:
- * - Engajamento (30%): frequency of threads in last 30 days
- * - Sentimento (30%): sentiment from threads (fixed at 70 for now)
- * - Tickets abertos (25%): threads waiting for team response
+ * Calculates health score based on thread metrics and platform usage:
+ * - Engajamento (25%): frequency of threads in last 30 days
+ * - Sentimento (25%): sentiment from threads (fixed at 70 for now)
+ * - Tickets abertos (20%): threads waiting for team response
  * - Tempo sem contato (15%): days since last thread
+ * - Uso da Plataforma (15%): platform usage metrics (logins, pieces created, etc.)
  */
 
 /**
@@ -82,6 +83,52 @@ function calcularTempoSemContato(threads) {
 }
 
 /**
+ * Calculate platform usage score based on usage metrics
+ * @param {Object} usageData - Usage data with logins, pecas_criadas, downloads, uso_ai_total
+ * @param {number} totalUsers - Total number of users in the client's teams
+ * @returns {number} Score 0-100
+ */
+function calcularUsoPlataforma(usageData, totalUsers = 1) {
+  if (!usageData) return 0;
+
+  const { logins = 0, pecas_criadas = 0, downloads = 0, uso_ai_total = 0 } = usageData;
+
+  // No activity at all
+  if (logins === 0 && pecas_criadas === 0 && downloads === 0 && uso_ai_total === 0) {
+    return 0;
+  }
+
+  // Calculate average activity per user (if we know user count)
+  const avgLoginsPerUser = totalUsers > 0 ? logins / totalUsers : logins;
+  const avgPecasPerUser = totalUsers > 0 ? pecas_criadas / totalUsers : pecas_criadas;
+
+  // Login score (0-30 points): ideal is 10+ logins per user in 30 days
+  let loginScore = 0;
+  if (avgLoginsPerUser >= 10) loginScore = 30;
+  else if (avgLoginsPerUser >= 5) loginScore = 25;
+  else if (avgLoginsPerUser >= 2) loginScore = 20;
+  else if (avgLoginsPerUser >= 1) loginScore = 15;
+  else if (logins > 0) loginScore = 10;
+
+  // Pieces created score (0-40 points): key activity metric
+  let pecasScore = 0;
+  if (avgPecasPerUser >= 5) pecasScore = 40;
+  else if (avgPecasPerUser >= 3) pecasScore = 35;
+  else if (avgPecasPerUser >= 1) pecasScore = 25;
+  else if (pecas_criadas > 0) pecasScore = 15;
+
+  // AI usage score (0-30 points): engagement with AI features
+  let aiScore = 0;
+  if (uso_ai_total >= 20) aiScore = 30;
+  else if (uso_ai_total >= 10) aiScore = 25;
+  else if (uso_ai_total >= 5) aiScore = 20;
+  else if (uso_ai_total >= 1) aiScore = 15;
+
+  // Total score (max 100)
+  return Math.min(100, loginScore + pecasScore + aiScore);
+}
+
+/**
  * Determine health status based on score
  * @param {number} score - Health score 0-100
  * @returns {string} Status: 'saudavel' | 'atencao' | 'risco' | 'critico'
@@ -115,11 +162,13 @@ function filtrarThreadsUltimos30Dias(threads) {
 }
 
 /**
- * Calculate complete health score from threads
+ * Calculate complete health score from threads and usage data
  * @param {Array} threads - Array of thread objects for the team
+ * @param {Object} usageData - Optional usage data { logins, pecas_criadas, downloads, uso_ai_total }
+ * @param {number} totalUsers - Optional total number of users
  * @returns {Object} { score, status, componentes }
  */
-export function calcularHealthScore(threads = []) {
+export function calcularHealthScore(threads = [], usageData = null, totalUsers = 1) {
   // Filter threads from last 30 days for engagement calculation
   const threadsRecentes = filtrarThreadsUltimos30Dias(threads);
 
@@ -128,14 +177,16 @@ export function calcularHealthScore(threads = []) {
   const sentimento = calcularSentimento(threads);
   const ticketsAbertos = calcularTicketsAbertos(threads);
   const tempoSemContato = calcularTempoSemContato(threads);
+  const usoPlataforma = calcularUsoPlataforma(usageData, totalUsers);
 
   // Calculate weighted score
-  // Weights: engajamento 30%, sentimento 30%, tickets 25%, tempo 15%
+  // Weights: engajamento 25%, sentimento 25%, tickets 20%, tempo 15%, uso_plataforma 15%
   const score = Math.round(
-    (engajamento * 0.30) +
-    (sentimento * 0.30) +
-    (ticketsAbertos * 0.25) +
-    (tempoSemContato * 0.15)
+    (engajamento * 0.25) +
+    (sentimento * 0.25) +
+    (ticketsAbertos * 0.20) +
+    (tempoSemContato * 0.15) +
+    (usoPlataforma * 0.15)
   );
 
   const status = determinarStatus(score);
@@ -148,7 +199,7 @@ export function calcularHealthScore(threads = []) {
       sentimento,
       tickets_abertos: ticketsAbertos,
       tempo_sem_contato: tempoSemContato,
-      uso_plataforma: null // Not implemented yet
+      uso_plataforma: usoPlataforma
     }
   };
 }
