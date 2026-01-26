@@ -95,19 +95,16 @@ export function useHealthScore(clienteId) {
 
       for (const teamId of teamIds) {
         try {
-          // CORRIGIDO: Buscar usuários de usuarios_lookup (coleção plana) ao invés de times/{teamId}/usuarios/
-          const usuariosLookupRef = collection(db, 'usuarios_lookup');
-          const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
-          const usuariosSnap = await getDocs(usuariosQuery);
+          // Buscar usuários diretamente de times/{teamId}/usuarios/
+          const usuariosRef = collection(db, 'times', teamId, 'usuarios');
+          const usuariosSnap = await getDocs(usuariosRef);
           totalUsers += usuariosSnap.docs.length;
 
-          console.log(`[useHealthScore] Team ${teamId}: ${usuariosSnap.docs.length} usuários em usuarios_lookup`);
+          console.log(`[useHealthScore] Team ${teamId}: ${usuariosSnap.docs.length} usuários`);
 
           // For each usuario, get their historico from last 30 days
-          // Note: The document ID IS the date (e.g., "2026-01-21"), so we filter by doc.id
           for (const userDoc of usuariosSnap.docs) {
-            const userData = userDoc.data();
-            const userId = userData.user_id || userDoc.id;
+            const userId = userDoc.id;
             const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
             const historicoSnap = await getDocs(historicoRef);
             // Filter by doc.id (the date) and include id in the mapped data
@@ -337,16 +334,14 @@ export function useCalcularTodosHealthScores() {
 
           for (const teamId of teamIds) {
             try {
-              // CORRIGIDO: Buscar usuários de usuarios_lookup (coleção plana)
-              const usuariosLookupRef = collection(db, 'usuarios_lookup');
-              const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
-              const usuariosSnap = await getDocs(usuariosQuery);
+              // Buscar usuários diretamente de times/{teamId}/usuarios/
+              const usuariosRef = collection(db, 'times', teamId, 'usuarios');
+              const usuariosSnap = await getDocs(usuariosRef);
               totalUsers += usuariosSnap.docs.length;
 
               // Note: The document ID IS the date (e.g., "2026-01-21"), so we filter by doc.id
               for (const userDoc of usuariosSnap.docs) {
-                const userData = userDoc.data();
-                const userId = userData.user_id || userDoc.id;
+                const userId = userDoc.id;
                 const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
                 const historicoSnap = await getDocs(historicoRef);
                 // Filter by doc.id (the date) and include id in the mapped data

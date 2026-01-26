@@ -129,21 +129,17 @@ export default function ClienteDetalhe() {
 
             const teamUsagePromises = teamIds.map(async (teamId) => {
               try {
-                // CORRIGIDO: Buscar usuários de usuarios_lookup (coleção plana) ao invés de times/{teamId}/usuarios/
-                const usuariosLookupRef = collection(db, 'usuarios_lookup');
-                const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
-                const usuariosSnap = await getDocs(usuariosQuery);
+                // Buscar usuários diretamente de times/{teamId}/usuarios/
+                const usuariosRef = collection(db, 'times', teamId, 'usuarios');
+                const usuariosSnap = await getDocs(usuariosRef);
 
-                console.log(`Team ${teamId}: ${usuariosSnap.docs.length} usuários encontrados em usuarios_lookup`);
+                console.log(`Team ${teamId}: ${usuariosSnap.docs.length} usuários em times/${teamId}/usuarios/`);
 
                 // For each usuario, get their historico from last 30 days
-                // Histórico está em: times/{teamId}/usuarios/{userId}/historico/{YYYY-MM-DD}
                 const historicoPromises = usuariosSnap.docs.map(async (userDoc) => {
-                  // user_id é o campo que identifica o usuário, pode ser diferente do doc.id
-                  const userData = userDoc.data();
-                  const userId = userData.user_id || userDoc.id;
+                  const userId = userDoc.id;
 
-                  console.log(`  Buscando histórico para usuário: ${userId} (doc.id: ${userDoc.id})`);
+                  console.log(`  Buscando histórico para usuário: ${userId}`);
 
                   const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
                   const historicoSnap = await getDocs(historicoRef);
