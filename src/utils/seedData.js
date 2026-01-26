@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, Timestamp } from 'firebase/firestore'
+import { collection, doc, setDoc, getDocs, updateDoc, Timestamp } from 'firebase/firestore'
 import { db } from '../services/firebase'
 
 // Helper para criar timestamps
@@ -20,7 +20,9 @@ const clientes = [
     total_usuarios: 8,
     ultima_interacao: daysAgo(1),
     created_at: daysAgo(120),
-    updated_at: daysAgo(1)
+    updated_at: daysAgo(1),
+    times: ["662fbb61e15cd764d1cfd501"], // Array de times vinculados
+    status: "ativo"
   },
   {
     team_id: "685aa168becb721a445d77bb",
@@ -34,7 +36,9 @@ const clientes = [
     total_usuarios: 5,
     ultima_interacao: daysAgo(3),
     created_at: daysAgo(90),
-    updated_at: daysAgo(3)
+    updated_at: daysAgo(3),
+    times: ["685aa168becb721a445d77bb"], // Array de times vinculados
+    status: "ativo"
   },
   {
     team_id: "69414b3540196eb2a70e5725",
@@ -48,7 +52,9 @@ const clientes = [
     total_usuarios: 3,
     ultima_interacao: daysAgo(5),
     created_at: daysAgo(60),
-    updated_at: daysAgo(5)
+    updated_at: daysAgo(5),
+    times: ["69414b3540196eb2a70e5725"], // Array de times vinculados
+    status: "ativo"
   }
 ]
 
@@ -270,12 +276,254 @@ const mensagens = {
   ]
 }
 
+// Dados para usuarios_lookup (listagem de usuários por team)
+const usuariosLookup = [
+  // Serasa
+  {
+    id: "usr_serasa_001",
+    team_id: "662fbb61e15cd764d1cfd501",
+    team_name: "Serasa",
+    email: "patricia@serasa.com.br",
+    nome: "Patrícia Mendes",
+    status: "ativo",
+    created_at: daysAgo(100)
+  },
+  {
+    id: "usr_serasa_002",
+    team_id: "662fbb61e15cd764d1cfd501",
+    team_name: "Serasa",
+    email: "joao@serasa.com.br",
+    nome: "João Carlos Santos",
+    status: "ativo",
+    created_at: daysAgo(95)
+  },
+  {
+    id: "usr_serasa_003",
+    team_id: "662fbb61e15cd764d1cfd501",
+    team_name: "Serasa",
+    email: "maria@serasa.com.br",
+    nome: "Maria Fernanda",
+    status: "ativo",
+    created_at: daysAgo(80)
+  },
+  {
+    id: "usr_serasa_004",
+    team_id: "662fbb61e15cd764d1cfd501",
+    team_name: "Serasa",
+    email: "carlos@serasa.com.br",
+    nome: "Carlos Eduardo",
+    status: "ativo",
+    created_at: daysAgo(60)
+  },
+  {
+    id: "usr_serasa_005",
+    team_id: "662fbb61e15cd764d1cfd501",
+    team_name: "Serasa",
+    email: "ana@serasa.com.br",
+    nome: "Ana Paula",
+    status: "inativo",
+    created_at: daysAgo(110),
+    deleted_at: daysAgo(20)
+  },
+  // Atacadão
+  {
+    id: "usr_atacadao_001",
+    team_id: "685aa168becb721a445d77bb",
+    team_name: "Atacadão",
+    email: "marketing@atacadao.com.br",
+    nome: "Fernanda Lima",
+    status: "ativo",
+    created_at: daysAgo(85)
+  },
+  {
+    id: "usr_atacadao_002",
+    team_id: "685aa168becb721a445d77bb",
+    team_name: "Atacadão",
+    email: "design@atacadao.com.br",
+    nome: "Ricardo Souza",
+    status: "ativo",
+    created_at: daysAgo(80)
+  },
+  {
+    id: "usr_atacadao_003",
+    team_id: "685aa168becb721a445d77bb",
+    team_name: "Atacadão",
+    email: "vendas@atacadao.com.br",
+    nome: "Lucas Oliveira",
+    status: "ativo",
+    created_at: daysAgo(70)
+  },
+  // UNISA
+  {
+    id: "usr_unisa_001",
+    team_id: "69414b3540196eb2a70e5725",
+    team_name: "UNISA",
+    email: "comunicacao@unisa.edu.br",
+    nome: "Mariana Costa",
+    status: "ativo",
+    created_at: daysAgo(55)
+  },
+  {
+    id: "usr_unisa_002",
+    team_id: "69414b3540196eb2a70e5725",
+    team_name: "UNISA",
+    email: "reitoria@unisa.edu.br",
+    nome: "Prof. Antonio Ferreira",
+    status: "ativo",
+    created_at: daysAgo(50)
+  }
+]
+
+// Dados para metricas_diarias (métricas de uso da plataforma)
+// Gera dados dos últimos 30 dias para cada time
+const gerarMetricasDiarias = () => {
+  const metricas = []
+  const teams = [
+    { team_id: "662fbb61e15cd764d1cfd501", baseLogins: 25, basePecas: 40, baseDownloads: 30, baseAI: 60 }, // Serasa - uso alto
+    { team_id: "685aa168becb721a445d77bb", baseLogins: 15, basePecas: 25, baseDownloads: 20, baseAI: 35 }, // Atacadão - uso médio
+    { team_id: "69414b3540196eb2a70e5725", baseLogins: 5, basePecas: 8, baseDownloads: 5, baseAI: 10 }    // UNISA - uso baixo
+  ]
+
+  for (const team of teams) {
+    for (let i = 0; i < 30; i++) {
+      const dataMetrica = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
+      const variacao = 0.7 + Math.random() * 0.6 // Variação de 70% a 130%
+
+      metricas.push({
+        id: `${team.team_id}_${dataMetrica.toISOString().split('T')[0]}`,
+        team_id: team.team_id,
+        data: Timestamp.fromDate(dataMetrica),
+        logins: Math.round(team.baseLogins * variacao),
+        pecas_criadas: Math.round(team.basePecas * variacao),
+        downloads: Math.round(team.baseDownloads * variacao),
+        uso_ai_total: Math.round(team.baseAI * variacao)
+      })
+    }
+  }
+
+  return metricas
+}
+
+/**
+ * Gera métricas diárias para um team_id específico
+ */
+const gerarMetricasParaTeam = (teamId) => {
+  const metricas = []
+  const currentDate = new Date()
+
+  // Base de uso aleatória para cada cliente
+  const baseLogins = 10 + Math.floor(Math.random() * 30)
+  const basePecas = 15 + Math.floor(Math.random() * 40)
+  const baseDownloads = 10 + Math.floor(Math.random() * 25)
+  const baseAI = 20 + Math.floor(Math.random() * 50)
+
+  for (let i = 0; i < 30; i++) {
+    const dataMetrica = new Date(currentDate.getTime() - i * 24 * 60 * 60 * 1000)
+    const variacao = 0.7 + Math.random() * 0.6 // Variação de 70% a 130%
+
+    metricas.push({
+      id: `${teamId}_${dataMetrica.toISOString().split('T')[0]}`,
+      team_id: teamId,
+      data: Timestamp.fromDate(dataMetrica),
+      logins: Math.round(baseLogins * variacao),
+      pecas_criadas: Math.round(basePecas * variacao),
+      downloads: Math.round(baseDownloads * variacao),
+      uso_ai_total: Math.round(baseAI * variacao)
+    })
+  }
+
+  return metricas
+}
+
+/**
+ * Migração: Atualiza clientes existentes para adicionar o campo 'times'
+ * e popula metricas_diarias e usuarios_lookup
+ */
+export async function migrarClientes() {
+  const results = {
+    clientes_atualizados: 0,
+    usuarios_lookup: 0,
+    metricas_diarias: 0,
+    errors: []
+  }
+
+  try {
+    // 1. Buscar todos os clientes e coletar todos os team_ids
+    const clientesRef = collection(db, 'clientes')
+    const clientesSnap = await getDocs(clientesRef)
+    const allTeamIds = new Set()
+
+    for (const clienteDoc of clientesSnap.docs) {
+      const clienteData = clienteDoc.data()
+      const clienteId = clienteDoc.id
+
+      // Se não tem o campo 'times', adicionar baseado no team_id
+      if (!clienteData.times || clienteData.times.length === 0) {
+        const timesArray = clienteData.team_id ? [clienteData.team_id] : [clienteId]
+
+        try {
+          await updateDoc(doc(db, 'clientes', clienteId), {
+            times: timesArray,
+            status: clienteData.status || 'ativo'
+          })
+          results.clientes_atualizados++
+          console.log(`Cliente atualizado: ${clienteData.team_name || clienteId}`)
+          timesArray.forEach(t => allTeamIds.add(t))
+        } catch (err) {
+          results.errors.push(`Erro ao atualizar cliente ${clienteId}: ${err.message}`)
+        }
+      } else {
+        // Cliente já tem times, adicionar à lista
+        clienteData.times.forEach(t => allTeamIds.add(t))
+      }
+    }
+
+    console.log(`Total de team_ids encontrados: ${allTeamIds.size}`)
+
+    // 2. Criar usuarios_lookup para usuários predefinidos
+    for (const usuario of usuariosLookup) {
+      try {
+        const usuarioRef = doc(db, 'usuarios_lookup', usuario.id)
+        await setDoc(usuarioRef, usuario, { merge: true })
+        results.usuarios_lookup++
+      } catch (err) {
+        results.errors.push(`Erro ao criar usuario lookup: ${err.message}`)
+      }
+    }
+    console.log(`Usuarios lookup criados: ${results.usuarios_lookup}`)
+
+    // 3. Criar metricas_diarias para todos os team_ids
+    for (const teamId of allTeamIds) {
+      const metricasParaTeam = gerarMetricasParaTeam(teamId)
+      for (const metrica of metricasParaTeam) {
+        try {
+          const metricaRef = doc(db, 'metricas_diarias', metrica.id)
+          await setDoc(metricaRef, metrica, { merge: true })
+          results.metricas_diarias++
+        } catch (err) {
+          results.errors.push(`Erro ao criar metrica: ${err.message}`)
+        }
+      }
+    }
+    console.log(`Métricas diárias criadas: ${results.metricas_diarias}`)
+
+    console.log('Migração concluída!', results)
+    return results
+  } catch (err) {
+    console.error('Erro na migração:', err)
+    results.errors.push(`Erro geral: ${err.message}`)
+    return results
+  }
+}
+
 export async function seedDatabase() {
   const results = {
     clientes: 0,
     usuarios: 0,
     threads: 0,
     mensagens: 0,
+    usuarios_lookup: 0,
+    metricas_diarias: 0,
     errors: []
   }
 
@@ -344,6 +592,31 @@ export async function seedDatabase() {
         }
       }
     }
+
+    // 5. Criar usuarios_lookup
+    for (const usuario of usuariosLookup) {
+      try {
+        const usuarioRef = doc(db, 'usuarios_lookup', usuario.id)
+        await setDoc(usuarioRef, usuario)
+        results.usuarios_lookup++
+        console.log(`Usuario lookup criado: ${usuario.nome}`)
+      } catch (err) {
+        results.errors.push(`Erro ao criar usuario lookup ${usuario.nome}: ${err.message}`)
+      }
+    }
+
+    // 6. Criar metricas_diarias
+    const metricasDiarias = gerarMetricasDiarias()
+    for (const metrica of metricasDiarias) {
+      try {
+        const metricaRef = doc(db, 'metricas_diarias', metrica.id)
+        await setDoc(metricaRef, metrica)
+        results.metricas_diarias++
+      } catch (err) {
+        results.errors.push(`Erro ao criar metrica ${metrica.id}: ${err.message}`)
+      }
+    }
+    console.log(`Métricas diárias criadas: ${results.metricas_diarias}`)
 
     console.log('Seed concluído!', results)
     return results

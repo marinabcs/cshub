@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { Database, RefreshCw, Search } from 'lucide-react';
+import { Database, RefreshCw, Search, Wrench } from 'lucide-react';
 import { useCalcularTodosHealthScores } from '../hooks/useHealthScore';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
+import { migrarClientes } from '../utils/seedData';
 
 export default function DebugFirestore() {
   const { user } = useAuth();
@@ -18,6 +19,10 @@ export default function DebugFirestore() {
   const [metricsDebugClienteId, setMetricsDebugClienteId] = useState('');
   const [metricsDebugLoading, setMetricsDebugLoading] = useState(false);
   const [metricsDebugResults, setMetricsDebugResults] = useState(null);
+
+  // Migration state
+  const [migrating, setMigrating] = useState(false);
+  const [migrationResults, setMigrationResults] = useState(null);
 
   const runCheck = async () => {
     setLoading(true);
@@ -46,6 +51,19 @@ export default function DebugFirestore() {
 
     setResults(output);
     setLoading(false);
+  };
+
+  // Run migration
+  const runMigration = async () => {
+    setMigrating(true);
+    setMigrationResults(null);
+    try {
+      const results = await migrarClientes();
+      setMigrationResults(results);
+    } catch (err) {
+      setMigrationResults({ errors: [err.message] });
+    }
+    setMigrating(false);
   };
 
   // Debug metrics for a specific client
@@ -228,6 +246,79 @@ export default function DebugFirestore() {
           </div>
         </div>
       )}
+
+      {/* Migration Section */}
+      <div style={{
+        background: 'rgba(30, 27, 75, 0.4)',
+        border: '1px solid rgba(249, 115, 22, 0.3)',
+        borderRadius: '20px',
+        padding: '24px',
+        marginBottom: '32px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Wrench style={{ width: '20px', height: '20px', color: '#f97316' }} />
+            <div>
+              <h2 style={{ color: 'white', fontSize: '18px', margin: 0 }}>Migração de Dados</h2>
+              <p style={{ color: '#64748b', fontSize: '12px', margin: '4px 0 0 0' }}>
+                Adiciona campo 'times' nos clientes e popula metricas_diarias e usuarios_lookup
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={runMigration}
+            disabled={migrating}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: migrating ? 'rgba(249, 115, 22, 0.5)' : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontWeight: '600',
+              cursor: migrating ? 'not-allowed' : 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            <Wrench style={{ width: '18px', height: '18px', animation: migrating ? 'spin 1s linear infinite' : 'none' }} />
+            {migrating ? 'Migrando...' : 'Executar Migração'}
+          </button>
+        </div>
+
+        {migrationResults && (
+          <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px' }}>
+            {migrationResults.errors && migrationResults.errors.length > 0 ? (
+              <div style={{ color: '#ef4444', marginBottom: '12px' }}>
+                {migrationResults.errors.map((err, i) => (
+                  <p key={i} style={{ margin: '4px 0' }}>{err}</p>
+                ))}
+              </div>
+            ) : null}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+              <div style={{ padding: '12px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px' }}>
+                <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Clientes Atualizados</p>
+                <p style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
+                  {migrationResults.clientes_atualizados || 0}
+                </p>
+              </div>
+              <div style={{ padding: '12px', background: 'rgba(6, 182, 212, 0.1)', borderRadius: '8px' }}>
+                <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Usuarios Lookup</p>
+                <p style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
+                  {migrationResults.usuarios_lookup || 0}
+                </p>
+              </div>
+              <div style={{ padding: '12px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '8px' }}>
+                <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Métricas Diárias</p>
+                <p style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
+                  {migrationResults.metricas_diarias || 0}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Debug Metrics Section */}
       <div style={{
