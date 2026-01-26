@@ -222,6 +222,11 @@ export default function DebugFirestore() {
   const [usageSeedLoading, setUsageSeedLoading] = useState(false);
   const [usageSeedResults, setUsageSeedResults] = useState(null);
 
+  // Metrics debug state
+  const [metricsDebugClienteId, setMetricsDebugClienteId] = useState('');
+  const [metricsDebugLoading, setMetricsDebugLoading] = useState(false);
+  const [metricsDebugResults, setMetricsDebugResults] = useState(null);
+
   // Find and delete old clients (created before today)
   const findOldClients = async () => {
     setCleanOldLoading(true);
@@ -695,6 +700,147 @@ export default function DebugFirestore() {
     }
 
     setStatusUpdating(false);
+  };
+
+  // Debug metrics for a specific client
+  const debugClienteMetrics = async () => {
+    if (!metricsDebugClienteId.trim()) {
+      alert('Digite o ID do cliente');
+      return;
+    }
+
+    setMetricsDebugLoading(true);
+    setMetricsDebugResults(null);
+
+    const results = {
+      clienteId: metricsDebugClienteId.trim(),
+      cliente: null,
+      teams: [],
+      usuarios: [],
+      historico: [],
+      aggregated: { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 },
+      errors: []
+    };
+
+    try {
+      // 1. Get cliente data
+      const clienteRef = doc(db, 'clientes', metricsDebugClienteId.trim());
+      const clienteSnap = await getDocs(query(collection(db, 'clientes'), where('__name__', '==', metricsDebugClienteId.trim())));
+
+      if (clienteSnap.empty) {
+        results.errors.push('Cliente não encontrado');
+        setMetricsDebugResults(results);
+        setMetricsDebugLoading(false);
+        return;
+      }
+
+      const clienteDoc = clienteSnap.docs[0];
+      const clienteData = clienteDoc.data();
+      results.cliente = {
+        id: clienteDoc.id,
+        team_name: clienteData.team_name,
+        times: clienteData.times || [],
+        team_ids: clienteData.team_ids || [],
+        status: clienteData.status
+      };
+
+      const teamIds = clienteData.times || clienteData.team_ids || [];
+      console.log('[debugClienteMetrics] Cliente:', results.cliente);
+      console.log('[debugClienteMetrics] Team IDs:', teamIds);
+
+      if (teamIds.length === 0) {
+        results.errors.push('Cliente não tem times vinculados');
+        setMetricsDebugResults(results);
+        setMetricsDebugLoading(false);
+        return;
+      }
+
+      // Calculate date 30 days ago
+      const today = new Date();
+      const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const formatDate = (d) => d.toISOString().split('T')[0];
+      const minDate = formatDate(thirtyDaysAgo);
+
+      // 2. For each team, get usuarios and their historico
+      for (const teamId of teamIds) {
+        const teamInfo = { teamId, usuarios: [] };
+
+        try {
+          const usuariosRef = collection(db, 'times', teamId, 'usuarios');
+          const usuariosSnap = await getDocs(usuariosRef);
+
+          console.log(`[debugClienteMetrics] Team ${teamId}: ${usuariosSnap.docs.length} usuários`);
+
+          for (const userDoc of usuariosSnap.docs) {
+            const userId = userDoc.id;
+            const userData = userDoc.data();
+            const userInfo = {
+              userId,
+              nome: userData.nome || userData.name,
+              historico: [],
+              subtotal: { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 }
+            };
+
+            try {
+              const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
+              const historicoSnap = await getDocs(historicoRef);
+
+              const allDocs = historicoSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+              const filteredDocs = allDocs.filter(d => d.id >= minDate);
+
+              console.log(`[debugClienteMetrics]   Usuário ${userId}: ${allDocs.length} total, ${filteredDocs.length} filtrado`);
+
+              filteredDocs.forEach(h => {
+                userInfo.historico.push({
+                  date: h.id,
+                  logins: h.logins || 0,
+                  pecas_criadas: h.pecas_criadas || 0,
+                  downloads: h.downloads || 0,
+                  uso_ai_total: h.uso_ai_total || 0
+                });
+                userInfo.subtotal.logins += (h.logins || 0);
+                userInfo.subtotal.pecas_criadas += (h.pecas_criadas || 0);
+                userInfo.subtotal.downloads += (h.downloads || 0);
+                userInfo.subtotal.uso_ai_total += (h.uso_ai_total || 0);
+
+                // Aggregate
+                results.aggregated.logins += (h.logins || 0);
+                results.aggregated.pecas_criadas += (h.pecas_criadas || 0);
+                results.aggregated.downloads += (h.downloads || 0);
+                results.aggregated.uso_ai_total += (h.uso_ai_total || 0);
+
+                results.historico.push({
+                  teamId,
+                  userId,
+                  date: h.id,
+                  logins: h.logins || 0,
+                  pecas_criadas: h.pecas_criadas || 0,
+                  downloads: h.downloads || 0,
+                  uso_ai_total: h.uso_ai_total || 0
+                });
+              });
+
+              teamInfo.usuarios.push(userInfo);
+              results.usuarios.push({ teamId, userId, nome: userInfo.nome, subtotal: userInfo.subtotal, docsCount: filteredDocs.length });
+            } catch (err) {
+              results.errors.push(`Erro ao buscar histórico do usuário ${userId}: ${err.message}`);
+            }
+          }
+
+          results.teams.push(teamInfo);
+        } catch (err) {
+          results.errors.push(`Erro ao buscar usuários do time ${teamId}: ${err.message}`);
+        }
+      }
+
+      console.log('[debugClienteMetrics] Resultados:', results);
+      setMetricsDebugResults(results);
+    } catch (err) {
+      results.errors.push(`Erro geral: ${err.message}`);
+      setMetricsDebugResults(results);
+    }
+
+    setMetricsDebugLoading(false);
   };
 
   return (
@@ -2023,6 +2169,228 @@ export default function DebugFirestore() {
               }}
             >
               Tentar Novamente
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Debug Métricas de Cliente */}
+      <div style={{
+        background: 'rgba(249, 115, 22, 0.05)',
+        border: '1px solid rgba(249, 115, 22, 0.2)',
+        borderRadius: '20px',
+        padding: '24px',
+        marginTop: '32px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <Activity style={{ width: '24px', height: '24px', color: '#f97316' }} />
+          <h2 style={{ color: '#f97316', fontSize: '18px', margin: 0 }}>Debug Métricas de Cliente</h2>
+        </div>
+
+        <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '16px' }}>
+          Verifica os dados de uso (logins, peças criadas, downloads, uso AI) diretamente do Firebase para um cliente específico.
+          <br />
+          <span style={{ color: '#64748b', fontSize: '12px' }}>
+            Útil para investigar discrepâncias entre valores exibidos e valores esperados.
+          </span>
+        </p>
+
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+          <input
+            type="text"
+            placeholder="ID do Cliente (ex: 4CHRPWuU6VdJbP9zuOhz)"
+            value={metricsDebugClienteId}
+            onChange={(e) => setMetricsDebugClienteId(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              background: '#0f0a1f',
+              border: '1px solid rgba(249, 115, 22, 0.3)',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              outline: 'none'
+            }}
+          />
+          <button
+            onClick={debugClienteMetrics}
+            disabled={metricsDebugLoading || !metricsDebugClienteId.trim()}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: metricsDebugLoading ? 'rgba(249, 115, 22, 0.5)' : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontWeight: '600',
+              cursor: (metricsDebugLoading || !metricsDebugClienteId.trim()) ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              opacity: (!metricsDebugClienteId.trim()) ? 0.5 : 1
+            }}
+          >
+            {metricsDebugLoading ? (
+              <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Activity style={{ width: '18px', height: '18px' }} />
+            )}
+            {metricsDebugLoading ? 'Verificando...' : 'Verificar Métricas'}
+          </button>
+        </div>
+
+        {metricsDebugResults && (
+          <div style={{
+            padding: '20px',
+            background: 'rgba(15, 10, 31, 0.6)',
+            borderRadius: '12px',
+            border: '1px solid rgba(249, 115, 22, 0.2)'
+          }}>
+            {/* Cliente Info */}
+            {metricsDebugResults.cliente && (
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ color: '#f97316', fontSize: '14px', margin: '0 0 12px 0' }}>Cliente</h3>
+                <div style={{ padding: '12px', background: 'rgba(249, 115, 22, 0.1)', borderRadius: '8px' }}>
+                  <p style={{ color: 'white', fontSize: '14px', margin: '0 0 4px 0' }}>
+                    <strong>Nome:</strong> {metricsDebugResults.cliente.team_name}
+                  </p>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>
+                    <strong>ID:</strong> {metricsDebugResults.cliente.id}
+                  </p>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>
+                    <strong>Status:</strong> {metricsDebugResults.cliente.status || 'não definido'}
+                  </p>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>
+                    <strong>Times vinculados:</strong> {metricsDebugResults.cliente.times?.length || 0}
+                    {metricsDebugResults.cliente.times?.length > 0 && (
+                      <span style={{ color: '#64748b', marginLeft: '8px' }}>
+                        [{metricsDebugResults.cliente.times.join(', ')}]
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Usuários e Subtotais */}
+            {metricsDebugResults.usuarios && metricsDebugResults.usuarios.length > 0 && (
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ color: '#f97316', fontSize: '14px', margin: '0 0 12px 0' }}>
+                  Usuários ({metricsDebugResults.usuarios.length})
+                </h3>
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {metricsDebugResults.usuarios.map((user, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '12px',
+                        background: 'rgba(30, 27, 75, 0.4)',
+                        borderRadius: '8px',
+                        marginBottom: '8px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>
+                          {user.nome || user.userId}
+                        </span>
+                        <span style={{ color: '#64748b', fontSize: '11px' }}>
+                          {user.docsCount} registros em 30d
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                        <div style={{ padding: '8px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
+                          <p style={{ color: '#94a3b8', fontSize: '10px', margin: 0 }}>Logins</p>
+                          <p style={{ color: '#a78bfa', fontSize: '14px', fontWeight: '600', margin: 0 }}>{user.subtotal.logins}</p>
+                        </div>
+                        <div style={{ padding: '8px', background: 'rgba(6, 182, 212, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
+                          <p style={{ color: '#94a3b8', fontSize: '10px', margin: 0 }}>Peças</p>
+                          <p style={{ color: '#06b6d4', fontSize: '14px', fontWeight: '600', margin: 0 }}>{user.subtotal.pecas_criadas}</p>
+                        </div>
+                        <div style={{ padding: '8px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
+                          <p style={{ color: '#94a3b8', fontSize: '10px', margin: 0 }}>Downloads</p>
+                          <p style={{ color: '#10b981', fontSize: '14px', fontWeight: '600', margin: 0 }}>{user.subtotal.downloads}</p>
+                        </div>
+                        <div style={{ padding: '8px', background: 'rgba(249, 115, 22, 0.1)', borderRadius: '6px', textAlign: 'center' }}>
+                          <p style={{ color: '#94a3b8', fontSize: '10px', margin: 0 }}>AI</p>
+                          <p style={{ color: '#f97316', fontSize: '14px', fontWeight: '600', margin: 0 }}>{user.subtotal.uso_ai_total}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Total Agregado */}
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ color: '#f97316', fontSize: '14px', margin: '0 0 12px 0' }}>Total Agregado (30 dias)</h3>
+              <div style={{
+                padding: '16px',
+                background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.1) 0%, rgba(234, 88, 12, 0.1) 100%)',
+                borderRadius: '12px',
+                border: '1px solid rgba(249, 115, 22, 0.3)'
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Logins</p>
+                    <p style={{ color: 'white', fontSize: '24px', fontWeight: '700', margin: 0 }}>
+                      {metricsDebugResults.aggregated.logins}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Peças Criadas</p>
+                    <p style={{ color: 'white', fontSize: '24px', fontWeight: '700', margin: 0 }}>
+                      {metricsDebugResults.aggregated.pecas_criadas}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Downloads</p>
+                    <p style={{ color: 'white', fontSize: '24px', fontWeight: '700', margin: 0 }}>
+                      {metricsDebugResults.aggregated.downloads}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Uso AI</p>
+                    <p style={{ color: 'white', fontSize: '24px', fontWeight: '700', margin: 0 }}>
+                      {metricsDebugResults.aggregated.uso_ai_total}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Erros */}
+            {metricsDebugResults.errors && metricsDebugResults.errors.length > 0 && (
+              <div style={{
+                padding: '12px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                borderRadius: '8px',
+                border: '1px solid rgba(239, 68, 68, 0.2)'
+              }}>
+                <p style={{ color: '#ef4444', fontSize: '12px', margin: '0 0 8px 0', fontWeight: '500' }}>
+                  Erros encontrados:
+                </p>
+                {metricsDebugResults.errors.map((err, idx) => (
+                  <p key={idx} style={{ color: '#f87171', fontSize: '11px', margin: '4px 0' }}>• {err}</p>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => setMetricsDebugResults(null)}
+              style={{
+                marginTop: '16px',
+                padding: '10px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '10px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Verificar Outro Cliente
             </button>
           </div>
         )}
