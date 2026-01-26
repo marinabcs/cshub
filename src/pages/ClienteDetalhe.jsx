@@ -112,7 +112,8 @@ export default function ClienteDetalhe() {
           setHealthHistory(healthData.sort((a, b) => a.date - b.date));
 
           // Fetch usage data from linked teams - from times/{teamId}/usuarios/{userId}/historico/{data}
-          // IMPORTANTE: Os usuários estão em usuarios_lookup (coleção plana), não em times/{teamId}/usuarios/
+          // IMPORTANTE: Documentos de usuário em times/{teamId}/usuarios/ são "phantom docs" (não têm campos)
+          // Por isso, usamos usuarios_lookup para obter os IDs dos usuários
           if (teamIds.length > 0) {
             // Calculate date 30 days ago (format: YYYY-MM-DD)
             const today = new Date();
@@ -129,11 +130,13 @@ export default function ClienteDetalhe() {
 
             const teamUsagePromises = teamIds.map(async (teamId) => {
               try {
-                // Buscar usuários diretamente de times/{teamId}/usuarios/
-                const usuariosRef = collection(db, 'times', teamId, 'usuarios');
-                const usuariosSnap = await getDocs(usuariosRef);
+                // Buscar usuários de usuarios_lookup (coleção que TEM documentos reais)
+                // Isso resolve o problema dos "phantom documents" em times/{teamId}/usuarios/
+                const usuariosLookupRef = collection(db, 'usuarios_lookup');
+                const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
+                const usuariosSnap = await getDocs(usuariosQuery);
 
-                console.log(`Team ${teamId}: ${usuariosSnap.docs.length} usuários em times/${teamId}/usuarios/`);
+                console.log(`Team ${teamId}: ${usuariosSnap.docs.length} usuários em usuarios_lookup`);
 
                 // For each usuario, get their historico from last 30 days
                 const historicoPromises = usuariosSnap.docs.map(async (userDoc) => {
@@ -141,6 +144,7 @@ export default function ClienteDetalhe() {
 
                   console.log(`  Buscando histórico para usuário: ${userId}`);
 
+                  // Acessa historico diretamente usando o ID do usuário
                   const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
                   const historicoSnap = await getDocs(historicoRef);
 
@@ -186,22 +190,6 @@ export default function ClienteDetalhe() {
             // DEBUG: Summary before aggregation
             console.log('\n=== RESUMO PRÉ-AGREGAÇÃO ===');
             console.log('Total de registros histórico:', allHistorico.length);
-
-            // Check for duplicates
-            const uniqueKeys = new Set(allHistorico.map(h => `${h._teamId}-${h._userId}-${h.id}`));
-            console.log('Registros únicos (team-user-date):', uniqueKeys.size);
-            if (uniqueKeys.size !== allHistorico.length) {
-              console.warn('AVISO: Possíveis duplicatas detectadas!');
-              // Log duplicates
-              const counts = {};
-              allHistorico.forEach(h => {
-                const key = `${h._teamId}-${h._userId}-${h.id}`;
-                counts[key] = (counts[key] || 0) + 1;
-              });
-              Object.entries(counts).filter(([k, v]) => v > 1).forEach(([k, v]) => {
-                console.warn(`  Duplicata: ${k} aparece ${v} vezes`);
-              });
-            }
 
             // Aggregate usage data from all daily records (last 30 days)
             const aggregated = allHistorico.reduce((acc, h) => {

@@ -71,6 +71,7 @@ export function useHealthScore(clienteId) {
   /**
    * Fetch usage data from times/{teamId}/usuarios/{userId}/historico
    * Returns aggregated usage for last 30 days and total user count
+   * IMPORTANTE: Usa usuarios_lookup para obter IDs pois docs em times/{teamId}/usuarios/ são "phantom docs"
    */
   const fetchUsageData = useCallback(async (teamIds) => {
     if (!teamIds || teamIds.length === 0) {
@@ -95,12 +96,14 @@ export function useHealthScore(clienteId) {
 
       for (const teamId of teamIds) {
         try {
-          // Buscar usuários diretamente de times/{teamId}/usuarios/
-          const usuariosRef = collection(db, 'times', teamId, 'usuarios');
-          const usuariosSnap = await getDocs(usuariosRef);
+          // Buscar usuários de usuarios_lookup (coleção que TEM documentos reais)
+          // Isso resolve o problema dos "phantom documents" em times/{teamId}/usuarios/
+          const usuariosLookupRef = collection(db, 'usuarios_lookup');
+          const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
+          const usuariosSnap = await getDocs(usuariosQuery);
           totalUsers += usuariosSnap.docs.length;
 
-          console.log(`[useHealthScore] Team ${teamId}: ${usuariosSnap.docs.length} usuários`);
+          console.log(`[useHealthScore] Team ${teamId}: ${usuariosSnap.docs.length} usuários via usuarios_lookup`);
 
           // For each usuario, get their historico from last 30 days
           for (const userDoc of usuariosSnap.docs) {
@@ -334,9 +337,11 @@ export function useCalcularTodosHealthScores() {
 
           for (const teamId of teamIds) {
             try {
-              // Buscar usuários diretamente de times/{teamId}/usuarios/
-              const usuariosRef = collection(db, 'times', teamId, 'usuarios');
-              const usuariosSnap = await getDocs(usuariosRef);
+              // Buscar usuários de usuarios_lookup (coleção que TEM documentos reais)
+              // Isso resolve o problema dos "phantom documents" em times/{teamId}/usuarios/
+              const usuariosLookupRef = collection(db, 'usuarios_lookup');
+              const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
+              const usuariosSnap = await getDocs(usuariosQuery);
               totalUsers += usuariosSnap.docs.length;
 
               // Note: The document ID IS the date (e.g., "2026-01-21"), so we filter by doc.id
