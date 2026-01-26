@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, Timestamp, query, where, collectionGroup } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, Timestamp, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { calcularHealthScore, formatHealthHistoryDate } from '../utils/healthScore';
 
@@ -69,9 +69,8 @@ export function useHealthScore(clienteId) {
   }, [clienteId]);
 
   /**
-   * Fetch usage data from times/{teamId}/usuarios/{userId}/historico
+   * Fetch usage data from metricas_diarias (estrutura flat)
    * Returns aggregated usage for last 30 days and total user count
-   * Usa collectionGroup para buscar todos os historico e filtra pelo path do team
    */
   const fetchUsageData = useCallback(async (teamIds) => {
     if (!teamIds || teamIds.length === 0) {
@@ -85,53 +84,48 @@ export function useHealthScore(clienteId) {
       const formatDate = (d) => d.toISOString().split('T')[0];
       const minDate = formatDate(thirtyDaysAgo);
 
-      // DEBUG: Log hook fetch start
-      console.log('[useHealthScore] === fetchUsageData (collectionGroup) ===');
+      console.log('[useHealthScore] === fetchUsageData (metricas_diarias) ===');
       console.log('[useHealthScore] Cliente ID:', clienteId);
       console.log('[useHealthScore] Team IDs:', teamIds);
       console.log('[useHealthScore] Data mínima:', minDate);
 
-      // Usar collectionGroup para buscar TODOS os documentos historico
-      const historicoGroupRef = collectionGroup(db, 'historico');
-      const historicoSnap = await getDocs(historicoGroupRef);
+      const metricasRef = collection(db, 'metricas_diarias');
+      let allMetricas = [];
 
-      console.log(`[useHealthScore] Total de documentos historico encontrados: ${historicoSnap.docs.length}`);
+      // where('in') aceita no máximo 10 itens, então dividimos em chunks
+      const chunkSize = 10;
+      for (let i = 0; i < teamIds.length; i += chunkSize) {
+        const chunk = teamIds.slice(i, i + chunkSize);
+        const q = query(
+          metricasRef,
+          where('team_id', 'in', chunk),
+          where('data', '>=', minDate)
+        );
+        const snapshot = await getDocs(q);
+        allMetricas.push(...snapshot.docs.map(doc => doc.data()));
+      }
 
-      // Filtrar apenas os documentos que pertencem aos times do cliente
-      const allHistorico = [];
-      const userIds = new Set();
+      console.log(`[useHealthScore] Total de documentos encontrados: ${allMetricas.length}`);
 
-      historicoSnap.docs.forEach(docSnap => {
-        const pathParts = docSnap.ref.path.split('/');
-        // Path: times/teamId/usuarios/userId/historico/date
-        if (pathParts[0] === 'times' && teamIds.includes(pathParts[1])) {
-          const userId = pathParts[3];
-          const dateId = docSnap.id;
+      // Contar usuários únicos via usuarios_lookup
+      let totalUsers = 0;
+      const usuariosLookupRef = collection(db, 'usuarios_lookup');
+      for (let i = 0; i < teamIds.length; i += chunkSize) {
+        const chunk = teamIds.slice(i, i + chunkSize);
+        const userQuery = query(usuariosLookupRef, where('team_id', 'in', chunk));
+        const userSnap = await getDocs(userQuery);
+        totalUsers += userSnap.docs.length;
+      }
 
-          userIds.add(userId);
+      // Agregar valores
+      const usageData = allMetricas.reduce((acc, d) => ({
+        logins: acc.logins + (d.logins || 0),
+        pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
+        downloads: acc.downloads + (d.downloads || 0),
+        uso_ai_total: acc.uso_ai_total + (d.uso_ai_total || 0)
+      }), { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 });
 
-          // Filtrar por data (últimos 30 dias)
-          if (dateId >= minDate) {
-            allHistorico.push({ id: dateId, ...docSnap.data() });
-          }
-        }
-      });
-
-      const totalUsers = userIds.size;
-
-      // Aggregate usage data from all daily records
-      const usageData = allHistorico.reduce((acc, h) => {
-        return {
-          logins: acc.logins + (h.logins || 0),
-          pecas_criadas: acc.pecas_criadas + (h.pecas_criadas || 0),
-          downloads: acc.downloads + (h.downloads || 0),
-          uso_ai_total: acc.uso_ai_total + (h.uso_ai_total || 0)
-        };
-      }, { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 });
-
-      // DEBUG: Log aggregated results
-      console.log('[useHealthScore] Total usuários únicos:', totalUsers);
-      console.log('[useHealthScore] Total registros filtrados:', allHistorico.length);
+      console.log('[useHealthScore] Total usuários:', totalUsers);
       console.log('[useHealthScore] Agregado:', usageData);
       console.log('[useHealthScore] ========================');
 
@@ -324,41 +318,42 @@ export function useCalcularTodosHealthScores() {
             allThreads.push(...threadsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           }
 
-          // Fetch usage data using collectionGroup para buscar todos os historico
+          // Fetch usage data from metricas_diarias (estrutura flat)
           const currentDate = new Date();
           const thirtyDaysAgo = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000);
           const minDate = thirtyDaysAgo.toISOString().split('T')[0];
 
-          // Usar collectionGroup para buscar TODOS os documentos historico
-          const historicoGroupRef = collectionGroup(db, 'historico');
-          const historicoSnap = await getDocs(historicoGroupRef);
+          const metricasRef = collection(db, 'metricas_diarias');
+          let allMetricas = [];
 
-          // Filtrar apenas os documentos que pertencem aos times do cliente
-          const allHistorico = [];
-          const userIds = new Set();
+          // where('in') aceita no máximo 10 itens
+          const chunkSize = 10;
+          for (let i = 0; i < teamIds.length; i += chunkSize) {
+            const chunk = teamIds.slice(i, i + chunkSize);
+            const q = query(
+              metricasRef,
+              where('team_id', 'in', chunk),
+              where('data', '>=', minDate)
+            );
+            const snapshot = await getDocs(q);
+            allMetricas.push(...snapshot.docs.map(d => d.data()));
+          }
 
-          historicoSnap.docs.forEach(docSnap => {
-            const pathParts = docSnap.ref.path.split('/');
-            // Path: times/teamId/usuarios/userId/historico/date
-            if (pathParts[0] === 'times' && teamIds.includes(pathParts[1])) {
-              const userId = pathParts[3];
-              const dateId = docSnap.id;
+          // Contar usuários via usuarios_lookup
+          let totalUsers = 0;
+          const usuariosLookupRef = collection(db, 'usuarios_lookup');
+          for (let i = 0; i < teamIds.length; i += chunkSize) {
+            const chunk = teamIds.slice(i, i + chunkSize);
+            const userQuery = query(usuariosLookupRef, where('team_id', 'in', chunk));
+            const userSnap = await getDocs(userQuery);
+            totalUsers += userSnap.docs.length;
+          }
 
-              userIds.add(userId);
-
-              if (dateId >= minDate) {
-                allHistorico.push({ id: dateId, ...docSnap.data() });
-              }
-            }
-          });
-
-          const totalUsers = userIds.size;
-
-          const usageData = allHistorico.reduce((acc, h) => ({
-            logins: acc.logins + (h.logins || 0),
-            pecas_criadas: acc.pecas_criadas + (h.pecas_criadas || 0),
-            downloads: acc.downloads + (h.downloads || 0),
-            uso_ai_total: acc.uso_ai_total + (h.uso_ai_total || 0)
+          const usageData = allMetricas.reduce((acc, d) => ({
+            logins: acc.logins + (d.logins || 0),
+            pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
+            downloads: acc.downloads + (d.downloads || 0),
+            uso_ai_total: acc.uso_ai_total + (d.uso_ai_total || 0)
           }), { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 });
 
           // Calculate score with usage data

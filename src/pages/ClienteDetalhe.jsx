@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, collectionGroup } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
@@ -111,8 +111,8 @@ export default function ClienteDetalhe() {
           // Sort ascending for chart display
           setHealthHistory(healthData.sort((a, b) => a.date - b.date));
 
-          // Fetch usage data from linked teams - from times/{teamId}/usuarios/{userId}/historico/{data}
-          // Usa collectionGroup para buscar TODOS os documentos historico e filtra pelo path do team
+          // Fetch usage data from metricas_diarias (estrutura flat)
+          // Documento: metricas_diarias/{team_id}_{data}
           if (teamIds.length > 0) {
             // Calculate date 30 days ago (format: YYYY-MM-DD)
             const today = new Date();
@@ -120,69 +120,46 @@ export default function ClienteDetalhe() {
             const formatDate = (d) => d.toISOString().split('T')[0];
             const minDate = formatDate(thirtyDaysAgo);
 
-            // DEBUG: Log date range and team IDs
-            console.log('=== DEBUG MÉTRICAS DE USO (collectionGroup) ===');
+            console.log('=== DEBUG MÉTRICAS DE USO (metricas_diarias) ===');
             console.log('Cliente ID:', id);
             console.log('Team IDs consultados:', teamIds);
             console.log('Data mínima (30 dias):', minDate);
-            console.log('Data atual:', formatDate(today));
 
             try {
-              // Usar collectionGroup para buscar TODOS os documentos historico
-              const historicoGroupRef = collectionGroup(db, 'historico');
-              const historicoSnap = await getDocs(historicoGroupRef);
+              const metricasRef = collection(db, 'metricas_diarias');
+              let allMetricas = [];
 
-              console.log(`Total de documentos historico encontrados: ${historicoSnap.docs.length}`);
+              // where('in') aceita no máximo 10 itens, então dividimos em chunks
+              const chunkSize = 10;
+              for (let i = 0; i < teamIds.length; i += chunkSize) {
+                const chunk = teamIds.slice(i, i + chunkSize);
+                const q = query(
+                  metricasRef,
+                  where('team_id', 'in', chunk),
+                  where('data', '>=', minDate)
+                );
+                const snapshot = await getDocs(q);
+                allMetricas.push(...snapshot.docs.map(doc => doc.data()));
+              }
 
-              // Filtrar apenas os documentos que pertencem aos times do cliente
-              // O path é: times/{teamId}/usuarios/{userId}/historico/{date}
-              const allHistorico = [];
+              console.log(`Total de documentos metricas_diarias encontrados: ${allMetricas.length}`);
 
-              historicoSnap.docs.forEach(docSnap => {
-                const pathParts = docSnap.ref.path.split('/');
-                // Path: times/teamId/usuarios/userId/historico/date
-                // Index:   0    1        2      3        4       5
-                if (pathParts[0] === 'times' && teamIds.includes(pathParts[1])) {
-                  const teamId = pathParts[1];
-                  const userId = pathParts[3];
-                  const dateId = docSnap.id;
-
-                  // Filtrar por data (últimos 30 dias)
-                  if (dateId >= minDate) {
-                    const data = docSnap.data();
-                    allHistorico.push({
-                      id: dateId,
-                      ...data,
-                      _teamId: teamId,
-                      _userId: userId
-                    });
-
-                    console.log(`  [${teamId}/${userId}/${dateId}] logins=${data.logins || 0}, pecas=${data.pecas_criadas || 0}, downloads=${data.downloads || 0}, ai=${data.uso_ai_total || 0}`);
-                  }
-                }
-              });
-
-              // DEBUG: Summary before aggregation
-              console.log('\n=== RESUMO PRÉ-AGREGAÇÃO ===');
-              console.log('Total de registros histórico filtrados:', allHistorico.length);
-
-              // Aggregate usage data from all daily records (last 30 days)
-              const aggregated = allHistorico.reduce((acc, h) => {
+              // Agregar valores
+              const aggregated = allMetricas.reduce((acc, d) => {
                 return {
-                  logins: acc.logins + (h.logins || 0),
-                  pecas_criadas: acc.pecas_criadas + (h.pecas_criadas || 0),
-                  downloads: acc.downloads + (h.downloads || 0),
-                  ai_total: acc.ai_total + (h.uso_ai_total || 0)
+                  logins: acc.logins + (d.logins || 0),
+                  pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
+                  downloads: acc.downloads + (d.downloads || 0),
+                  ai_total: acc.ai_total + (d.uso_ai_total || 0)
                 };
               }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
 
-              // DEBUG: Final aggregated values
-              console.log('\n=== VALORES AGREGADOS FINAIS ===');
+              console.log('=== VALORES AGREGADOS FINAIS ===');
               console.log('Logins:', aggregated.logins);
               console.log('Peças Criadas:', aggregated.pecas_criadas);
               console.log('Downloads:', aggregated.downloads);
               console.log('Uso AI:', aggregated.ai_total);
-              console.log('================================\n');
+              console.log('================================');
 
               setUsageData(aggregated);
             } catch (err) {
