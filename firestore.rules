@@ -1,0 +1,165 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Função para verificar se é usuário Trakto autenticado
+    function isTraktoUser() {
+      return request.auth != null &&
+             request.auth.token.email.matches('.*@trakto\\.io$');
+    }
+
+    // Função para obter o documento do usuário atual
+    function getUserData() {
+      return get(/databases/$(database)/documents/usuarios_sistema/$(request.auth.uid)).data;
+    }
+
+    // Função para verificar se o usuário tem um role específico ou superior
+    function hasRole(allowedRoles) {
+      let userData = getUserData();
+      return userData != null && userData.role in allowedRoles;
+    }
+
+    // Função para verificar se é admin ou super_admin
+    function isAdmin() {
+      return isTraktoUser() && hasRole(['admin', 'super_admin']);
+    }
+
+    // Função para verificar se é gestor ou superior
+    function isGestorOrHigher() {
+      return isTraktoUser() && hasRole(['gestor', 'admin', 'super_admin']);
+    }
+
+    // Função para verificar se é CS ou superior
+    function isCSOrHigher() {
+      return isTraktoUser() && hasRole(['cs', 'gestor', 'admin', 'super_admin']);
+    }
+
+    // Regra para collectionGroup - permite buscar todos os documentos 'historico'
+    // Necessário para agregar métricas de uso de todos os usuários de um cliente
+    match /{path=**}/historico/{data} {
+      allow read: if isTraktoUser();
+    }
+
+    // Usuários do Sistema (admins, CS, gestores)
+    // Somente admins podem criar/editar usuários
+    match /usuarios_sistema/{userId} {
+      allow read: if isTraktoUser();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin() &&
+        // Não permite deletar o próprio documento
+        request.auth.uid != userId;
+    }
+
+    // Usuários (collection original - mantida para compatibilidade)
+    match /usuarios/{userId} {
+      allow read: if isTraktoUser();
+      allow write: if isAdmin();
+    }
+
+    // Clientes e subcollections
+    match /clientes/{clienteId} {
+      // Todos podem ler, apenas CS+ podem escrever
+      allow read: if isTraktoUser();
+      allow create, update: if isCSOrHigher();
+      allow delete: if isAdmin();
+
+      // Threads
+      match /threads/{threadId} {
+        allow read: if isTraktoUser();
+        allow write: if isCSOrHigher();
+
+        // Mensagens
+        match /mensagens/{mensagemId} {
+          allow read: if isTraktoUser();
+          allow write: if isCSOrHigher();
+        }
+      }
+
+      // Histórico de Health Score
+      match /health_history/{historyId} {
+        allow read: if isTraktoUser();
+        allow write: if isCSOrHigher();
+      }
+
+      // Uso da Plataforma
+      match /uso_plataforma/{periodoId} {
+        allow read: if isTraktoUser();
+        allow write: if isCSOrHigher();
+      }
+
+      // Playbooks ativos do cliente
+      match /playbooks_ativos/{playbookAtivoId} {
+        allow read: if isTraktoUser();
+        allow write: if isCSOrHigher();
+      }
+    }
+
+    // Configurações do sistema - apenas admins
+    match /config/{configId} {
+      allow read: if isTraktoUser();
+      allow write: if isAdmin();
+    }
+
+    // Alertas - CS+ podem gerenciar
+    match /alertas/{alertaId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
+    // Times com subcollections
+    match /times/{timeId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+
+      // Usuarios do time (métricas de uso da plataforma)
+      match /usuarios/{userId} {
+        allow read: if isTraktoUser();
+        allow write: if isCSOrHigher();
+
+        // Histórico diário do usuário
+        match /historico/{data} {
+          allow read: if isTraktoUser();
+          allow write: if isCSOrHigher();
+        }
+      }
+
+      // Threads dentro de times
+      match /threads/{threadId} {
+        allow read: if isTraktoUser();
+        allow write: if isCSOrHigher();
+
+        // Mensagens dentro de threads
+        match /mensagens/{mensagemId} {
+          allow read: if isTraktoUser();
+          allow write: if isCSOrHigher();
+        }
+      }
+    }
+
+    // Usuarios Lookup - leitura para todos, escrita para CS+
+    match /usuarios_lookup/{docId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
+    // Métricas Diárias (estrutura flat para métricas de uso)
+    match /metricas_diarias/{docId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
+    // Playbooks (templates) - leitura para todos, escrita para gestores+
+    match /playbooks/{playbookId} {
+      allow read: if isTraktoUser();
+      allow write: if isGestorOrHigher();
+    }
+
+    // Logs de Auditoria - imutáveis
+    match /audit_logs/{logId} {
+      allow read: if isTraktoUser();
+      allow create: if isTraktoUser();
+      // Logs são imutáveis - não permite update/delete
+      allow update, delete: if false;
+    }
+  }
+}
