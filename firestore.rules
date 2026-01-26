@@ -94,6 +94,11 @@ service cloud.firestore {
       allow read, write: if isTraktoUser();
     }
 
+    // Métricas Diárias (estrutura flat para métricas de uso)
+    match /metricas_diarias/{docId} {
+      allow read, write: if isTraktoUser();
+    }
+
     // Playbooks (templates)
     match /playbooks/{playbookId} {
       allow read, write: if isTraktoUser();

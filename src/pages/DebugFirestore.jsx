@@ -586,60 +586,34 @@ export default function DebugFirestore() {
 
       results.teams = allTeamIds.size;
       const dates = generateLast30Days();
-      console.log(`[seedUsageData] Gerando dados para ${dates.length} dias`);
+      console.log(`[seedUsageData] Gerando dados para ${dates.length} dias em metricas_diarias`);
 
+      // Usar estrutura flat: metricas_diarias/{team_id}_{data}
       for (const teamId of allTeamIds) {
         console.log(`[seedUsageData] Processando time: ${teamId}`);
 
-        // Check if usuarios already exist in times/{teamId}/usuarios
-        const usuariosRef = collection(db, 'times', teamId, 'usuarios');
-        const usuariosSnap = await getDocs(usuariosRef);
-        let usuarios = usuariosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        console.log(`[seedUsageData] ${usuarios.length} usuários existentes para ${teamId}`);
-
-        // If no usuarios exist, create a default one for this team
-        if (usuarios.length === 0) {
-          const defaultUserId = `user_${teamId}_default`;
-          console.log(`[seedUsageData] Criando usuário padrão: ${defaultUserId}`);
+        // Criar documento de métricas para cada dia
+        for (const dateStr of dates) {
           try {
-            await setDoc(doc(db, 'times', teamId, 'usuarios', defaultUserId), {
-              user_id: defaultUserId,
+            const docId = `${teamId}_${dateStr}`;
+            const usageData = generateUsageData(1);
+
+            // Converter string de data para Date object
+            const dateObj = new Date(dateStr + 'T12:00:00Z');
+
+            await setDoc(doc(db, 'metricas_diarias', docId), {
               team_id: teamId,
-              nome: 'Usuário Padrão',
-              created_at: Timestamp.now()
+              data: Timestamp.fromDate(dateObj),
+              ...usageData,
+              updated_at: Timestamp.now()
             });
-            usuarios = [{ id: defaultUserId, user_id: defaultUserId }];
+            results.historico++;
           } catch (e) {
-            console.error(`[seedUsageData] Erro ao criar usuário padrão:`, e);
-            results.errors.push({ team: teamId, error: e.message });
-            continue;
+            console.error(`[seedUsageData] Erro ao criar métrica:`, e);
+            results.errors.push({ team: teamId, date: dateStr, error: e.message });
           }
         }
-
-        results.usuarios += usuarios.length;
-
-        // For each usuario, create historico data for last 30 days
-        for (const usuario of usuarios) {
-          const userId = usuario.user_id || usuario.id;
-          console.log(`[seedUsageData] Criando histórico para usuário: ${userId}`);
-
-          // Create historico for each date
-          for (const dateStr of dates) {
-            try {
-              const usageData = generateUsageData(1);
-              await setDoc(doc(db, 'times', teamId, 'usuarios', userId, 'historico', dateStr), {
-                ...usageData,
-                date: dateStr,
-                updated_at: Timestamp.now()
-              });
-              results.historico++;
-            } catch (e) {
-              console.error(`[seedUsageData] Erro ao criar histórico:`, e);
-              results.errors.push({ team: teamId, user: userId, date: dateStr, error: e.message });
-            }
-          }
-          console.log(`[seedUsageData] Histórico criado para ${userId}: ${dates.length} registros`);
-        }
+        console.log(`[seedUsageData] Métricas criadas para ${teamId}: ${dates.length} registros`);
       }
 
       console.log('[seedUsageData] Concluído!', results);
