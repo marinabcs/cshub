@@ -84,6 +84,12 @@ export function useHealthScore(clienteId) {
       const formatDate = (d) => d.toISOString().split('T')[0];
       const minDate = formatDate(thirtyDaysAgo);
 
+      // DEBUG: Log hook fetch start
+      console.log('[useHealthScore] === fetchUsageData ===');
+      console.log('[useHealthScore] Cliente ID:', clienteId);
+      console.log('[useHealthScore] Team IDs:', teamIds);
+      console.log('[useHealthScore] Data mínima:', minDate);
+
       let totalUsers = 0;
       const allHistorico = [];
 
@@ -94,6 +100,8 @@ export function useHealthScore(clienteId) {
           const usuariosSnap = await getDocs(usuariosRef);
           totalUsers += usuariosSnap.docs.length;
 
+          console.log(`[useHealthScore] Team ${teamId}: ${usuariosSnap.docs.length} usuários`);
+
           // For each usuario, get their historico from last 30 days
           // Note: The document ID IS the date (e.g., "2026-01-21"), so we filter by doc.id
           for (const userDoc of usuariosSnap.docs) {
@@ -101,9 +109,11 @@ export function useHealthScore(clienteId) {
             const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
             const historicoSnap = await getDocs(historicoRef);
             // Filter by doc.id (the date) and include id in the mapped data
-            const filteredDocs = historicoSnap.docs
-              .filter(doc => doc.id >= minDate)
-              .map(doc => ({ id: doc.id, ...doc.data() }));
+            const allDocs = historicoSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const filteredDocs = allDocs.filter(doc => doc.id >= minDate);
+
+            console.log(`[useHealthScore]   Usuário ${userId}: ${allDocs.length} total, ${filteredDocs.length} após filtro 30d`);
+
             allHistorico.push(...filteredDocs);
           }
         } catch (err) {
@@ -121,12 +131,17 @@ export function useHealthScore(clienteId) {
         };
       }, { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 });
 
+      // DEBUG: Log aggregated results
+      console.log('[useHealthScore] Total registros:', allHistorico.length);
+      console.log('[useHealthScore] Agregado:', usageData);
+      console.log('[useHealthScore] ========================');
+
       return { usageData, totalUsers };
     } catch (err) {
       console.error('Error fetching usage data:', err);
       return { usageData: null, totalUsers: 0 };
     }
-  }, []);
+  }, [clienteId]);
 
   /**
    * Calculate and save health score

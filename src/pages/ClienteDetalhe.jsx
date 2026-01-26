@@ -56,6 +56,17 @@ export default function ClienteDetalhe() {
 
           // Fetch threads from linked times (times/{teamId}/threads)
           const teamIds = clienteData.times || [];
+
+          // DEBUG: Log cliente data
+          console.log('=== DEBUG CLIENTE ===');
+          console.log('Cliente ID:', clienteData.id || id);
+          console.log('Cliente nome:', clienteData.team_name);
+          console.log('Campo times:', clienteData.times);
+          console.log('Campo team_ids:', clienteData.team_ids);
+          console.log('teamIds a usar:', teamIds);
+          console.log('Total de times:', teamIds.length);
+          console.log('=====================');
+
           if (teamIds.length > 0) {
             const threadPromises = teamIds.map(async (teamId) => {
               try {
@@ -108,11 +119,20 @@ export default function ClienteDetalhe() {
             const formatDate = (d) => d.toISOString().split('T')[0];
             const minDate = formatDate(thirtyDaysAgo);
 
+            // DEBUG: Log date range and team IDs
+            console.log('=== DEBUG MÉTRICAS DE USO ===');
+            console.log('Cliente ID:', id);
+            console.log('Team IDs consultados:', teamIds);
+            console.log('Data mínima (30 dias):', minDate);
+            console.log('Data atual:', formatDate(today));
+
             const teamUsagePromises = teamIds.map(async (teamId) => {
               try {
                 // Get all usuarios from this team
                 const usuariosRef = collection(db, 'times', teamId, 'usuarios');
                 const usuariosSnap = await getDocs(usuariosRef);
+
+                console.log(`Team ${teamId}: ${usuariosSnap.docs.length} usuários encontrados`);
 
                 // For each usuario, get their historico from last 30 days
                 // Note: The document ID IS the date (e.g., "2026-01-21"), so we filter by doc.id
@@ -120,21 +140,65 @@ export default function ClienteDetalhe() {
                   const userId = userDoc.id;
                   const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
                   const historicoSnap = await getDocs(historicoRef);
-                  // Filter by doc.id (the date) and include id in the mapped data
-                  return historicoSnap.docs
-                    .filter(doc => doc.id >= minDate)
-                    .map(doc => ({ id: doc.id, ...doc.data() }));
+
+                  // DEBUG: Log raw docs before filter
+                  const allDocs = historicoSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                  const filteredDocs = allDocs.filter(doc => doc.id >= minDate);
+
+                  console.log(`  Usuário ${userId}:`);
+                  console.log(`    Total docs histórico: ${allDocs.length}`);
+                  console.log(`    Docs após filtro 30d: ${filteredDocs.length}`);
+                  if (allDocs.length > 0) {
+                    const dates = allDocs.map(d => d.id).sort();
+                    console.log(`    Data mais antiga: ${dates[0]}`);
+                    console.log(`    Data mais recente: ${dates[dates.length - 1]}`);
+                  }
+
+                  // DEBUG: Log metrics per filtered doc and calculate subtotal per user
+                  let userSubtotal = { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 };
+                  filteredDocs.forEach(doc => {
+                    console.log(`    [${doc.id}] logins=${doc.logins || 0}, pecas=${doc.pecas_criadas || 0}, downloads=${doc.downloads || 0}, ai=${doc.uso_ai_total || 0}`);
+                    userSubtotal.logins += (doc.logins || 0);
+                    userSubtotal.pecas_criadas += (doc.pecas_criadas || 0);
+                    userSubtotal.downloads += (doc.downloads || 0);
+                    userSubtotal.uso_ai_total += (doc.uso_ai_total || 0);
+                  });
+                  console.log(`    SUBTOTAL usuário ${userId}: logins=${userSubtotal.logins}, pecas=${userSubtotal.pecas_criadas}, downloads=${userSubtotal.downloads}, ai=${userSubtotal.uso_ai_total}`);
+
+                  // Return with teamId and userId for tracking
+                  return filteredDocs.map(doc => ({ ...doc, _teamId: teamId, _userId: userId }));
                 });
 
                 const historicoResults = await Promise.all(historicoPromises);
                 return historicoResults.flat();
-              } catch {
+              } catch (err) {
+                console.error(`Erro ao buscar dados do time ${teamId}:`, err);
                 return [];
               }
             });
 
             const teamUsageResults = await Promise.all(teamUsagePromises);
             const allHistorico = teamUsageResults.flat();
+
+            // DEBUG: Summary before aggregation
+            console.log('\n=== RESUMO PRÉ-AGREGAÇÃO ===');
+            console.log('Total de registros histórico:', allHistorico.length);
+
+            // Check for duplicates
+            const uniqueKeys = new Set(allHistorico.map(h => `${h._teamId}-${h._userId}-${h.id}`));
+            console.log('Registros únicos (team-user-date):', uniqueKeys.size);
+            if (uniqueKeys.size !== allHistorico.length) {
+              console.warn('AVISO: Possíveis duplicatas detectadas!');
+              // Log duplicates
+              const counts = {};
+              allHistorico.forEach(h => {
+                const key = `${h._teamId}-${h._userId}-${h.id}`;
+                counts[key] = (counts[key] || 0) + 1;
+              });
+              Object.entries(counts).filter(([k, v]) => v > 1).forEach(([k, v]) => {
+                console.warn(`  Duplicata: ${k} aparece ${v} vezes`);
+              });
+            }
 
             // Aggregate usage data from all daily records (last 30 days)
             const aggregated = allHistorico.reduce((acc, h) => {
@@ -145,6 +209,14 @@ export default function ClienteDetalhe() {
                 ai_total: acc.ai_total + (h.uso_ai_total || 0)
               };
             }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
+
+            // DEBUG: Final aggregated values
+            console.log('\n=== VALORES AGREGADOS FINAIS ===');
+            console.log('Logins:', aggregated.logins);
+            console.log('Peças Criadas:', aggregated.pecas_criadas);
+            console.log('Downloads:', aggregated.downloads);
+            console.log('Uso AI:', aggregated.ai_total);
+            console.log('================================\n');
 
             setUsageData(aggregated);
           }
