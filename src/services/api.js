@@ -94,6 +94,68 @@ export async function getDashboardStats() {
   return { total, saudaveis, atencao, risco, critico }
 }
 
+// Heavy Users - ranking dos usuários mais ativos
+export async function getHeavyUsers(teamIds, days = 30, topN = 10) {
+  const metricasRef = collection(db, 'metricas_diarias')
+  const dataLimite = new Date()
+  dataLimite.setDate(dataLimite.getDate() - days)
+
+  let allMetricas = []
+  const chunkSize = 10
+
+  for (let i = 0; i < teamIds.length; i += chunkSize) {
+    const chunk = teamIds.slice(i, i + chunkSize)
+    const q = query(
+      metricasRef,
+      where('team_id', 'in', chunk),
+      where('data', '>=', dataLimite)
+    )
+    const snapshot = await getDocs(q)
+    allMetricas.push(...snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })))
+  }
+
+  // Agregar por usuário
+  const userMap = {}
+  allMetricas.forEach(m => {
+    // Ignora docs sem user_id (dados antigos)
+    if (!m.user_id) return
+
+    const key = m.user_id
+    if (!userMap[key]) {
+      userMap[key] = {
+        user_id: m.user_id,
+        user_email: m.user_email,
+        user_nome: m.user_nome,
+        team_id: m.team_id,
+        logins: 0,
+        pecas_criadas: 0,
+        downloads: 0,
+        uso_ai_total: 0,
+        dias_ativos: 0
+      }
+    }
+    userMap[key].logins += m.logins || 0
+    userMap[key].pecas_criadas += m.pecas_criadas || 0
+    userMap[key].downloads += m.downloads || 0
+    userMap[key].uso_ai_total += m.uso_ai_total || 0
+    userMap[key].dias_ativos += 1
+  })
+
+  // Calcular score de atividade
+  const users = Object.values(userMap).map(u => ({
+    ...u,
+    activity_score: u.logins + (u.pecas_criadas * 2) + u.downloads + (u.uso_ai_total * 1.5)
+  }))
+
+  // Ordenar por score (decrescente)
+  users.sort((a, b) => b.activity_score - a.activity_score)
+
+  return users.slice(0, topN)
+}
+
 // Helpers
 export function timestampToDate(timestamp) {
   if (!timestamp) return null

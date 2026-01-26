@@ -10,6 +10,7 @@ import { useClassificarThread } from '../hooks/useClassificarThread';
 import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../services/openai';
 import PlaybooksSection from '../components/Cliente/PlaybooksSection';
 import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
+import HeavyUsersCard from '../components/Cliente/HeavyUsersCard';
 
 // Extrair iniciais do nome (ex: "Marina Barros" → "MB")
 const getInitials = (name) => {
@@ -700,6 +701,17 @@ export default function ClienteDetalhe() {
             </div>
           </div>
         </div>
+      </div>
+      )}
+
+      {/* Heavy Users */}
+      {cliente.status !== 'inativo' && (
+      <div style={{ marginBottom: '32px' }}>
+        <HeavyUsersCard
+          teamIds={cliente.times || (cliente.team_id ? [cliente.team_id] : [cliente.id])}
+          days={30}
+          topN={5}
+        />
       </div>
       )}
         </>
