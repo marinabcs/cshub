@@ -78,16 +78,14 @@ export function useHealthScore(clienteId) {
     }
 
     try {
-      // Calculate date 30 days ago (format: YYYY-MM-DD)
+      // Calculate date 30 days ago (usando Date object para comparar com Timestamp)
       const today = new Date();
       const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const formatDate = (d) => d.toISOString().split('T')[0];
-      const minDate = formatDate(thirtyDaysAgo);
 
       console.log('[useHealthScore] === fetchUsageData (metricas_diarias) ===');
       console.log('[useHealthScore] Cliente ID:', clienteId);
       console.log('[useHealthScore] Team IDs:', teamIds);
-      console.log('[useHealthScore] Data mínima:', minDate);
+      console.log('[useHealthScore] Data mínima:', thirtyDaysAgo.toISOString());
 
       const metricasRef = collection(db, 'metricas_diarias');
       let allMetricas = [];
@@ -99,7 +97,7 @@ export function useHealthScore(clienteId) {
         const q = query(
           metricasRef,
           where('team_id', 'in', chunk),
-          where('data', '>=', minDate)
+          where('data', '>=', thirtyDaysAgo)
         );
         const snapshot = await getDocs(q);
         allMetricas.push(...snapshot.docs.map(doc => doc.data()));
@@ -321,7 +319,6 @@ export function useCalcularTodosHealthScores() {
           // Fetch usage data from metricas_diarias (estrutura flat)
           const currentDate = new Date();
           const thirtyDaysAgo = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-          const minDate = thirtyDaysAgo.toISOString().split('T')[0];
 
           const metricasRef = collection(db, 'metricas_diarias');
           let allMetricas = [];
@@ -333,7 +330,7 @@ export function useCalcularTodosHealthScores() {
             const q = query(
               metricasRef,
               where('team_id', 'in', chunk),
-              where('data', '>=', minDate)
+              where('data', '>=', thirtyDaysAgo)
             );
             const snapshot = await getDocs(q);
             allMetricas.push(...snapshot.docs.map(d => d.data()));

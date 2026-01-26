@@ -114,16 +114,14 @@ export default function ClienteDetalhe() {
           // Fetch usage data from metricas_diarias (estrutura flat)
           // Documento: metricas_diarias/{team_id}_{data}
           if (teamIds.length > 0) {
-            // Calculate date 30 days ago (format: YYYY-MM-DD)
+            // Calculate date 30 days ago (usando Date object para comparar com Timestamp)
             const today = new Date();
             const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-            const formatDate = (d) => d.toISOString().split('T')[0];
-            const minDate = formatDate(thirtyDaysAgo);
 
             console.log('=== DEBUG MÉTRICAS DE USO (metricas_diarias) ===');
             console.log('Cliente ID:', id);
             console.log('Team IDs consultados:', teamIds);
-            console.log('Data mínima (30 dias):', minDate);
+            console.log('Data mínima (30 dias):', thirtyDaysAgo.toISOString());
 
             try {
               const metricasRef = collection(db, 'metricas_diarias');
@@ -136,7 +134,7 @@ export default function ClienteDetalhe() {
                 const q = query(
                   metricasRef,
                   where('team_id', 'in', chunk),
-                  where('data', '>=', minDate)
+                  where('data', '>=', thirtyDaysAgo)
                 );
                 const snapshot = await getDocs(q);
                 allMetricas.push(...snapshot.docs.map(doc => doc.data()));

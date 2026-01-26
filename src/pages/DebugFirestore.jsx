@@ -758,8 +758,6 @@ export default function DebugFirestore() {
       // Calculate date 30 days ago
       const today = new Date();
       const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const formatDate = (d) => d.toISOString().split('T')[0];
-      const minDate = formatDate(thirtyDaysAgo);
 
       // 2. Buscar métricas de metricas_diarias (estrutura flat)
       console.log('[debugClienteMetrics] Buscando metricas_diarias...');
@@ -773,7 +771,7 @@ export default function DebugFirestore() {
         const q = query(
           metricasRef,
           where('team_id', 'in', chunk),
-          where('data', '>=', minDate)
+          where('data', '>=', thirtyDaysAgo)
         );
         const snapshot = await getDocs(q);
         allMetricas.push(...snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
