@@ -437,21 +437,18 @@ const gerarMetricasParaTeam = (teamId) => {
 
 /**
  * Migração: Atualiza clientes existentes para adicionar o campo 'times'
- * e popula metricas_diarias e usuarios_lookup
+ * Apenas adiciona o campo times nos clientes que não têm, baseado no team_id existente
  */
 export async function migrarClientes() {
   const results = {
     clientes_atualizados: 0,
-    usuarios_lookup: 0,
-    metricas_diarias: 0,
+    clientes_ja_ok: 0,
     errors: []
   }
 
   try {
-    // 1. Buscar todos os clientes e coletar todos os team_ids
     const clientesRef = collection(db, 'clientes')
     const clientesSnap = await getDocs(clientesRef)
-    const allTeamIds = new Set()
 
     for (const clienteDoc of clientesSnap.docs) {
       const clienteData = clienteDoc.data()
@@ -467,45 +464,15 @@ export async function migrarClientes() {
             status: clienteData.status || 'ativo'
           })
           results.clientes_atualizados++
-          console.log(`Cliente atualizado: ${clienteData.team_name || clienteId}`)
-          timesArray.forEach(t => allTeamIds.add(t))
+          console.log(`Cliente atualizado: ${clienteData.team_name || clienteId} -> times: [${timesArray.join(', ')}]`)
         } catch (err) {
           results.errors.push(`Erro ao atualizar cliente ${clienteId}: ${err.message}`)
         }
       } else {
-        // Cliente já tem times, adicionar à lista
-        clienteData.times.forEach(t => allTeamIds.add(t))
+        results.clientes_ja_ok++
+        console.log(`Cliente já OK: ${clienteData.team_name || clienteId}`)
       }
     }
-
-    console.log(`Total de team_ids encontrados: ${allTeamIds.size}`)
-
-    // 2. Criar usuarios_lookup para usuários predefinidos
-    for (const usuario of usuariosLookup) {
-      try {
-        const usuarioRef = doc(db, 'usuarios_lookup', usuario.id)
-        await setDoc(usuarioRef, usuario, { merge: true })
-        results.usuarios_lookup++
-      } catch (err) {
-        results.errors.push(`Erro ao criar usuario lookup: ${err.message}`)
-      }
-    }
-    console.log(`Usuarios lookup criados: ${results.usuarios_lookup}`)
-
-    // 3. Criar metricas_diarias para todos os team_ids
-    for (const teamId of allTeamIds) {
-      const metricasParaTeam = gerarMetricasParaTeam(teamId)
-      for (const metrica of metricasParaTeam) {
-        try {
-          const metricaRef = doc(db, 'metricas_diarias', metrica.id)
-          await setDoc(metricaRef, metrica, { merge: true })
-          results.metricas_diarias++
-        } catch (err) {
-          results.errors.push(`Erro ao criar metrica: ${err.message}`)
-        }
-      }
-    }
-    console.log(`Métricas diárias criadas: ${results.metricas_diarias}`)
 
     console.log('Migração concluída!', results)
     return results

@@ -261,7 +261,7 @@ export default function DebugFirestore() {
             <div>
               <h2 style={{ color: 'white', fontSize: '18px', margin: 0 }}>Migração de Dados</h2>
               <p style={{ color: '#64748b', fontSize: '12px', margin: '4px 0 0 0' }}>
-                Adiciona campo 'times' nos clientes e popula metricas_diarias e usuarios_lookup
+                Adiciona campo 'times' nos clientes que não têm (baseado no team_id)
               </p>
             </div>
           </div>
@@ -296,23 +296,17 @@ export default function DebugFirestore() {
                 ))}
               </div>
             ) : null}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
               <div style={{ padding: '12px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px' }}>
                 <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Clientes Atualizados</p>
-                <p style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
+                <p style={{ color: '#10b981', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
                   {migrationResults.clientes_atualizados || 0}
                 </p>
               </div>
               <div style={{ padding: '12px', background: 'rgba(6, 182, 212, 0.1)', borderRadius: '8px' }}>
-                <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Usuarios Lookup</p>
-                <p style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
-                  {migrationResults.usuarios_lookup || 0}
-                </p>
-              </div>
-              <div style={{ padding: '12px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '8px' }}>
-                <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Métricas Diárias</p>
-                <p style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
-                  {migrationResults.metricas_diarias || 0}
+                <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Clientes Já OK</p>
+                <p style={{ color: '#06b6d4', fontSize: '20px', fontWeight: 'bold', margin: 0 }}>
+                  {migrationResults.clientes_ja_ok || 0}
                 </p>
               </div>
             </div>
