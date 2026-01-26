@@ -761,19 +761,21 @@ export default function DebugFirestore() {
       const formatDate = (d) => d.toISOString().split('T')[0];
       const minDate = formatDate(thirtyDaysAgo);
 
-      // 2. For each team, get usuarios and their historico
+      // 2. For each team, get usuarios from usuarios_lookup and their historico
       for (const teamId of teamIds) {
         const teamInfo = { teamId, usuarios: [] };
 
         try {
-          const usuariosRef = collection(db, 'times', teamId, 'usuarios');
-          const usuariosSnap = await getDocs(usuariosRef);
+          // CORRIGIDO: Buscar usuários de usuarios_lookup (coleção plana)
+          const usuariosLookupRef = collection(db, 'usuarios_lookup');
+          const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
+          const usuariosSnap = await getDocs(usuariosQuery);
 
-          console.log(`[debugClienteMetrics] Team ${teamId}: ${usuariosSnap.docs.length} usuários`);
+          console.log(`[debugClienteMetrics] Team ${teamId}: ${usuariosSnap.docs.length} usuários em usuarios_lookup`);
 
           for (const userDoc of usuariosSnap.docs) {
-            const userId = userDoc.id;
             const userData = userDoc.data();
+            const userId = userData.user_id || userDoc.id;
             const userInfo = {
               userId,
               nome: userData.nome || userData.name,
