@@ -49,11 +49,38 @@ export async function getClientesCriticos(limite = 5) {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 }
 
-// Usuarios do time (métricas de uso)
+// Usuarios do time - busca de usuarios_lookup
 export async function getUsuariosTime(teamId) {
-  const usuariosRef = collection(db, 'times', teamId, 'usuarios')
-  const snapshot = await getDocs(usuariosRef)
+  const usuariosRef = collection(db, 'usuarios_lookup')
+  const q = query(usuariosRef, where('team_id', '==', teamId))
+  const snapshot = await getDocs(q)
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+}
+
+// Contar usuários por team_id(s) a partir de usuarios_lookup
+export async function getUsuariosCountByTeam(teamIds) {
+  if (!teamIds || teamIds.length === 0) return {}
+
+  const usuariosRef = collection(db, 'usuarios_lookup')
+  const counts = {}
+
+  teamIds.forEach(id => counts[id] = 0)
+
+  const chunkSize = 10
+  for (let i = 0; i < teamIds.length; i += chunkSize) {
+    const chunk = teamIds.slice(i, i + chunkSize)
+    const q = query(usuariosRef, where('team_id', 'in', chunk))
+    const snapshot = await getDocs(q)
+
+    snapshot.docs.forEach(doc => {
+      const teamId = doc.data().team_id
+      if (counts[teamId] !== undefined) {
+        counts[teamId]++
+      }
+    })
+  }
+
+  return counts
 }
 
 // Threads - agora buscam de times/{teamId}/threads

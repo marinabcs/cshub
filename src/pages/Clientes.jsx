@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { getUsuariosCountByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { Users, Search, ChevronRight, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link } from 'lucide-react';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
@@ -18,6 +19,7 @@ const normalizeText = (text) => {
 export default function Clientes() {
   const [clientes, setClientes] = useState([]);
   const [times, setTimes] = useState([]);
+  const [usuariosCount, setUsuariosCount] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterHealthStatus, setFilterHealthStatus] = useState('todos');
@@ -46,6 +48,11 @@ export default function Clientes() {
         ...doc.data()
       }));
       setTimes(timesData);
+
+      // Buscar contagem de usuários para cada time
+      const teamIds = timesData.map(t => t.id);
+      const counts = await getUsuariosCountByTeam(teamIds);
+      setUsuariosCount(counts);
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
@@ -543,7 +550,7 @@ export default function Clientes() {
                         <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 4px 0' }}>{time.team_name}</p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <span style={{ color: '#64748b', fontSize: '12px' }}>{time.team_type || 'Sem tipo'}</span>
-                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>{time.total_usuarios || 0} usuários</span>
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>{usuariosCount[time.id] || 0} usuários</span>
                         </div>
                       </div>
                     </div>

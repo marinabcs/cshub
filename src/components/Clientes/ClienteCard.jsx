@@ -6,7 +6,7 @@ import { HealthBar } from '../UI/HealthBar'
 import { formatRelativeTime } from '../../utils/helpers'
 import { timestampToDate } from '../../services/api'
 
-export default function ClienteCard({ cliente }) {
+export default function ClienteCard({ cliente, usuariosCount = 0 }) {
   return (
     <Link to={`/clientes/${cliente.id}`}>
       <Card className="hover:border-primary-500/50 hover:shadow-lg hover:shadow-primary-500/5 transition-all duration-200 cursor-pointer">
@@ -43,7 +43,7 @@ export default function ClienteCard({ cliente }) {
             </div>
             <div className="flex items-center gap-2 text-dark-400">
               <Users className="w-4 h-4" />
-              <span>{cliente.total_usuarios || 0} usuários</span>
+              <span>{usuariosCount} usuários</span>
             </div>
           </div>
 

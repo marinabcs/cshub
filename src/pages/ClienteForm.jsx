@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { getUsuariosCountByTeam } from '../services/api';
 import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, Calendar, UserCircle, Phone, Mail, Briefcase } from 'lucide-react';
 import { STATUS_OPTIONS, DEFAULT_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { logAction, calculateChanges } from '../utils/audit';
@@ -39,6 +40,7 @@ export default function ClienteForm() {
   const [times, setTimes] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [usuariosSistema, setUsuariosSistema] = useState([]);
+  const [usuariosCount, setUsuariosCount] = useState({});
 
   // Form state
   const [nome, setNome] = useState('');
@@ -72,6 +74,11 @@ export default function ClienteForm() {
         const timesSnap = await getDocs(collection(db, 'times'));
         const timesData = timesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setTimes(timesData);
+
+        // Buscar contagem de usuários para cada time
+        const teamIds = timesData.map(t => t.id);
+        const counts = await getUsuariosCountByTeam(teamIds);
+        setUsuariosCount(counts);
 
         // Fetch all clients to check team assignments
         const clientesSnap = await getDocs(collection(db, 'clientes'));
@@ -797,7 +804,7 @@ export default function ClienteForm() {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#94a3b8', fontSize: '11px' }}>
                         <Users style={{ width: '12px', height: '12px' }} />
-                        {time.total_usuarios || 0}
+                        {usuariosCount[time.id] || 0}
                       </div>
                     </div>
                   );
