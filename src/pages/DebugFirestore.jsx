@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { collection, getDocs, query, limit, doc, deleteDoc, setDoc, updateDoc, Timestamp, where } from 'firebase/firestore';
+import { collection, getDocs, query, limit, doc, deleteDoc, setDoc, updateDoc, Timestamp, where, collectionGroup } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Database, RefreshCw, Copy, Check, Trash2, Download, AlertTriangle, FolderDown, Plus, Calendar, Activity, Circle } from 'lucide-react';
@@ -761,80 +761,83 @@ export default function DebugFirestore() {
       const formatDate = (d) => d.toISOString().split('T')[0];
       const minDate = formatDate(thirtyDaysAgo);
 
-      // 2. For each team, get usuarios from usuarios_lookup and their historico
-      for (const teamId of teamIds) {
-        const teamInfo = { teamId, usuarios: [] };
+      // 2. Usar collectionGroup para buscar todos os documentos historico
+      console.log('[debugClienteMetrics] Usando collectionGroup para buscar historico...');
+      const historicoGroupRef = collectionGroup(db, 'historico');
+      const historicoSnap = await getDocs(historicoGroupRef);
 
-        try {
-          // Buscar usuários de usuarios_lookup (coleção que TEM documentos reais)
-          // Isso resolve o problema dos "phantom documents" em times/{teamId}/usuarios/
-          const usuariosLookupRef = collection(db, 'usuarios_lookup');
-          const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
-          const usuariosSnap = await getDocs(usuariosQuery);
+      console.log(`[debugClienteMetrics] Total de documentos historico encontrados: ${historicoSnap.docs.length}`);
 
-          console.log(`[debugClienteMetrics] Team ${teamId}: ${usuariosSnap.docs.length} usuários via usuarios_lookup`);
+      // Agrupar por usuário e filtrar pelos teams do cliente
+      const userMap = new Map(); // userId -> { teamId, historico: [] }
 
-          for (const userDoc of usuariosSnap.docs) {
-            const userId = userDoc.id;
-            const userData = userDoc.data();
-            const userInfo = {
+      historicoSnap.docs.forEach(docSnap => {
+        const pathParts = docSnap.ref.path.split('/');
+        // Path: times/teamId/usuarios/userId/historico/date
+        if (pathParts[0] === 'times' && teamIds.includes(pathParts[1])) {
+          const teamId = pathParts[1];
+          const userId = pathParts[3];
+          const dateId = docSnap.id;
+          const data = docSnap.data();
+
+          if (!userMap.has(userId)) {
+            userMap.set(userId, {
+              teamId,
               userId,
-              nome: userData.nome || userData.name,
+              nome: null,
               historico: [],
               subtotal: { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 }
-            };
-
-            try {
-              const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
-              const historicoSnap = await getDocs(historicoRef);
-
-              const allDocs = historicoSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-              const filteredDocs = allDocs.filter(d => d.id >= minDate);
-
-              console.log(`[debugClienteMetrics]   Usuário ${userId}: ${allDocs.length} total, ${filteredDocs.length} filtrado`);
-
-              filteredDocs.forEach(h => {
-                userInfo.historico.push({
-                  date: h.id,
-                  logins: h.logins || 0,
-                  pecas_criadas: h.pecas_criadas || 0,
-                  downloads: h.downloads || 0,
-                  uso_ai_total: h.uso_ai_total || 0
-                });
-                userInfo.subtotal.logins += (h.logins || 0);
-                userInfo.subtotal.pecas_criadas += (h.pecas_criadas || 0);
-                userInfo.subtotal.downloads += (h.downloads || 0);
-                userInfo.subtotal.uso_ai_total += (h.uso_ai_total || 0);
-
-                // Aggregate
-                results.aggregated.logins += (h.logins || 0);
-                results.aggregated.pecas_criadas += (h.pecas_criadas || 0);
-                results.aggregated.downloads += (h.downloads || 0);
-                results.aggregated.uso_ai_total += (h.uso_ai_total || 0);
-
-                results.historico.push({
-                  teamId,
-                  userId,
-                  date: h.id,
-                  logins: h.logins || 0,
-                  pecas_criadas: h.pecas_criadas || 0,
-                  downloads: h.downloads || 0,
-                  uso_ai_total: h.uso_ai_total || 0
-                });
-              });
-
-              teamInfo.usuarios.push(userInfo);
-              results.usuarios.push({ teamId, userId, nome: userInfo.nome, subtotal: userInfo.subtotal, docsCount: filteredDocs.length });
-            } catch (err) {
-              results.errors.push(`Erro ao buscar histórico do usuário ${userId}: ${err.message}`);
-            }
+            });
           }
 
-          results.teams.push(teamInfo);
-        } catch (err) {
-          results.errors.push(`Erro ao buscar usuários do time ${teamId}: ${err.message}`);
+          const userInfo = userMap.get(userId);
+
+          // Filtrar por data (últimos 30 dias)
+          if (dateId >= minDate) {
+            const h = { id: dateId, ...data };
+            userInfo.historico.push({
+              date: h.id,
+              logins: h.logins || 0,
+              pecas_criadas: h.pecas_criadas || 0,
+              downloads: h.downloads || 0,
+              uso_ai_total: h.uso_ai_total || 0
+            });
+            userInfo.subtotal.logins += (h.logins || 0);
+            userInfo.subtotal.pecas_criadas += (h.pecas_criadas || 0);
+            userInfo.subtotal.downloads += (h.downloads || 0);
+            userInfo.subtotal.uso_ai_total += (h.uso_ai_total || 0);
+
+            // Aggregate
+            results.aggregated.logins += (h.logins || 0);
+            results.aggregated.pecas_criadas += (h.pecas_criadas || 0);
+            results.aggregated.downloads += (h.downloads || 0);
+            results.aggregated.uso_ai_total += (h.uso_ai_total || 0);
+
+            results.historico.push({
+              teamId,
+              userId,
+              date: h.id,
+              logins: h.logins || 0,
+              pecas_criadas: h.pecas_criadas || 0,
+              downloads: h.downloads || 0,
+              uso_ai_total: h.uso_ai_total || 0
+            });
+          }
         }
-      }
+      });
+
+      // Converter mapa para arrays de resultado
+      userMap.forEach((userInfo, userId) => {
+        console.log(`[debugClienteMetrics] Usuário ${userId}: ${userInfo.historico.length} registros`);
+        results.usuarios.push({
+          teamId: userInfo.teamId,
+          userId,
+          nome: userInfo.nome,
+          subtotal: userInfo.subtotal,
+          docsCount: userInfo.historico.length
+        });
+        results.teams.push({ teamId: userInfo.teamId, usuarios: [userInfo] });
+      });
 
       console.log('[debugClienteMetrics] Resultados:', results);
       setMetricsDebugResults(results);

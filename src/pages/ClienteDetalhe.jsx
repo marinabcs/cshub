@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, collectionGroup } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
@@ -112,8 +112,7 @@ export default function ClienteDetalhe() {
           setHealthHistory(healthData.sort((a, b) => a.date - b.date));
 
           // Fetch usage data from linked teams - from times/{teamId}/usuarios/{userId}/historico/{data}
-          // IMPORTANTE: Documentos de usuário em times/{teamId}/usuarios/ são "phantom docs" (não têm campos)
-          // Por isso, usamos usuarios_lookup para obter os IDs dos usuários
+          // Usa collectionGroup para buscar TODOS os documentos historico e filtra pelo path do team
           if (teamIds.length > 0) {
             // Calculate date 30 days ago (format: YYYY-MM-DD)
             const today = new Date();
@@ -122,94 +121,74 @@ export default function ClienteDetalhe() {
             const minDate = formatDate(thirtyDaysAgo);
 
             // DEBUG: Log date range and team IDs
-            console.log('=== DEBUG MÉTRICAS DE USO ===');
+            console.log('=== DEBUG MÉTRICAS DE USO (collectionGroup) ===');
             console.log('Cliente ID:', id);
             console.log('Team IDs consultados:', teamIds);
             console.log('Data mínima (30 dias):', minDate);
             console.log('Data atual:', formatDate(today));
 
-            const teamUsagePromises = teamIds.map(async (teamId) => {
-              try {
-                // Buscar usuários de usuarios_lookup (coleção que TEM documentos reais)
-                // Isso resolve o problema dos "phantom documents" em times/{teamId}/usuarios/
-                const usuariosLookupRef = collection(db, 'usuarios_lookup');
-                const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
-                const usuariosSnap = await getDocs(usuariosQuery);
+            try {
+              // Usar collectionGroup para buscar TODOS os documentos historico
+              const historicoGroupRef = collectionGroup(db, 'historico');
+              const historicoSnap = await getDocs(historicoGroupRef);
 
-                console.log(`Team ${teamId}: ${usuariosSnap.docs.length} usuários em usuarios_lookup`);
+              console.log(`Total de documentos historico encontrados: ${historicoSnap.docs.length}`);
 
-                // For each usuario, get their historico from last 30 days
-                const historicoPromises = usuariosSnap.docs.map(async (userDoc) => {
-                  const userId = userDoc.id;
+              // Filtrar apenas os documentos que pertencem aos times do cliente
+              // O path é: times/{teamId}/usuarios/{userId}/historico/{date}
+              const allHistorico = [];
 
-                  console.log(`  Buscando histórico para usuário: ${userId}`);
+              historicoSnap.docs.forEach(docSnap => {
+                const pathParts = docSnap.ref.path.split('/');
+                // Path: times/teamId/usuarios/userId/historico/date
+                // Index:   0    1        2      3        4       5
+                if (pathParts[0] === 'times' && teamIds.includes(pathParts[1])) {
+                  const teamId = pathParts[1];
+                  const userId = pathParts[3];
+                  const dateId = docSnap.id;
 
-                  // Acessa historico diretamente usando o ID do usuário
-                  const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
-                  const historicoSnap = await getDocs(historicoRef);
+                  // Filtrar por data (últimos 30 dias)
+                  if (dateId >= minDate) {
+                    const data = docSnap.data();
+                    allHistorico.push({
+                      id: dateId,
+                      ...data,
+                      _teamId: teamId,
+                      _userId: userId
+                    });
 
-                  // DEBUG: Log raw docs before filter
-                  const allDocs = historicoSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                  const filteredDocs = allDocs.filter(doc => doc.id >= minDate);
-
-                  console.log(`  Usuário ${userId}:`);
-                  console.log(`    Total docs histórico: ${allDocs.length}`);
-                  console.log(`    Docs após filtro 30d: ${filteredDocs.length}`);
-                  if (allDocs.length > 0) {
-                    const dates = allDocs.map(d => d.id).sort();
-                    console.log(`    Data mais antiga: ${dates[0]}`);
-                    console.log(`    Data mais recente: ${dates[dates.length - 1]}`);
+                    console.log(`  [${teamId}/${userId}/${dateId}] logins=${data.logins || 0}, pecas=${data.pecas_criadas || 0}, downloads=${data.downloads || 0}, ai=${data.uso_ai_total || 0}`);
                   }
+                }
+              });
 
-                  // DEBUG: Log metrics per filtered doc and calculate subtotal per user
-                  let userSubtotal = { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 };
-                  filteredDocs.forEach(doc => {
-                    console.log(`    [${doc.id}] logins=${doc.logins || 0}, pecas=${doc.pecas_criadas || 0}, downloads=${doc.downloads || 0}, ai=${doc.uso_ai_total || 0}`);
-                    userSubtotal.logins += (doc.logins || 0);
-                    userSubtotal.pecas_criadas += (doc.pecas_criadas || 0);
-                    userSubtotal.downloads += (doc.downloads || 0);
-                    userSubtotal.uso_ai_total += (doc.uso_ai_total || 0);
-                  });
-                  console.log(`    SUBTOTAL usuário ${userId}: logins=${userSubtotal.logins}, pecas=${userSubtotal.pecas_criadas}, downloads=${userSubtotal.downloads}, ai=${userSubtotal.uso_ai_total}`);
+              // DEBUG: Summary before aggregation
+              console.log('\n=== RESUMO PRÉ-AGREGAÇÃO ===');
+              console.log('Total de registros histórico filtrados:', allHistorico.length);
 
-                  // Return with teamId and userId for tracking
-                  return filteredDocs.map(doc => ({ ...doc, _teamId: teamId, _userId: userId }));
-                });
+              // Aggregate usage data from all daily records (last 30 days)
+              const aggregated = allHistorico.reduce((acc, h) => {
+                return {
+                  logins: acc.logins + (h.logins || 0),
+                  pecas_criadas: acc.pecas_criadas + (h.pecas_criadas || 0),
+                  downloads: acc.downloads + (h.downloads || 0),
+                  ai_total: acc.ai_total + (h.uso_ai_total || 0)
+                };
+              }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
 
-                const historicoResults = await Promise.all(historicoPromises);
-                return historicoResults.flat();
-              } catch (err) {
-                console.error(`Erro ao buscar dados do time ${teamId}:`, err);
-                return [];
-              }
-            });
+              // DEBUG: Final aggregated values
+              console.log('\n=== VALORES AGREGADOS FINAIS ===');
+              console.log('Logins:', aggregated.logins);
+              console.log('Peças Criadas:', aggregated.pecas_criadas);
+              console.log('Downloads:', aggregated.downloads);
+              console.log('Uso AI:', aggregated.ai_total);
+              console.log('================================\n');
 
-            const teamUsageResults = await Promise.all(teamUsagePromises);
-            const allHistorico = teamUsageResults.flat();
-
-            // DEBUG: Summary before aggregation
-            console.log('\n=== RESUMO PRÉ-AGREGAÇÃO ===');
-            console.log('Total de registros histórico:', allHistorico.length);
-
-            // Aggregate usage data from all daily records (last 30 days)
-            const aggregated = allHistorico.reduce((acc, h) => {
-              return {
-                logins: acc.logins + (h.logins || 0),
-                pecas_criadas: acc.pecas_criadas + (h.pecas_criadas || 0),
-                downloads: acc.downloads + (h.downloads || 0),
-                ai_total: acc.ai_total + (h.uso_ai_total || 0)
-              };
-            }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
-
-            // DEBUG: Final aggregated values
-            console.log('\n=== VALORES AGREGADOS FINAIS ===');
-            console.log('Logins:', aggregated.logins);
-            console.log('Peças Criadas:', aggregated.pecas_criadas);
-            console.log('Downloads:', aggregated.downloads);
-            console.log('Uso AI:', aggregated.ai_total);
-            console.log('================================\n');
-
-            setUsageData(aggregated);
+              setUsageData(aggregated);
+            } catch (err) {
+              console.error('Erro ao buscar métricas de uso:', err);
+              setUsageData({ logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
+            }
           }
 
           // Fetch users from usuarios_lookup for each linked team

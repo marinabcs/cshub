@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, Timestamp, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, Timestamp, query, where, collectionGroup } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { calcularHealthScore, formatHealthHistoryDate } from '../utils/healthScore';
 
@@ -71,7 +71,7 @@ export function useHealthScore(clienteId) {
   /**
    * Fetch usage data from times/{teamId}/usuarios/{userId}/historico
    * Returns aggregated usage for last 30 days and total user count
-   * IMPORTANTE: Usa usuarios_lookup para obter IDs pois docs em times/{teamId}/usuarios/ são "phantom docs"
+   * Usa collectionGroup para buscar todos os historico e filtra pelo path do team
    */
   const fetchUsageData = useCallback(async (teamIds) => {
     if (!teamIds || teamIds.length === 0) {
@@ -86,42 +86,38 @@ export function useHealthScore(clienteId) {
       const minDate = formatDate(thirtyDaysAgo);
 
       // DEBUG: Log hook fetch start
-      console.log('[useHealthScore] === fetchUsageData ===');
+      console.log('[useHealthScore] === fetchUsageData (collectionGroup) ===');
       console.log('[useHealthScore] Cliente ID:', clienteId);
       console.log('[useHealthScore] Team IDs:', teamIds);
       console.log('[useHealthScore] Data mínima:', minDate);
 
-      let totalUsers = 0;
+      // Usar collectionGroup para buscar TODOS os documentos historico
+      const historicoGroupRef = collectionGroup(db, 'historico');
+      const historicoSnap = await getDocs(historicoGroupRef);
+
+      console.log(`[useHealthScore] Total de documentos historico encontrados: ${historicoSnap.docs.length}`);
+
+      // Filtrar apenas os documentos que pertencem aos times do cliente
       const allHistorico = [];
+      const userIds = new Set();
 
-      for (const teamId of teamIds) {
-        try {
-          // Buscar usuários de usuarios_lookup (coleção que TEM documentos reais)
-          // Isso resolve o problema dos "phantom documents" em times/{teamId}/usuarios/
-          const usuariosLookupRef = collection(db, 'usuarios_lookup');
-          const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
-          const usuariosSnap = await getDocs(usuariosQuery);
-          totalUsers += usuariosSnap.docs.length;
+      historicoSnap.docs.forEach(docSnap => {
+        const pathParts = docSnap.ref.path.split('/');
+        // Path: times/teamId/usuarios/userId/historico/date
+        if (pathParts[0] === 'times' && teamIds.includes(pathParts[1])) {
+          const userId = pathParts[3];
+          const dateId = docSnap.id;
 
-          console.log(`[useHealthScore] Team ${teamId}: ${usuariosSnap.docs.length} usuários via usuarios_lookup`);
+          userIds.add(userId);
 
-          // For each usuario, get their historico from last 30 days
-          for (const userDoc of usuariosSnap.docs) {
-            const userId = userDoc.id;
-            const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
-            const historicoSnap = await getDocs(historicoRef);
-            // Filter by doc.id (the date) and include id in the mapped data
-            const allDocs = historicoSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const filteredDocs = allDocs.filter(doc => doc.id >= minDate);
-
-            console.log(`[useHealthScore]   Usuário ${userId}: ${allDocs.length} total, ${filteredDocs.length} após filtro 30d`);
-
-            allHistorico.push(...filteredDocs);
+          // Filtrar por data (últimos 30 dias)
+          if (dateId >= minDate) {
+            allHistorico.push({ id: dateId, ...docSnap.data() });
           }
-        } catch (err) {
-          console.error(`Error fetching usage for team ${teamId}:`, err);
         }
-      }
+      });
+
+      const totalUsers = userIds.size;
 
       // Aggregate usage data from all daily records
       const usageData = allHistorico.reduce((acc, h) => {
@@ -134,7 +130,8 @@ export function useHealthScore(clienteId) {
       }, { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 });
 
       // DEBUG: Log aggregated results
-      console.log('[useHealthScore] Total registros:', allHistorico.length);
+      console.log('[useHealthScore] Total usuários únicos:', totalUsers);
+      console.log('[useHealthScore] Total registros filtrados:', allHistorico.length);
       console.log('[useHealthScore] Agregado:', usageData);
       console.log('[useHealthScore] ========================');
 
@@ -327,38 +324,35 @@ export function useCalcularTodosHealthScores() {
             allThreads.push(...threadsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           }
 
-          // Fetch usage data for all teams
+          // Fetch usage data using collectionGroup para buscar todos os historico
           const currentDate = new Date();
           const thirtyDaysAgo = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000);
           const minDate = thirtyDaysAgo.toISOString().split('T')[0];
 
-          let totalUsers = 0;
+          // Usar collectionGroup para buscar TODOS os documentos historico
+          const historicoGroupRef = collectionGroup(db, 'historico');
+          const historicoSnap = await getDocs(historicoGroupRef);
+
+          // Filtrar apenas os documentos que pertencem aos times do cliente
           const allHistorico = [];
+          const userIds = new Set();
 
-          for (const teamId of teamIds) {
-            try {
-              // Buscar usuários de usuarios_lookup (coleção que TEM documentos reais)
-              // Isso resolve o problema dos "phantom documents" em times/{teamId}/usuarios/
-              const usuariosLookupRef = collection(db, 'usuarios_lookup');
-              const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
-              const usuariosSnap = await getDocs(usuariosQuery);
-              totalUsers += usuariosSnap.docs.length;
+          historicoSnap.docs.forEach(docSnap => {
+            const pathParts = docSnap.ref.path.split('/');
+            // Path: times/teamId/usuarios/userId/historico/date
+            if (pathParts[0] === 'times' && teamIds.includes(pathParts[1])) {
+              const userId = pathParts[3];
+              const dateId = docSnap.id;
 
-              // Note: The document ID IS the date (e.g., "2026-01-21"), so we filter by doc.id
-              for (const userDoc of usuariosSnap.docs) {
-                const userId = userDoc.id;
-                const historicoRef = collection(db, 'times', teamId, 'usuarios', userId, 'historico');
-                const historicoSnap = await getDocs(historicoRef);
-                // Filter by doc.id (the date) and include id in the mapped data
-                const filteredDocs = historicoSnap.docs
-                  .filter(d => d.id >= minDate)
-                  .map(d => ({ id: d.id, ...d.data() }));
-                allHistorico.push(...filteredDocs);
+              userIds.add(userId);
+
+              if (dateId >= minDate) {
+                allHistorico.push({ id: dateId, ...docSnap.data() });
               }
-            } catch (e) {
-              // Ignore errors for individual teams
             }
-          }
+          });
+
+          const totalUsers = userIds.size;
 
           const usageData = allHistorico.reduce((acc, h) => ({
             logins: acc.logins + (h.logins || 0),
