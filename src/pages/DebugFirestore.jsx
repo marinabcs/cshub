@@ -761,16 +761,18 @@ export default function DebugFirestore() {
       const formatDate = (d) => d.toISOString().split('T')[0];
       const minDate = formatDate(thirtyDaysAgo);
 
-      // 2. For each team, get usuarios and their historico
+      // 2. For each team, get usuarios from usuarios_lookup and their historico
       for (const teamId of teamIds) {
         const teamInfo = { teamId, usuarios: [] };
 
         try {
-          // Buscar usuários diretamente de times/{teamId}/usuarios/
-          const usuariosRef = collection(db, 'times', teamId, 'usuarios');
-          const usuariosSnap = await getDocs(usuariosRef);
+          // Buscar usuários de usuarios_lookup (coleção que TEM documentos reais)
+          // Isso resolve o problema dos "phantom documents" em times/{teamId}/usuarios/
+          const usuariosLookupRef = collection(db, 'usuarios_lookup');
+          const usuariosQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
+          const usuariosSnap = await getDocs(usuariosQuery);
 
-          console.log(`[debugClienteMetrics] Team ${teamId}: ${usuariosSnap.docs.length} usuários`);
+          console.log(`[debugClienteMetrics] Team ${teamId}: ${usuariosSnap.docs.length} usuários via usuarios_lookup`);
 
           for (const userDoc of usuariosSnap.docs) {
             const userId = userDoc.id;
