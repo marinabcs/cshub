@@ -8,6 +8,12 @@ service cloud.firestore {
              request.auth.token.email.matches('.*@trakto\\.io$');
     }
 
+    // Regra para collectionGroup - permite buscar todos os documentos 'historico'
+    // Necessário para agregar métricas de uso de todos os usuários de um cliente
+    match /{path=**}/historico/{data} {
+      allow read: if isTraktoUser();
+    }
+
     // Usuários do Sistema (admins, CS, gestores)
     match /usuarios_sistema/{userId} {
       allow read, write: if isTraktoUser();
