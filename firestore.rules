@@ -148,6 +148,18 @@ service cloud.firestore {
       allow write: if isCSOrHigher();
     }
 
+    // Threads (collection raiz - nova arquitetura simplificada)
+    match /threads/{threadId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
+    // Mensagens (collection raiz - nova arquitetura simplificada)
+    match /mensagens/{mensagemId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
     // Playbooks (templates) - leitura para todos, escrita para gestores+
     match /playbooks/{playbookId} {
       allow read: if isTraktoUser();

@@ -83,16 +83,53 @@ export async function getUsuariosCountByTeam(teamIds) {
   return counts
 }
 
-// Threads - agora buscam de times/{teamId}/threads
-export async function getThreadsCliente(teamId) {
-  const threadsRef = collection(db, 'times', teamId, 'threads')
-  const q = query(threadsRef, orderBy('updated_at', 'desc'))
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+// ============================================
+// THREADS E MENSAGENS - NOVA ARQUITETURA (collections raiz)
+// ============================================
+
+// Buscar threads por team_id(s) - nova arquitetura
+export async function getThreadsByTeam(teamIds) {
+  if (!teamIds || teamIds.length === 0) return []
+
+  const threadsRef = collection(db, 'threads')
+  let allThreads = []
+
+  const chunkSize = 10
+  for (let i = 0; i < teamIds.length; i += chunkSize) {
+    const chunk = teamIds.slice(i, i + chunkSize)
+    const q = query(
+      threadsRef,
+      where('team_id', 'in', chunk),
+      orderBy('updated_at', 'desc')
+    )
+    const snapshot = await getDocs(q)
+    allThreads.push(...snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })))
+  }
+
+  return allThreads
 }
 
-export async function getThreadById(teamId, threadId) {
-  const docRef = doc(db, 'times', teamId, 'threads', threadId)
+// Buscar mensagens de uma thread - nova arquitetura
+export async function getMensagensByThread(threadId) {
+  const mensagensRef = collection(db, 'mensagens')
+  const q = query(
+    mensagensRef,
+    where('thread_id', '==', threadId),
+    orderBy('data', 'asc')
+  )
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }))
+}
+
+// Buscar thread por ID - nova arquitetura
+export async function getThreadById(threadId) {
+  const docRef = doc(db, 'threads', threadId)
   const docSnap = await getDoc(docRef)
   if (docSnap.exists()) {
     return { id: docSnap.id, ...docSnap.data() }
@@ -100,7 +137,19 @@ export async function getThreadById(teamId, threadId) {
   return null
 }
 
-// Mensagens - agora buscam de times/{teamId}/threads/{threadId}/mensagens
+// ============================================
+// FUNÇÕES LEGADAS (subcollections - manter para compatibilidade)
+// ============================================
+
+// @deprecated - usar getThreadsByTeam()
+export async function getThreadsCliente(teamId) {
+  const threadsRef = collection(db, 'times', teamId, 'threads')
+  const q = query(threadsRef, orderBy('updated_at', 'desc'))
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+}
+
+// @deprecated - usar getMensagensByThread()
 export async function getMensagensThread(teamId, threadId) {
   const mensagensRef = collection(db, 'times', teamId, 'threads', threadId, 'mensagens')
   const q = query(mensagensRef, orderBy('data', 'asc'))

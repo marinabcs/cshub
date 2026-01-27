@@ -30,8 +30,8 @@ export function useClassificarThread() {
         classificado_por: 'ia'
       };
 
-      // Atualizar a thread no Firebase
-      const threadRef = doc(db, 'times', teamId, 'threads', threadId);
+      // Atualizar a thread no Firebase (nova arquitetura - collection raiz)
+      const threadRef = doc(db, 'threads', threadId);
       await updateDoc(threadRef, classificacaoData);
 
       // Criar alertas se necessário
@@ -61,8 +61,8 @@ export function useClassificarThread() {
         classificado_por: 'manual'
       };
 
-      // Atualizar a thread no Firebase
-      const threadRef = doc(db, 'times', teamId, 'threads', threadId);
+      // Atualizar a thread no Firebase (nova arquitetura - collection raiz)
+      const threadRef = doc(db, 'threads', threadId);
       await updateDoc(threadRef, classificacaoData);
 
       return { success: true };

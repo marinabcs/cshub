@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { getThreadsByTeam, getMensagensByThread } from '../services/api';
 import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useHealthScore } from '../hooks/useHealthScore';
@@ -55,7 +56,7 @@ export default function ClienteDetalhe() {
           const clienteData = { id: docSnap.id, ...docSnap.data() };
           setCliente(clienteData);
 
-          // Fetch threads from linked times (times/{teamId}/threads)
+          // Fetch threads from root collection 'threads' (nova arquitetura simplificada)
           // CORREÇÃO: Fallback para team_id ou id do cliente se times estiver vazio
           let teamIds = clienteData.times || [];
           if (teamIds.length === 0 && clienteData.team_id) {
@@ -66,26 +67,18 @@ export default function ClienteDetalhe() {
           }
 
           if (teamIds.length > 0) {
-            const threadPromises = teamIds.map(async (teamId) => {
-              try {
-                const threadsRef = collection(db, 'times', teamId, 'threads');
-                const threadsSnap = await getDocs(threadsRef);
-                return threadsSnap.docs.map(doc => ({
-                  id: doc.id,
-                  ...doc.data(),
-                  _teamId: teamId // Store teamId for reference
-                }));
-              } catch {
-                return [];
-              }
-            });
-            const threadResults = await Promise.all(threadPromises);
-            const allThreads = threadResults.flat();
-            setThreads(allThreads.sort((a, b) => {
-              const dateA = a.updated_at?.toDate?.() || new Date(0);
-              const dateB = b.updated_at?.toDate?.() || new Date(0);
-              return dateB - dateA;
-            }));
+            try {
+              // Usar nova função que busca da collection raiz 'threads'
+              const allThreads = await getThreadsByTeam(teamIds);
+              setThreads(allThreads.sort((a, b) => {
+                const dateA = a.updated_at?.toDate?.() || (a.updated_at ? new Date(a.updated_at) : new Date(0));
+                const dateB = b.updated_at?.toDate?.() || (b.updated_at ? new Date(b.updated_at) : new Date(0));
+                return dateB - dateA;
+              }));
+            } catch (error) {
+              console.error('Erro ao buscar threads:', error);
+              setThreads([]);
+            }
           } else {
             setThreads([]);
           }
@@ -205,23 +198,17 @@ export default function ClienteDetalhe() {
 
   const fetchMensagens = async (thread) => {
     try {
-      // Use _teamId from thread to fetch from times/{teamId}/threads/{threadId}/mensagens
-      const teamId = thread._teamId || thread.team_id;
-      if (!teamId) {
-        console.error('Thread sem team_id:', thread);
-        setMensagens([]);
-        return;
-      }
-      const mensagensRef = collection(db, 'times', teamId, 'threads', thread.id, 'mensagens');
-      const mensagensSnap = await getDocs(mensagensRef);
-      const mensagensData = mensagensSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Usar nova função que busca da collection raiz 'mensagens'
+      const threadId = thread.thread_id || thread.id;
+      const mensagensData = await getMensagensByThread(threadId);
       setMensagens(mensagensData.sort((a, b) => {
-        const dateA = a.data?.toDate?.() || new Date(0);
-        const dateB = b.data?.toDate?.() || new Date(0);
+        const dateA = a.data?.toDate?.() || (a.data ? new Date(a.data) : new Date(0));
+        const dateB = b.data?.toDate?.() || (b.data ? new Date(b.data) : new Date(0));
         return dateA - dateB;
       }));
     } catch (error) {
       console.error('Erro ao buscar mensagens:', error);
+      setMensagens([]);
     }
   };
 
@@ -271,9 +258,13 @@ export default function ClienteDetalhe() {
       responsavel_nome: cliente?.responsavel_nome
     };
 
+    // Usar thread_id (do n8n) ou id (fallback) para a nova arquitetura
+    const threadId = selectedThread.thread_id || selectedThread.id;
+    const teamId = selectedThread.team_id || selectedThread._teamId;
+
     const result = await classificar(
-      selectedThread._teamId,
-      selectedThread.id,
+      teamId,
+      threadId,
       conversaTexto,
       threadData
     );
@@ -288,9 +279,10 @@ export default function ClienteDetalhe() {
         classificado_por: 'ia'
       }));
 
-      // Atualizar na lista de threads
+      // Atualizar na lista de threads (comparar por thread_id ou id)
+      const currentThreadId = selectedThread.thread_id || selectedThread.id;
       setThreads(prev => prev.map(t =>
-        t.id === selectedThread.id
+        (t.thread_id || t.id) === currentThreadId
           ? { ...t, categoria: result.resultado.categoria, sentimento: result.resultado.sentimento, resumo_ia: result.resultado.resumo, classificado_por: 'ia' }
           : t
       ));
@@ -301,9 +293,13 @@ export default function ClienteDetalhe() {
   const handleClassificarManual = async () => {
     if (!selectedThread || !manualCategoria || !manualSentimento) return;
 
+    // Usar thread_id (do n8n) ou id (fallback) para a nova arquitetura
+    const threadId = selectedThread.thread_id || selectedThread.id;
+    const teamId = selectedThread.team_id || selectedThread._teamId;
+
     const result = await classificarManual(
-      selectedThread._teamId,
-      selectedThread.id,
+      teamId,
+      threadId,
       { categoria: manualCategoria, sentimento: manualSentimento, resumo: manualResumo }
     );
 
@@ -316,8 +312,10 @@ export default function ClienteDetalhe() {
         classificado_por: 'manual'
       }));
 
+      // Atualizar na lista de threads (comparar por thread_id ou id)
+      const currentThreadId = selectedThread.thread_id || selectedThread.id;
       setThreads(prev => prev.map(t =>
-        t.id === selectedThread.id
+        (t.thread_id || t.id) === currentThreadId
           ? { ...t, categoria: manualCategoria, sentimento: manualSentimento, resumo_ia: manualResumo || null, classificado_por: 'manual' }
           : t
       ));
