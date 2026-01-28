@@ -1,0 +1,663 @@
+import { useState, useEffect } from 'react';
+import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
+import { getUsuariosCountByTeam } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import { Users, Search, ChevronRight, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link } from 'lucide-react';
+import { getHealthColor, getHealthLabel } from '../utils/healthScore';
+import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
+
+// Função para normalizar texto (remove acentos)
+const normalizeText = (text) => {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+};
+
+export default function Clientes() {
+  const [clientes, setClientes] = useState([]);
+  const [times, setTimes] = useState([]);
+  const [usuariosCount, setUsuariosCount] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterHealthStatus, setFilterHealthStatus] = useState('todos');
+  const [filterClienteStatus, setFilterClienteStatus] = useState(DEFAULT_VISIBLE_STATUS);
+  const [filterType, setFilterType] = useState('todos');
+  const [showOrphanModal, setShowOrphanModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [clienteToDelete, setClienteToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const navigate = useNavigate();
+
+  const fetchData = async () => {
+    try {
+      // Fetch clientes
+      const clientesSnapshot = await getDocs(collection(db, 'clientes'));
+      const clientesData = clientesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setClientes(clientesData);
+
+      // Fetch times
+      const timesSnapshot = await getDocs(collection(db, 'times'));
+      const timesData = timesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setTimes(timesData);
+
+      // Buscar contagem de usuários para cada time
+      const teamIds = timesData.map(t => t.id);
+      const counts = await getUsuariosCountByTeam(teamIds);
+      setUsuariosCount(counts);
+    } catch (error) {
+      console.error('Erro ao buscar dados:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Calculate orphan times (times not linked to any client)
+  const getOrphanTimes = () => {
+    const linkedTeamIds = new Set();
+    clientes.forEach(cliente => {
+      (cliente.times || []).forEach(teamId => linkedTeamIds.add(teamId));
+    });
+    return times.filter(time => !linkedTeamIds.has(time.id));
+  };
+
+  const orphanTimes = getOrphanTimes();
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return 'Sem registro';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+    if (diff === 0) return 'Hoje';
+    if (diff === 1) return 'Ontem';
+    return `há ${diff} dias`;
+  };
+
+  const filteredClientes = clientes.filter(cliente => {
+    const searchNormalized = normalizeText(searchTerm);
+    const nameNormalized = normalizeText(cliente.team_name || '');
+    const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
+    const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
+    const matchesHealthStatus = filterHealthStatus === 'todos' || cliente.health_status === filterHealthStatus;
+    const matchesClienteStatus = filterClienteStatus.length === 0 || filterClienteStatus.includes(cliente.status || 'ativo');
+    const matchesType = filterType === 'todos' || cliente.team_type === filterType;
+    return matchesSearch && matchesHealthStatus && matchesClienteStatus && matchesType;
+  });
+
+  const teamTypes = [...new Set(clientes.map(c => c.team_type).filter(Boolean))];
+
+  const exportToCSV = () => {
+    const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Health Score', 'Status', 'Qtd Times'];
+    const rows = filteredClientes.map(cliente => [
+      cliente.team_name || cliente.nome || '',
+      cliente.responsavel_nome || '',
+      cliente.responsavel_email || '',
+      (cliente.tags || []).join('; '),
+      cliente.health_score || 0,
+      getHealthLabel(cliente.health_status),
+      (cliente.times || []).length
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `clientes_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleDeleteClick = (e, cliente) => {
+    e.stopPropagation();
+    setClienteToDelete(cliente);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!clienteToDelete) return;
+
+    setDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'clientes', clienteToDelete.id));
+      // Refresh data
+      await fetchData();
+      setShowDeleteModal(false);
+      setClienteToDelete(null);
+    } catch (error) {
+      console.error('Erro ao excluir cliente:', error);
+      alert('Erro ao excluir cliente. Tente novamente.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0f0a1f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '48px', height: '48px', border: '3px solid rgba(139, 92, 246, 0.2)', borderTopColor: '#8b5cf6', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
+      {/* Alerta de Times Órfãos */}
+      {orphanTimes.length > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '16px 20px',
+          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(249, 115, 22, 0.1) 100%)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          borderRadius: '12px',
+          marginBottom: '24px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              background: 'rgba(245, 158, 11, 0.2)',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <AlertTriangle style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
+            </div>
+            <div>
+              <p style={{ color: '#fbbf24', fontSize: '14px', fontWeight: '600', margin: '0 0 2px 0' }}>
+                {orphanTimes.length} {orphanTimes.length === 1 ? 'time aguardando' : 'times aguardando'} atribuição
+              </p>
+              <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>
+                Esses times precisam ser vinculados a um cliente
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowOrphanModal(true)}
+            style={{
+              padding: '10px 20px',
+              background: 'rgba(245, 158, 11, 0.2)',
+              border: '1px solid rgba(245, 158, 11, 0.4)',
+              borderRadius: '10px',
+              color: '#fbbf24',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            Ver times
+            <ChevronRight style={{ width: '16px', height: '16px' }} />
+          </button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
+        <div>
+          <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>Clientes</h1>
+          <p style={{ color: '#94a3b8', margin: 0 }}>{clientes.length} clientes cadastrados</p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={exportToCSV}
+            style={{
+              padding: '12px 20px',
+              background: 'rgba(30, 27, 75, 0.6)',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <Download style={{ width: '18px', height: '18px' }} />
+            Exportar CSV
+          </button>
+          <button
+            onClick={() => navigate('/clientes/novo')}
+            style={{
+              padding: '12px 20px',
+              background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <Plus style={{ width: '18px', height: '18px' }} />
+            Novo Cliente
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
+          <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px', color: '#64748b' }} />
+          <input type="text" placeholder="Buscar por nome ou responsável..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ width: '100%', padding: '12px 16px 12px 48px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+        </div>
+        <select value={filterHealthStatus} onChange={(e) => setFilterHealthStatus(e.target.value)}
+          style={{ padding: '12px 16px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', cursor: 'pointer', minWidth: '150px' }}>
+          <option value="todos" style={{ background: '#1e1b4b' }}>Health: Todos</option>
+          <option value="saudavel" style={{ background: '#1e1b4b' }}>Saudável</option>
+          <option value="atencao" style={{ background: '#1e1b4b' }}>Atenção</option>
+          <option value="risco" style={{ background: '#1e1b4b' }}>Risco</option>
+          <option value="critico" style={{ background: '#1e1b4b' }}>Crítico</option>
+        </select>
+        <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
+          style={{ padding: '12px 16px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', cursor: 'pointer', minWidth: '150px' }}>
+          <option value="todos" style={{ background: '#1e1b4b' }}>Todos os tipos</option>
+          {teamTypes.map(type => (<option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>))}
+        </select>
+      </div>
+
+      {/* Filtro de Status do Cliente */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ color: '#94a3b8', fontSize: '13px', marginRight: '8px' }}>Status:</span>
+        {STATUS_OPTIONS.map(opt => {
+          const isSelected = filterClienteStatus.includes(opt.value);
+          return (
+            <button
+              key={opt.value}
+              onClick={() => {
+                if (isSelected) {
+                  setFilterClienteStatus(filterClienteStatus.filter(s => s !== opt.value));
+                } else {
+                  setFilterClienteStatus([...filterClienteStatus, opt.value]);
+                }
+              }}
+              style={{
+                padding: '6px 12px',
+                background: isSelected ? `${opt.color}20` : 'transparent',
+                border: `1px solid ${isSelected ? opt.color : 'rgba(139, 92, 246, 0.2)'}`,
+                borderRadius: '16px',
+                color: isSelected ? opt.color : '#64748b',
+                fontSize: '12px',
+                fontWeight: isSelected ? '500' : '400',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s'
+              }}
+            >
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: opt.color
+              }}></span>
+              {opt.label}
+              <span style={{ color: isSelected ? opt.color : '#64748b', opacity: 0.7 }}>
+                ({clientes.filter(c => (c.status || 'ativo') === opt.value).length})
+              </span>
+            </button>
+          );
+        })}
+        {(searchTerm || filterHealthStatus !== 'todos' || filterType !== 'todos' || filterClienteStatus.length !== DEFAULT_VISIBLE_STATUS.length) && (
+          <>
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setFilterHealthStatus('todos');
+                setFilterType('todos');
+                setFilterClienteStatus(DEFAULT_VISIBLE_STATUS);
+              }}
+              style={{
+                padding: '6px 12px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '16px',
+                color: '#ef4444',
+                fontSize: '12px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                marginLeft: '8px'
+              }}
+            >
+              <X style={{ width: '12px', height: '12px' }} />
+              Limpar filtros
+            </button>
+            <span style={{ color: '#64748b', fontSize: '13px', marginLeft: '16px' }}>
+              {filteredClientes.length} de {clientes.length} clientes
+            </span>
+          </>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '16px' }}>
+        {filteredClientes.length > 0 ? filteredClientes.map((cliente) => {
+          const isInativo = cliente.status === 'inativo';
+          return (
+          <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)}
+            style={{
+              background: isInativo ? 'rgba(55, 65, 81, 0.3)' : 'rgba(30, 27, 75, 0.4)',
+              border: isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(139, 92, 246, 0.15)',
+              borderRadius: '16px',
+              padding: '20px',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              opacity: isInativo ? 0.7 : 1
+            }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  background: isInativo ? 'rgba(107, 114, 128, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: isInativo ? '#9ca3af' : 'white',
+                  fontWeight: '600',
+                  fontSize: '18px'
+                }}>
+                  {cliente.team_name?.charAt(0) || 'C'}
+                </div>
+                <div>
+                  <h3 style={{ color: isInativo ? '#9ca3af' : 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>{cliente.team_name}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Building2 style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                    <span style={{ color: '#64748b', fontSize: '13px' }}>{cliente.team_type || 'Sem tipo'}</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  padding: '4px 10px',
+                  background: `${getStatusColor(cliente.status || 'ativo')}20`,
+                  color: getStatusColor(cliente.status || 'ativo'),
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: getStatusColor(cliente.status || 'ativo') }}></span>
+                  {getStatusLabel(cliente.status || 'ativo')}
+                </span>
+                {!isInativo && (
+                  <span style={{ padding: '4px 10px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
+                    {getHealthLabel(cliente.health_status)}
+                  </span>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${cliente.id}/editar`); }}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    background: isInativo ? 'rgba(107, 114, 128, 0.2)' : 'rgba(139, 92, 246, 0.2)',
+                    border: isInativo ? '1px solid rgba(107, 114, 128, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer'
+                  }}
+                  title="Editar cliente"
+                >
+                  <Pencil style={{ width: '14px', height: '14px', color: isInativo ? '#9ca3af' : '#a78bfa' }} />
+                </button>
+                <button
+                  onClick={(e) => handleDeleteClick(e, cliente)}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer'
+                  }}
+                  title="Excluir cliente"
+                >
+                  <Trash2 style={{ width: '14px', height: '14px', color: '#ef4444' }} />
+                </button>
+              </div>
+            </div>
+            {isInativo ? (
+              <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(107, 114, 128, 0.1)', borderRadius: '8px', textAlign: 'center' }}>
+                <span style={{ color: '#9ca3af', fontSize: '13px' }}>Health Score pausado - Cliente inativo</span>
+              </div>
+            ) : (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>Health Score</span>
+                  <span style={{ color: getHealthColor(cliente.health_status), fontSize: '16px', fontWeight: '700' }}>{cliente.health_score || 0}%</span>
+                </div>
+                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${cliente.health_score || 0}%`, height: '100%', background: getHealthColor(cliente.health_status), borderRadius: '4px', transition: 'width 0.3s ease' }}></div>
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: isInativo ? '1px solid rgba(107, 114, 128, 0.1)' : '1px solid rgba(139, 92, 246, 0.1)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '28px', height: '28px', background: isInativo ? 'rgba(107, 114, 128, 0.2)' : 'rgba(139, 92, 246, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Users style={{ width: '14px', height: '14px', color: isInativo ? '#9ca3af' : '#a5b4fc' }} />
+                  </div>
+                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>{cliente.responsavel_nome || 'Sem responsável'}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '24px', height: '24px', background: isInativo ? 'rgba(107, 114, 128, 0.2)' : 'rgba(6, 182, 212, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Link style={{ width: '12px', height: '12px', color: isInativo ? '#9ca3af' : '#22d3ee' }} />
+                  </div>
+                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>{(cliente.times || []).length} times</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '12px' }}>
+                <Clock style={{ width: '14px', height: '14px' }} />
+                {formatDate(cliente.ultima_interacao)}
+                <ChevronRight style={{ width: '16px', height: '16px', color: isInativo ? '#9ca3af' : '#8b5cf6' }} />
+              </div>
+            </div>
+          </div>
+        )}) : (
+          <div style={{ gridColumn: '1 / -1', padding: '48px', textAlign: 'center', background: 'rgba(30, 27, 75, 0.4)', borderRadius: '16px', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
+            <Users style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
+            <p style={{ color: '#94a3b8', fontSize: '16px', margin: 0 }}>Nenhum cliente encontrado</p>
+          </div>
+        )}
+      </div>
+
+      {/* Modal de Times Órfãos */}
+      {showOrphanModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '32px' }}>
+          <div style={{ background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  background: 'rgba(245, 158, 11, 0.2)',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <AlertTriangle style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
+                </div>
+                <div>
+                  <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 4px 0' }}>Times Aguardando Atribuição</h3>
+                  <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>{orphanTimes.length} times órfãos</p>
+                </div>
+              </div>
+              <button onClick={() => setShowOrphanModal(false)} style={{ width: '36px', height: '36px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X style={{ width: '18px', height: '18px', color: '#ef4444' }} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {orphanTimes.map(time => (
+                  <div key={time.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px',
+                    background: 'rgba(15, 10, 31, 0.6)',
+                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                    borderRadius: '12px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{
+                        width: '40px',
+                        height: '40px',
+                        background: 'rgba(245, 158, 11, 0.15)',
+                        borderRadius: '10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <Building2 style={{ width: '20px', height: '20px', color: '#fbbf24' }} />
+                      </div>
+                      <div>
+                        <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 4px 0' }}>{time.team_name}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span style={{ color: '#64748b', fontSize: '12px' }}>{time.team_type || 'Sem tipo'}</span>
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>{usuariosCount[time.id] || 0} usuários</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowOrphanModal(false);
+                        // Navegar para edição do cliente (quando existir) ou mostrar lista
+                        navigate(`/clientes?vincular_time=${time.id}&time_name=${encodeURIComponent(time.team_name)}`);
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        background: 'rgba(139, 92, 246, 0.2)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '8px',
+                        color: '#a78bfa',
+                        fontSize: '13px',
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <Link style={{ width: '14px', height: '14px' }} />
+                      Vincular a Cliente
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {showDeleteModal && clienteToDelete && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '32px' }}>
+          <div style={{ background: '#1a1033', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '20px', width: '100%', maxWidth: '450px', padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                background: 'rgba(239, 68, 68, 0.15)',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Trash2 style={{ width: '24px', height: '24px', color: '#ef4444' }} />
+              </div>
+              <div>
+                <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 4px 0' }}>Excluir Cliente</h3>
+                <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>Esta ação não pode ser desfeita</p>
+              </div>
+            </div>
+
+            <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '12px', marginBottom: '20px' }}>
+              <p style={{ color: '#fca5a5', fontSize: '14px', margin: '0 0 8px 0' }}>
+                Tem certeza que deseja excluir o cliente <strong style={{ color: 'white' }}>{clienteToDelete.team_name}</strong>?
+              </p>
+              {(clienteToDelete.times || []).length > 0 && (
+                <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>
+                  Os {(clienteToDelete.times || []).length} times vinculados ficarão órfãos e precisarão ser reatribuídos.
+                </p>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                onClick={() => { setShowDeleteModal(false); setClienteToDelete(null); }}
+                style={{
+                  padding: '12px 20px',
+                  background: 'rgba(15, 10, 31, 0.6)',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  borderRadius: '12px',
+                  color: '#94a3b8',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                style={{
+                  padding: '12px 20px',
+                  background: deleting ? 'rgba(239, 68, 68, 0.5)' : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: deleting ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <Trash2 style={{ width: '16px', height: '16px' }} />
+                {deleting ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
