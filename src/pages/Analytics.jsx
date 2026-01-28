@@ -1,4 +1,4 @@
-// Analytics - Dashboard Gerencial Completo
+// Analytics - Dashboard Gerencial Completo com Abas
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
@@ -7,7 +7,9 @@ import * as XLSX from 'xlsx';
 import {
   BarChart3, Users, TrendingUp, AlertTriangle, MessageSquare,
   Download, Filter, X, ChevronDown, Activity, Clock,
-  ExternalLink, FileSpreadsheet, RefreshCw
+  ExternalLink, FileSpreadsheet, RefreshCw, Monitor, UserCheck,
+  DollarSign, ShieldAlert, Star, Zap, Award, Target, ArrowUpRight,
+  ArrowDownRight, Mail, Phone
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
@@ -54,13 +56,26 @@ const getInitials = (name) => {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 };
 
+// Definição das abas
+const TABS = [
+  { id: 'usoPlatforma', label: 'Uso da Plataforma', icon: Monitor },
+  { id: 'conversas', label: 'Conversas', icon: MessageSquare },
+  { id: 'usuarios', label: 'Usuários', icon: Users },
+  { id: 'vendas', label: 'Vendas', icon: DollarSign },
+  { id: 'churn', label: 'Prevenção de Churn', icon: ShieldAlert }
+];
+
 export default function Analytics() {
   const navigate = useNavigate();
   const [clientes, setClientes] = useState([]);
   const [alertas, setAlertas] = useState([]);
   const [threads, setThreads] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
+  const [metricasDiarias, setMetricasDiarias] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Aba ativa
+  const [activeTab, setActiveTab] = useState('usoPlatforma');
 
   // Filtros globais
   const [periodo, setPeriodo] = useState('30');
@@ -78,54 +93,77 @@ export default function Analytics() {
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      // Fetch clientes
-      const clientesSnapshot = await getDocs(collection(db, 'clientes'));
+      // Data limite para queries (últimos 90 dias por padrão)
+      const dataLimite = new Date();
+      dataLimite.setDate(dataLimite.getDate() - 90);
+
+      // OTIMIZAÇÃO: Executar queries principais em PARALELO
+      const [
+        clientesSnapshot,
+        alertasSnapshot,
+        threadsSnapshot,
+        usuariosSnapshot,
+        metricasSnapshot
+      ] = await Promise.all([
+        getDocs(collection(db, 'clientes')),
+        getDocs(collection(db, 'alertas')),
+        // Usar collection raiz 'threads' ao invés de subcollections (muito mais rápido!)
+        getDocs(query(collection(db, 'threads'), orderBy('updated_at', 'desc'))),
+        getDocs(collection(db, 'usuarios_sistema')),
+        // Limitar metricas aos últimos 90 dias
+        getDocs(query(collection(db, 'metricas_diarias'), where('data', '>=', dataLimite)))
+      ]);
+
+      // Processar clientes
       const clientesData = clientesSnapshot.docs.map(d => ({
         id: d.id,
         ...d.data()
       }));
       setClientes(clientesData);
 
-      // Fetch alertas
-      const alertasSnapshot = await getDocs(collection(db, 'alertas'));
+      // Processar alertas
       const alertasData = alertasSnapshot.docs.map(d => ({
         id: d.id,
         ...d.data()
       }));
       setAlertas(alertasData);
 
-      // Fetch threads from all clientes (usando times/{teamId}/threads)
-      const allThreads = [];
-      for (const cliente of clientesData) {
-        const teamIds = cliente.times || [];
-        for (const teamId of teamIds) {
-          try {
-            const threadsRef = collection(db, 'times', teamId, 'threads');
-            const threadsSnapshot = await getDocs(threadsRef);
-            threadsSnapshot.docs.forEach(doc => {
-              allThreads.push({
-                id: doc.id,
-                clienteId: cliente.id,
-                clienteNome: cliente.team_name,
-                responsavel: cliente.responsavel_nome,
-                _teamId: teamId,
-                ...doc.data()
-              });
-            });
-          } catch (e) {
-            // Ignore errors for individual teams
-          }
-        }
-      }
+      // Processar threads (da collection raiz)
+      // Criar mapa de clientes por team_id para lookup rápido
+      const clientesPorTeam = {};
+      clientesData.forEach(c => {
+        (c.times || [c.id]).forEach(teamId => {
+          clientesPorTeam[teamId] = c;
+        });
+      });
+
+      const allThreads = threadsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        const cliente = clientesPorTeam[data.team_id];
+        return {
+          id: doc.id,
+          clienteId: cliente?.id,
+          clienteNome: cliente?.team_name,
+          responsavel: cliente?.responsavel_nome,
+          _teamId: data.team_id,
+          ...data
+        };
+      });
       setThreads(allThreads);
 
-      // Fetch usuarios
-      const usuariosSnapshot = await getDocs(collection(db, 'usuarios_sistema'));
+      // Processar usuarios
       const usuariosData = usuariosSnapshot.docs.map(d => ({
         id: d.id,
         ...d.data()
       }));
       setUsuarios(usuariosData);
+
+      // Processar metricas
+      const metricasData = metricasSnapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setMetricasDiarias(metricasData);
 
       // Gerar dados de tendência
       generateTendenciaData(clientesData, allThreads, alertasData);
@@ -391,6 +429,215 @@ export default function Analytics() {
     ].filter(d => d.value > 0);
   }, [threadsFiltradas]);
 
+  // ========== ABA USO PLATAFORMA: Métricas de Uso ==========
+  const metricasUsoPlataforma = useMemo(() => {
+    const dataLimite = getDataDoPeriodo();
+    const metricasPeriodo = metricasDiarias.filter(m => {
+      const data = m.data?.toDate ? m.data.toDate() : new Date(m.data);
+      return data >= dataLimite;
+    });
+
+    // Totais
+    const totalLogins = metricasPeriodo.reduce((sum, m) => sum + (m.logins || 0), 0);
+    const totalPecasCriadas = metricasPeriodo.reduce((sum, m) => sum + (m.pecas_criadas || 0), 0);
+    const totalDownloads = metricasPeriodo.reduce((sum, m) => sum + (m.downloads || 0), 0);
+    const totalUsoAI = metricasPeriodo.reduce((sum, m) => sum + (m.uso_ai_total || 0), 0);
+
+    // Média por dia
+    const diasUnicos = new Set(metricasPeriodo.map(m => {
+      const data = m.data?.toDate ? m.data.toDate() : new Date(m.data);
+      return data.toISOString().split('T')[0];
+    })).size || 1;
+
+    // Uso por time
+    const usoPorTime = {};
+    metricasPeriodo.forEach(m => {
+      const teamId = m.team_id;
+      if (!usoPorTime[teamId]) {
+        usoPorTime[teamId] = { logins: 0, pecas: 0, downloads: 0, ai: 0 };
+      }
+      usoPorTime[teamId].logins += m.logins || 0;
+      usoPorTime[teamId].pecas += m.pecas_criadas || 0;
+      usoPorTime[teamId].downloads += m.downloads || 0;
+      usoPorTime[teamId].ai += m.uso_ai_total || 0;
+    });
+
+    // Top 10 times por uso
+    const topTimesPorUso = Object.entries(usoPorTime)
+      .map(([teamId, uso]) => {
+        const cliente = clientes.find(c => (c.times || []).includes(teamId) || c.id === teamId);
+        return {
+          teamId,
+          nome: cliente?.team_name || teamId,
+          ...uso,
+          total: uso.logins + uso.pecas * 2 + uso.downloads + uso.ai * 1.5
+        };
+      })
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+
+    return {
+      totalLogins,
+      totalPecasCriadas,
+      totalDownloads,
+      totalUsoAI,
+      mediaLoginsDia: Math.round(totalLogins / diasUnicos),
+      mediaPecasDia: Math.round(totalPecasCriadas / diasUnicos),
+      topTimesPorUso
+    };
+  }, [metricasDiarias, clientes, periodo]);
+
+  // ========== ABA USUÁRIOS: Heavy Users ==========
+  const heavyUsersData = useMemo(() => {
+    const dataLimite = getDataDoPeriodo();
+    const metricasPeriodo = metricasDiarias.filter(m => {
+      const data = m.data?.toDate ? m.data.toDate() : new Date(m.data);
+      return data >= dataLimite;
+    });
+
+    // Agregar por usuário
+    const userMap = {};
+    metricasPeriodo.forEach(m => {
+      if (!m.user_id) return;
+      const key = m.user_id;
+      if (!userMap[key]) {
+        userMap[key] = {
+          user_id: m.user_id,
+          user_email: m.user_email,
+          user_nome: m.user_nome,
+          team_id: m.team_id,
+          logins: 0,
+          pecas_criadas: 0,
+          downloads: 0,
+          uso_ai_total: 0,
+          dias_ativos: 0
+        };
+      }
+      userMap[key].logins += m.logins || 0;
+      userMap[key].pecas_criadas += m.pecas_criadas || 0;
+      userMap[key].downloads += m.downloads || 0;
+      userMap[key].uso_ai_total += m.uso_ai_total || 0;
+      userMap[key].dias_ativos += 1;
+    });
+
+    // Calcular score de atividade
+    const users = Object.values(userMap).map(u => {
+      const cliente = clientes.find(c => (c.times || []).includes(u.team_id) || c.id === u.team_id);
+      return {
+        ...u,
+        clienteNome: cliente?.team_name || '-',
+        activity_score: u.logins + (u.pecas_criadas * 2) + u.downloads + (u.uso_ai_total * 1.5)
+      };
+    });
+
+    // Top heavy users
+    const heavyUsers = [...users].sort((a, b) => b.activity_score - a.activity_score).slice(0, 15);
+
+    // Usuários inativos (sem login no período)
+    const usuariosAtivos = new Set(Object.keys(userMap));
+
+    // Distribuição por faixa de atividade
+    const faixas = {
+      'Power User (50+)': users.filter(u => u.activity_score >= 50).length,
+      'Ativo (20-49)': users.filter(u => u.activity_score >= 20 && u.activity_score < 50).length,
+      'Moderado (10-19)': users.filter(u => u.activity_score >= 10 && u.activity_score < 20).length,
+      'Baixo (1-9)': users.filter(u => u.activity_score >= 1 && u.activity_score < 10).length
+    };
+
+    return { heavyUsers, faixas, totalUsuariosAtivos: users.length };
+  }, [metricasDiarias, clientes, periodo]);
+
+  // ========== ABA VENDAS: Oportunidades de Upsell ==========
+  const vendasData = useMemo(() => {
+    // Clientes engajados (health score alto + uso alto) = oportunidades de upsell
+    const clientesComUso = clientesFiltrados.map(c => {
+      const teamIds = c.times || [c.id];
+      const metricasCliente = metricasDiarias.filter(m => teamIds.includes(m.team_id));
+      const totalUso = metricasCliente.reduce((sum, m) =>
+        sum + (m.logins || 0) + (m.pecas_criadas || 0) * 2 + (m.downloads || 0) + (m.uso_ai_total || 0) * 1.5, 0);
+
+      return {
+        ...c,
+        totalUso,
+        potencialUpsell: (c.health_score || 0) >= 70 && totalUso > 50
+      };
+    });
+
+    // Oportunidades de upsell (alto health score + alto engajamento)
+    const oportunidadesUpsell = clientesComUso
+      .filter(c => c.potencialUpsell)
+      .sort((a, b) => (b.health_score || 0) - (a.health_score || 0))
+      .slice(0, 10);
+
+    // Clientes com crescimento de uso
+    const clientesEmCrescimento = clientesComUso
+      .filter(c => (c.health_score || 0) >= 60 && c.totalUso > 30)
+      .sort((a, b) => b.totalUso - a.totalUso)
+      .slice(0, 10);
+
+    // Valor potencial por tier
+    const porTier = {
+      'Enterprise': clientesFiltrados.filter(c => c.team_type === 'enterprise' && (c.health_score || 0) >= 70).length,
+      'Business': clientesFiltrados.filter(c => c.team_type === 'business' && (c.health_score || 0) >= 70).length,
+      'Starter': clientesFiltrados.filter(c => c.team_type === 'starter' && (c.health_score || 0) >= 70).length
+    };
+
+    return { oportunidadesUpsell, clientesEmCrescimento, porTier, totalOportunidades: oportunidadesUpsell.length };
+  }, [clientesFiltrados, metricasDiarias]);
+
+  // ========== ABA CHURN: Prevenção de Churn ==========
+  const churnData = useMemo(() => {
+    const hoje = new Date();
+
+    // Clientes em risco de churn (health score baixo)
+    const clientesEmRisco = clientesFiltrados
+      .filter(c => (c.health_score || 0) < 50)
+      .sort((a, b) => (a.health_score || 0) - (b.health_score || 0));
+
+    // Clientes com queda no health score
+    const clientesComQueda = clientesFiltrados.filter(c => {
+      const tendencia = c.health_score_trend || 0;
+      return tendencia < -10;
+    }).sort((a, b) => (a.health_score_trend || 0) - (b.health_score_trend || 0));
+
+    // Clientes sem contato recente (mais de 30 dias)
+    const clientesSemContato = clientesFiltrados.filter(c => {
+      if (!c.ultimo_contato) return true;
+      const ultimoContato = c.ultimo_contato?.toDate ? c.ultimo_contato.toDate() : new Date(c.ultimo_contato);
+      const diasSemContato = Math.floor((hoje - ultimoContato) / (1000 * 60 * 60 * 24));
+      return diasSemContato > 30;
+    });
+
+    // Alertas de churn por tipo
+    const alertasChurn = alertasFiltrados.filter(a =>
+      a.tipo === 'churn_risk' || a.tipo === 'inatividade' || a.tipo === 'sentimento_negativo'
+    );
+
+    // Distribuição por status de risco
+    const distribuicaoRisco = {
+      'Crítico (0-30)': clientesFiltrados.filter(c => (c.health_score || 0) < 30).length,
+      'Alto Risco (30-50)': clientesFiltrados.filter(c => (c.health_score || 0) >= 30 && (c.health_score || 0) < 50).length,
+      'Atenção (50-70)': clientesFiltrados.filter(c => (c.health_score || 0) >= 50 && (c.health_score || 0) < 70).length,
+      'Saudável (70+)': clientesFiltrados.filter(c => (c.health_score || 0) >= 70).length
+    };
+
+    // Sinais de alerta - threads negativas/urgentes
+    const threadsNegativas = threadsFiltradas.filter(t =>
+      t.sentimento === 'negativo' || t.sentimento === 'urgente'
+    ).length;
+
+    return {
+      clientesEmRisco: clientesEmRisco.slice(0, 10),
+      clientesComQueda: clientesComQueda.slice(0, 10),
+      clientesSemContato: clientesSemContato.slice(0, 10),
+      totalEmRisco: clientesEmRisco.length,
+      totalSemContato: clientesSemContato.length,
+      alertasChurn,
+      distribuicaoRisco,
+      threadsNegativas
+    };
+  }, [clientesFiltrados, alertasFiltrados, threadsFiltradas]);
+
   // ========== EXPORTAÇÃO EXCEL ==========
   const exportToExcel = (sectionName, data) => {
     const ws = XLSX.utils.json_to_sheet(data);
@@ -488,6 +735,717 @@ export default function Analytics() {
     );
   }
 
+  // ========== RENDERIZAÇÃO DAS ABAS ==========
+  const renderTabUsoPlatforma = () => (
+    <>
+      {/* Cards de métricas de uso */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Users style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Logins ({periodo}d)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalLogins}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <FileSpreadsheet style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Peças Criadas</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalPecasCriadas}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Download style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Downloads</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalDownloads}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Zap style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Uso de AI</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalUsoAI}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Médias diárias */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Média Diária</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div style={{ background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Logins/dia</p>
+              <p style={{ color: 'white', fontSize: '28px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.mediaLoginsDia}</p>
+            </div>
+            <div style={{ background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Peças/dia</p>
+              <p style={{ color: 'white', fontSize: '28px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.mediaPecasDia}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Top Times por Uso */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Top 10 Times por Uso</h3>
+          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+            {metricasUsoPlataforma.topTimesPorUso.map((time, index) => (
+              <div key={time.teamId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: index < 9 ? '1px solid rgba(139, 92, 246, 0.1)' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ width: '24px', height: '24px', background: index < 3 ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'rgba(139, 92, 246, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600' }}>
+                    {index + 1}
+                  </span>
+                  <span style={{ color: 'white', fontSize: '13px' }}>{time.nome}</span>
+                </div>
+                <span style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600' }}>{Math.round(time.total)}</span>
+              </div>
+            ))}
+            {metricasUsoPlataforma.topTimesPorUso.length === 0 && (
+              <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Sem dados no período</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Gráfico de tendência de uso */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Tendências de Uso (últimos 30 dias)</h3>
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <AreaChart data={tendenciaData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorThreads" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" />
+            <XAxis dataKey="data" stroke="#64748b" fontSize={11} tickLine={false} />
+            <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+            <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} />
+            <Area type="monotone" dataKey="threads" name="Atividade" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorThreads)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </>
+  );
+
+  const renderTabConversas = () => (
+    <>
+      {/* Cards de visão geral */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <MessageSquare style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Threads ({periodo}d)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{threadsFiltradas.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Star style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Positivas</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{sentimentoData.find(s => s.name === 'Positivo')?.value || 0}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertTriangle style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Negativas/Urgentes</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{(sentimentoData.find(s => s.name === 'Negativo')?.value || 0) + (sentimentoData.find(s => s.name === 'Urgente')?.value || 0)}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Clock style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Aguardando Resposta</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{threadsFiltradas.filter(t => t.status === 'aguardando_equipe').length}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Gráficos */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        {/* Threads por Categoria */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Threads por Categoria</h3>
+          {threadsPorCategoria.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={threadsPorCategoria} layout="vertical" margin={{ left: 20, right: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
+                <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
+                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={100} />
+                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
+                <Bar dataKey="value" name="Threads" radius={[0, 4, 4, 0]}>
+                  {threadsPorCategoria.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados no período</div>
+          )}
+        </div>
+
+        {/* Sentimento das Conversas */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Sentimento das Conversas</h3>
+          {sentimentoData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie data={sentimentoData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={3} dataKey="value">
+                  {sentimentoData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
+                <Legend verticalAlign="bottom" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados de sentimento</div>
+          )}
+        </div>
+      </div>
+
+      {/* Tendência de conversas */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+        <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Tendência de Conversas (últimos 30 dias)</h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <AreaChart data={tendenciaData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorAlertasCriados" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#f97316" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+              </linearGradient>
+              <linearGradient id="colorAlertasResolvidos" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" />
+            <XAxis dataKey="data" stroke="#64748b" fontSize={11} tickLine={false} />
+            <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+            <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} labelStyle={{ color: '#94a3b8' }} itemStyle={{ color: 'white' }} />
+            <Legend verticalAlign="top" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>} />
+            <Area type="monotone" dataKey="threads" name="Threads" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorThreads)" />
+            <Area type="monotone" dataKey="alertasCriados" name="Alertas Criados" stroke="#f97316" fillOpacity={1} fill="url(#colorAlertasCriados)" />
+            <Area type="monotone" dataKey="alertasResolvidos" name="Alertas Resolvidos" stroke="#10b981" fillOpacity={1} fill="url(#colorAlertasResolvidos)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </>
+  );
+
+  const renderTabUsuarios = () => (
+    <>
+      {/* Cards de métricas */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Users style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Usuários Ativos ({periodo}d)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{heavyUsersData.totalUsuariosAtivos}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Award style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Power Users (50+)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{heavyUsersData.faixas['Power User (50+)']}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Activity style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Usuários Ativos</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{heavyUsersData.faixas['Ativo (20-49)']}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Distribuição e Heavy Users */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px', marginBottom: '24px' }}>
+        {/* Distribuição por faixa */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Atividade</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={Object.entries(heavyUsersData.faixas).map(([name, value]) => ({ name, value }))} layout="vertical" margin={{ left: 20, right: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
+              <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
+              <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={120} />
+              <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
+              <Bar dataKey="value" name="Usuários" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Heavy Users Table */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Top 15 Heavy Users</h3>
+          </div>
+          <div style={{ overflowX: 'auto', maxHeight: '350px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'rgba(15, 10, 31, 0.6)', position: 'sticky', top: 0 }}>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>#</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Usuário</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Cliente</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Logins</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Peças</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {heavyUsersData.heavyUsers.map((user, index) => (
+                  <tr key={user.user_id} style={{ background: index % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
+                    <td style={{ padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                      <span style={{ width: '24px', height: '24px', background: index < 3 ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'rgba(139, 92, 246, 0.2)', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600' }}>
+                        {index + 1}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                      <p style={{ color: 'white', fontSize: '13px', margin: 0 }}>{user.user_nome || user.user_email}</p>
+                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{user.user_email}</p>
+                    </td>
+                    <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: '12px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{user.clienteNome}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'center', color: 'white', fontSize: '13px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{user.logins}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'center', color: 'white', fontSize: '13px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{user.pecas_criadas}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                      <span style={{ padding: '4px 10px', background: user.activity_score >= 50 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(139, 92, 246, 0.2)', color: user.activity_score >= 50 ? '#f59e0b' : '#8b5cf6', borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>
+                        {Math.round(user.activity_score)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {heavyUsersData.heavyUsers.length === 0 && (
+                  <tr>
+                    <td colSpan="6" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>Nenhum usuário encontrado no período</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Performance por Responsável */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Performance por Responsável (CS)</h3>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'rgba(15, 10, 31, 0.6)' }}>
+                <th style={{ padding: '14px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Responsável</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Clientes</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Health Médio</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Alertas</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Threads</th>
+              </tr>
+            </thead>
+            <tbody>
+              {performancePorResponsavel.map((resp, index) => (
+                <tr key={resp.nome} style={{ background: index % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
+                  <td style={{ padding: '14px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '600', fontSize: '12px' }}>
+                        {getInitials(resp.nome)}
+                      </div>
+                      <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>{resp.nome}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', color: 'white', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{resp.qtdClientes}</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    <span style={{ color: resp.healthScoreMedio >= 80 ? STATUS_COLORS.saudavel : resp.healthScoreMedio >= 60 ? STATUS_COLORS.atencao : resp.healthScoreMedio >= 40 ? STATUS_COLORS.risco : STATUS_COLORS.critico, fontSize: '12px', fontWeight: '600' }}>{resp.healthScoreMedio}%</span>
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    {resp.alertasPendentes > 0 ? (
+                      <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.2)', color: '#f97316', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>{resp.alertasPendentes}</span>
+                    ) : (
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>0</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    {resp.threadsAguardando > 0 ? (
+                      <span style={{ padding: '4px 10px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>{resp.threadsAguardando}</span>
+                    ) : (
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>0</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderTabVendas = () => (
+    <>
+      {/* Cards de oportunidades */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Target style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Oportunidades de Upsell</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{vendasData.totalOportunidades}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ArrowUpRight style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Clientes em Crescimento</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{vendasData.clientesEmCrescimento.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <DollarSign style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Clientes Saudáveis</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{clientesFiltrados.filter(c => (c.health_score || 0) >= 70).length}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Oportunidades de Upsell */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <Target style={{ width: '20px', height: '20px', color: '#10b981' }} />
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Oportunidades de Upsell</h3>
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes com alto engajamento e health score (prontos para expansão)</p>
+          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            {vendasData.oportunidadesUpsell.map((cliente, index) => (
+              <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
+                <div>
+                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
+                  <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.team_type || 'Standard'}</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{ color: '#10b981', fontSize: '12px', fontWeight: '600', margin: 0 }}>Health: {cliente.health_score}%</p>
+                    <p style={{ color: '#8b5cf6', fontSize: '11px', margin: 0 }}>Uso: {Math.round(cliente.totalUso)}</p>
+                  </div>
+                  <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                </div>
+              </div>
+            ))}
+            {vendasData.oportunidadesUpsell.length === 0 && (
+              <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Nenhuma oportunidade identificada</p>
+            )}
+          </div>
+        </div>
+
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Clientes em Crescimento</h3>
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes com bom health score e uso crescente</p>
+          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            {vendasData.clientesEmCrescimento.map((cliente, index) => (
+              <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
+                <div>
+                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
+                  <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.responsavel_nome || '-'}</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ padding: '4px 8px', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', borderRadius: '6px', fontSize: '11px', fontWeight: '500' }}>
+                    {Math.round(cliente.totalUso)} pts
+                  </span>
+                  <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                </div>
+              </div>
+            ))}
+            {vendasData.clientesEmCrescimento.length === 0 && (
+              <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Nenhum cliente em crescimento</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Distribuição por Health Score e Status */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Health Score</h3>
+          {healthScoreData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={healthScoreData} layout="vertical" margin={{ left: 20, right: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
+                <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
+                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={100} />
+                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
+                <Bar dataKey="value" name="Clientes" radius={[0, 4, 4, 0]}>
+                  {healthScoreData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados</div>
+          )}
+        </div>
+
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Status</h3>
+          {statusClienteData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={statusClienteData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+                  {statusClienteData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
+                <Legend verticalAlign="bottom" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados</div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+
+  const renderTabChurn = () => (
+    <>
+      {/* Cards de risco */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ShieldAlert style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Clientes em Risco</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{churnData.totalEmRisco}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Clock style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Sem Contato (30d+)</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{churnData.totalSemContato}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertTriangle style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Alertas de Churn</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{churnData.alertasChurn.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(220, 38, 38, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <MessageSquare style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Conversas Negativas</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{churnData.threadsNegativas}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Distribuição de risco */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px', marginBottom: '24px' }}>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Risco</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie
+                data={Object.entries(churnData.distribuicaoRisco).map(([name, value]) => ({
+                  name,
+                  value,
+                  color: name.includes('Crítico') ? '#ef4444' : name.includes('Alto') ? '#f97316' : name.includes('Atenção') ? '#f59e0b' : '#10b981'
+                }))}
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={80}
+                paddingAngle={3}
+                dataKey="value"
+              >
+                {Object.entries(churnData.distribuicaoRisco).map(([name], index) => (
+                  <Cell key={`cell-${index}`} fill={name.includes('Crítico') ? '#ef4444' : name.includes('Alto') ? '#f97316' : name.includes('Atenção') ? '#f59e0b' : '#10b981'} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
+              <Legend verticalAlign="bottom" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '11px' }}>{value}</span>} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Clientes em Risco */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <ShieldAlert style={{ width: '20px', height: '20px', color: '#ef4444' }} />
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Top 10 Clientes em Risco</h3>
+          </div>
+          <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+            {churnData.clientesEmRisco.map((cliente) => (
+              <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '36px', height: '36px', background: `${getHealthColor(cliente.health_status)}20`, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ color: getHealthColor(cliente.health_status), fontSize: '14px', fontWeight: '700' }}>{cliente.health_score || 0}</span>
+                  </div>
+                  <div>
+                    <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
+                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.responsavel_nome || 'Sem responsável'}</p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ padding: '4px 8px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '6px', fontSize: '10px', fontWeight: '600' }}>
+                    {getHealthLabel(cliente.health_status)}
+                  </span>
+                  <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                </div>
+              </div>
+            ))}
+            {churnData.clientesEmRisco.length === 0 && (
+              <div style={{ padding: '32px', textAlign: 'center', color: '#10b981' }}>
+                <TrendingUp style={{ width: '32px', height: '32px', margin: '0 auto 8px' }} />
+                <p>Nenhum cliente em risco de churn</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Clientes sem contato */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+          <Clock style={{ width: '20px', height: '20px', color: '#f97316' }} />
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Clientes sem Contato Recente (30+ dias)</h3>
+          <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.2)', color: '#f97316', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>
+            {churnData.totalSemContato}
+          </span>
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes que precisam de follow-up urgente</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
+          {churnData.clientesSemContato.slice(0, 10).map(cliente => (
+            <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '12px', padding: '16px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ width: '32px', height: '32px', background: 'rgba(249, 115, 22, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Phone style={{ width: '16px', height: '16px', color: '#f97316' }} />
+                </span>
+                <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
+              </div>
+              <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {cliente.team_name}
+              </p>
+              <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>
+                {cliente.ultimo_contato ? (() => {
+                  const data = cliente.ultimo_contato?.toDate ? cliente.ultimo_contato.toDate() : new Date(cliente.ultimo_contato);
+                  const dias = Math.floor((new Date() - data) / (1000 * 60 * 60 * 24));
+                  return `${dias} dias atrás`;
+                })() : 'Nunca contatado'}
+              </p>
+            </div>
+          ))}
+          {churnData.clientesSemContato.length === 0 && (
+            <div style={{ gridColumn: '1 / -1', padding: '32px', textAlign: 'center', color: '#10b981' }}>
+              <UserCheck style={{ width: '32px', height: '32px', margin: '0 auto 8px' }} />
+              <p>Todos os clientes têm contato recente</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
       {/* Header */}
@@ -532,9 +1490,41 @@ export default function Analytics() {
             }}
           >
             <FileSpreadsheet style={{ width: '18px', height: '18px' }} />
-            Exportar Relatório Completo
+            Exportar Relatório
           </button>
         </div>
+      </div>
+
+      {/* Navegação por Abas */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '8px' }}>
+        {TABS.map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 20px',
+                background: isActive ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)' : 'transparent',
+                border: 'none',
+                borderRadius: '10px',
+                color: isActive ? 'white' : '#94a3b8',
+                fontSize: '14px',
+                fontWeight: isActive ? '600' : '500',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                flex: 1
+              }}
+            >
+              <Icon style={{ width: '18px', height: '18px' }} />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Filtros Globais */}
@@ -553,14 +1543,9 @@ export default function Analytics() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-          {/* Período */}
           <div>
             <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Período</label>
-            <select
-              value={periodo}
-              onChange={(e) => setPeriodo(e.target.value)}
-              style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
-            >
+            <select value={periodo} onChange={(e) => setPeriodo(e.target.value)} style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
               <option value="7" style={{ background: '#1e1b4b' }}>Últimos 7 dias</option>
               <option value="30" style={{ background: '#1e1b4b' }}>Últimos 30 dias</option>
               <option value="90" style={{ background: '#1e1b4b' }}>Últimos 90 dias</option>
@@ -568,14 +1553,9 @@ export default function Analytics() {
             </select>
           </div>
 
-          {/* Responsável */}
           <div>
             <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Responsável</label>
-            <select
-              value={responsavel}
-              onChange={(e) => setResponsavel(e.target.value)}
-              style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
-            >
+            <select value={responsavel} onChange={(e) => setResponsavel(e.target.value)} style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
               <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
               {responsaveis.map(r => (
                 <option key={r} value={r} style={{ background: '#1e1b4b' }}>{r}</option>
@@ -583,14 +1563,9 @@ export default function Analytics() {
             </select>
           </div>
 
-          {/* Team Type */}
           <div>
             <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Tipo de Time</label>
-            <select
-              value={teamType}
-              onChange={(e) => setTeamType(e.target.value)}
-              style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
-            >
+            <select value={teamType} onChange={(e) => setTeamType(e.target.value)} style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
               <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
               {teamTypes.map(t => (
                 <option key={t} value={t} style={{ background: '#1e1b4b' }}>{t}</option>
@@ -600,468 +1575,12 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* SEÇÃO 1: Visão Geral - Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Users style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Clientes Ativos</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.clientesAtivos}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Users style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Times</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.totalTimes}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <MessageSquare style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Threads ({periodo}d)</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.totalThreads}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <AlertTriangle style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Alertas Pendentes</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.alertasPendentes}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(59, 130, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #3B82F6 0%, #2563eb 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Activity style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Health Score Médio</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{visaoGeral.healthScoreMedio}%</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* SEÇÃO 2 e 3: Distribuições */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-        {/* Distribuição por Status do Cliente */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Distribuição por Status</h3>
-            <button
-              onClick={() => exportToExcel('Status_Cliente', statusClienteData)}
-              style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
-              title="Exportar Excel"
-            >
-              <Download style={{ width: '16px', height: '16px' }} />
-            </button>
-          </div>
-          {statusClienteData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={statusClienteData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {statusClienteData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
-                  itemStyle={{ color: 'white' }}
-                />
-                <Legend
-                  verticalAlign="bottom"
-                  height={36}
-                  formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados</div>
-          )}
-        </div>
-
-        {/* Distribuição por Health Score */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Distribuição por Health Score</h3>
-            <button
-              onClick={() => exportToExcel('Health_Score', healthScoreData)}
-              style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
-              title="Exportar Excel"
-            >
-              <Download style={{ width: '16px', height: '16px' }} />
-            </button>
-          </div>
-          {healthScoreData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={healthScoreData} layout="vertical" margin={{ left: 20, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
-                <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
-                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={100} />
-                <Tooltip
-                  contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
-                  itemStyle={{ color: 'white' }}
-                />
-                <Bar dataKey="value" name="Clientes" radius={[0, 4, 4, 0]}>
-                  {healthScoreData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados</div>
-          )}
-        </div>
-      </div>
-
-      {/* SEÇÃO 4: Times em Risco */}
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <AlertTriangle style={{ width: '20px', height: '20px', color: '#ef4444' }} />
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Times em Risco</h3>
-            <span style={{ padding: '4px 10px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>
-              {timesEmRisco.length}
-            </span>
-          </div>
-          <button
-            onClick={() => exportToExcel('Times_Risco', timesEmRisco.map(t => ({
-              Nome: t.team_name,
-              'Health Score': t.health_score,
-              Status: t.health_status,
-              Responsável: t.responsavel_nome
-            })))}
-            style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
-            title="Exportar Excel"
-          >
-            <Download style={{ width: '16px', height: '16px' }} />
-          </button>
-        </div>
-
-        {timesEmRisco.length > 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
-            {timesEmRisco.map(time => (
-              <div
-                key={time.id}
-                onClick={() => navigate(`/clientes/${time.id}`)}
-                style={{
-                  background: 'rgba(15, 10, 31, 0.6)',
-                  border: `1px solid ${getHealthColor(time.health_status)}30`,
-                  borderRadius: '12px',
-                  padding: '16px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{
-                    width: '32px',
-                    height: '32px',
-                    background: `${getHealthColor(time.health_status)}20`,
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: getHealthColor(time.health_status),
-                    fontSize: '14px',
-                    fontWeight: '600'
-                  }}>
-                    {time.health_score || 0}
-                  </span>
-                  <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
-                </div>
-                <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {time.team_name}
-                </p>
-                <span style={{
-                  padding: '2px 8px',
-                  background: `${getHealthColor(time.health_status)}20`,
-                  color: getHealthColor(time.health_status),
-                  borderRadius: '4px',
-                  fontSize: '10px',
-                  fontWeight: '500'
-                }}>
-                  {getHealthLabel(time.health_status)}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
-            <TrendingUp style={{ width: '32px', height: '32px', margin: '0 auto 8px', color: '#10b981' }} />
-            <p>Nenhum time em situação de risco</p>
-          </div>
-        )}
-      </div>
-
-      {/* SEÇÃO 5: Performance por Responsável */}
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', overflow: 'hidden', marginBottom: '24px' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Performance por Responsável</h3>
-          <button
-            onClick={() => exportToExcel('Performance_Responsavel', performancePorResponsavel.map(p => ({
-              Responsável: p.nome,
-              'Qtd Clientes': p.qtdClientes,
-              'Health Score Médio': p.healthScoreMedio,
-              'Alertas Pendentes': p.alertasPendentes,
-              'Threads Aguardando': p.threadsAguardando
-            })))}
-            style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
-            title="Exportar Excel"
-          >
-            <Download style={{ width: '16px', height: '16px' }} />
-          </button>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'rgba(15, 10, 31, 0.6)' }}>
-                <th style={{ padding: '14px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Responsável</th>
-                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Clientes</th>
-                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Health Score Médio</th>
-                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Alertas Pendentes</th>
-                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Threads Aguardando</th>
-              </tr>
-            </thead>
-            <tbody>
-              {performancePorResponsavel.map((resp, index) => (
-                <tr key={resp.nome} style={{ background: index % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
-                  <td style={{ padding: '14px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '600', fontSize: '12px' }}>
-                        {getInitials(resp.nome)}
-                      </div>
-                      <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>{resp.nome}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', color: 'white', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    {resp.qtdClientes}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                      <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                        <div style={{
-                          width: `${resp.healthScoreMedio}%`,
-                          height: '100%',
-                          background: resp.healthScoreMedio >= 80 ? STATUS_COLORS.saudavel :
-                            resp.healthScoreMedio >= 60 ? STATUS_COLORS.atencao :
-                            resp.healthScoreMedio >= 40 ? STATUS_COLORS.risco : STATUS_COLORS.critico,
-                          borderRadius: '3px'
-                        }}></div>
-                      </div>
-                      <span style={{
-                        color: resp.healthScoreMedio >= 80 ? STATUS_COLORS.saudavel :
-                          resp.healthScoreMedio >= 60 ? STATUS_COLORS.atencao :
-                          resp.healthScoreMedio >= 40 ? STATUS_COLORS.risco : STATUS_COLORS.critico,
-                        fontSize: '12px',
-                        fontWeight: '600'
-                      }}>{resp.healthScoreMedio}%</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    {resp.alertasPendentes > 0 ? (
-                      <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.2)', color: '#f97316', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>
-                        {resp.alertasPendentes}
-                      </span>
-                    ) : (
-                      <span style={{ color: '#64748b', fontSize: '12px' }}>0</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    {resp.threadsAguardando > 0 ? (
-                      <span style={{ padding: '4px 10px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>
-                        {resp.threadsAguardando}
-                      </span>
-                    ) : (
-                      <span style={{ color: '#64748b', fontSize: '12px' }}>0</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {performancePorResponsavel.length === 0 && (
-                <tr>
-                  <td colSpan="5" style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
-                    Nenhum responsável encontrado
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* SEÇÃO 6: Tendências */}
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Tendências (últimos 30 dias)</h3>
-          </div>
-          <button
-            onClick={() => exportToExcel('Tendencias', tendenciaData)}
-            style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
-            title="Exportar Excel"
-          >
-            <Download style={{ width: '16px', height: '16px' }} />
-          </button>
-        </div>
-
-        <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={tendenciaData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="colorThreads" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-              </linearGradient>
-              <linearGradient id="colorAlertasCriados" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#f97316" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
-              </linearGradient>
-              <linearGradient id="colorAlertasResolvidos" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" />
-            <XAxis dataKey="data" stroke="#64748b" fontSize={11} tickLine={false} />
-            <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
-            <Tooltip
-              contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
-              labelStyle={{ color: '#94a3b8' }}
-              itemStyle={{ color: 'white' }}
-            />
-            <Legend
-              verticalAlign="top"
-              height={36}
-              formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>}
-            />
-            <Area type="monotone" dataKey="threads" name="Threads" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorThreads)" />
-            <Area type="monotone" dataKey="alertasCriados" name="Alertas Criados" stroke="#f97316" fillOpacity={1} fill="url(#colorAlertasCriados)" />
-            <Area type="monotone" dataKey="alertasResolvidos" name="Alertas Resolvidos" stroke="#10b981" fillOpacity={1} fill="url(#colorAlertasResolvidos)" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* SEÇÃO 7 e 8: Threads por Categoria e Sentimento */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-        {/* Threads por Categoria */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Threads por Categoria</h3>
-            <button
-              onClick={() => exportToExcel('Threads_Categoria', threadsPorCategoria)}
-              style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
-              title="Exportar Excel"
-            >
-              <Download style={{ width: '16px', height: '16px' }} />
-            </button>
-          </div>
-          {threadsPorCategoria.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={threadsPorCategoria} layout="vertical" margin={{ left: 20, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
-                <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
-                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={100} />
-                <Tooltip
-                  contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
-                  itemStyle={{ color: 'white' }}
-                />
-                <Bar dataKey="value" name="Threads" radius={[0, 4, 4, 0]}>
-                  {threadsPorCategoria.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
-              <div style={{ textAlign: 'center' }}>
-                <MessageSquare style={{ width: '32px', height: '32px', margin: '0 auto 8px' }} />
-                <p>Sem threads no período</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Sentimento das Conversas */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Sentimento das Conversas</h3>
-            <button
-              onClick={() => exportToExcel('Sentimento', sentimentoData)}
-              style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: '4px' }}
-              title="Exportar Excel"
-            >
-              <Download style={{ width: '16px', height: '16px' }} />
-            </button>
-          </div>
-          {sentimentoData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={sentimentoData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={85}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {sentimentoData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
-                  itemStyle={{ color: 'white' }}
-                />
-                <Legend
-                  verticalAlign="bottom"
-                  height={36}
-                  formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
-              <div style={{ textAlign: 'center' }}>
-                <MessageSquare style={{ width: '32px', height: '32px', margin: '0 auto 8px' }} />
-                <p>Sem dados de sentimento</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Conteúdo da Aba Ativa */}
+      {activeTab === 'usoPlatforma' && renderTabUsoPlatforma()}
+      {activeTab === 'conversas' && renderTabConversas()}
+      {activeTab === 'usuarios' && renderTabUsuarios()}
+      {activeTab === 'vendas' && renderTabVendas()}
+      {activeTab === 'churn' && renderTabChurn()}
     </div>
   );
 }
