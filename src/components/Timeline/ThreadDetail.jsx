@@ -5,8 +5,8 @@ import { Loading } from '../UI/Loading'
 import { formatDateTime, getInitials } from '../../utils/helpers'
 import { timestampToDate } from '../../services/api'
 
-export default function ThreadDetail({ teamId, thread, onClose }) {
-  const { mensagens, loading } = useMensagens(teamId, thread?.id)
+export default function ThreadDetail({ thread, onClose }) {
+  const { mensagens, loading } = useMensagens(thread?.id)
 
   if (!thread) return null
 

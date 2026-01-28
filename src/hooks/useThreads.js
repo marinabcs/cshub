@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getThreadsCliente, getThreadById, getMensagensThread } from '../services/api'
+import { getThreadsByTeam, getThreadById, getMensagensByThread } from '../services/api'
 
 export function useThreads(teamId) {
   const [threads, setThreads] = useState([])
@@ -11,7 +11,8 @@ export function useThreads(teamId) {
       if (!teamId) return
       try {
         setLoading(true)
-        const data = await getThreadsCliente(teamId)
+        const teamIds = Array.isArray(teamId) ? teamId : [teamId]
+        const data = await getThreadsByTeam(teamIds)
         setThreads(data)
       } catch (err) {
         setError(err.message)
@@ -25,17 +26,17 @@ export function useThreads(teamId) {
   return { threads, loading, error }
 }
 
-export function useThread(teamId, threadId) {
+export function useThread(threadId) {
   const [thread, setThread] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     async function fetchThread() {
-      if (!teamId || !threadId) return
+      if (!threadId) return
       try {
         setLoading(true)
-        const data = await getThreadById(teamId, threadId)
+        const data = await getThreadById(threadId)
         setThread(data)
       } catch (err) {
         setError(err.message)
@@ -44,22 +45,22 @@ export function useThread(teamId, threadId) {
       }
     }
     fetchThread()
-  }, [teamId, threadId])
+  }, [threadId])
 
   return { thread, loading, error }
 }
 
-export function useMensagens(teamId, threadId) {
+export function useMensagens(threadId) {
   const [mensagens, setMensagens] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     async function fetchMensagens() {
-      if (!teamId || !threadId) return
+      if (!threadId) return
       try {
         setLoading(true)
-        const data = await getMensagensThread(teamId, threadId)
+        const data = await getMensagensByThread(threadId)
         setMensagens(data)
       } catch (err) {
         setError(err.message)
@@ -68,7 +69,7 @@ export function useMensagens(teamId, threadId) {
       }
     }
     fetchMensagens()
-  }, [teamId, threadId])
+  }, [threadId])
 
   return { mensagens, loading, error }
 }
