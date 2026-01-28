@@ -56,8 +56,7 @@ export default function ClienteDetalhe() {
           const clienteData = { id: docSnap.id, ...docSnap.data() };
           setCliente(clienteData);
 
-          // Fetch threads from root collection 'threads' (nova arquitetura simplificada)
-          // CORREÇÃO: Fallback para team_id ou id do cliente se times estiver vazio
+          // Determinar teamIds
           let teamIds = clienteData.times || [];
           if (teamIds.length === 0 && clienteData.team_id) {
             teamIds = [clienteData.team_id];
@@ -66,28 +65,62 @@ export default function ClienteDetalhe() {
             teamIds = [clienteData.id];
           }
 
-          if (teamIds.length > 0) {
-            try {
-              // Usar nova função que busca da collection raiz 'threads'
-              const allThreads = await getThreadsByTeam(teamIds);
-              setThreads(allThreads.sort((a, b) => {
-                const dateA = a.updated_at?.toDate?.() || (a.updated_at ? new Date(a.updated_at) : new Date(0));
-                const dateB = b.updated_at?.toDate?.() || (b.updated_at ? new Date(b.updated_at) : new Date(0));
-                return dateB - dateA;
-              }));
-            } catch (error) {
-              console.error('Erro ao buscar threads:', error);
-              setThreads([]);
-            }
-          } else {
-            setThreads([]);
-          }
+          // Data limite para queries
+          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-          // Fetch health history (last 30 days)
-          const healthRef = collection(db, 'clientes', id, 'health_history');
-          const healthQuery = query(healthRef, orderBy('hist_date', 'desc'), limit(30));
-          const healthSnap = await getDocs(healthQuery);
-          const healthData = healthSnap.docs.map(doc => {
+          // OTIMIZAÇÃO: Executar TODAS as queries em PARALELO
+          const [threadsResult, healthResult, metricasResult, usuariosResult] = await Promise.all([
+            // 1. Threads
+            teamIds.length > 0 ? getThreadsByTeam(teamIds).catch(() => []) : Promise.resolve([]),
+
+            // 2. Health History
+            getDocs(query(
+              collection(db, 'clientes', id, 'health_history'),
+              orderBy('hist_date', 'desc'),
+              limit(30)
+            )).catch(() => ({ docs: [] })),
+
+            // 3. Métricas de uso (com chunks para teamIds > 10)
+            teamIds.length > 0 ? (async () => {
+              const metricasRef = collection(db, 'metricas_diarias');
+              const chunkSize = 10;
+              const promises = [];
+              for (let i = 0; i < teamIds.length; i += chunkSize) {
+                const chunk = teamIds.slice(i, i + chunkSize);
+                promises.push(
+                  getDocs(query(metricasRef, where('team_id', 'in', chunk), where('data', '>=', thirtyDaysAgo)))
+                );
+              }
+              const results = await Promise.all(promises);
+              return results.flatMap(snap => snap.docs.map(doc => doc.data()));
+            })().catch(() => []) : Promise.resolve([]),
+
+            // 4. Usuários (com chunks para teamIds > 10)
+            teamIds.length > 0 ? (async () => {
+              const usuariosRef = collection(db, 'usuarios_lookup');
+              const chunkSize = 10;
+              const promises = [];
+              for (let i = 0; i < teamIds.length; i += chunkSize) {
+                const chunk = teamIds.slice(i, i + chunkSize);
+                promises.push(
+                  getDocs(query(usuariosRef, where('team_id', 'in', chunk)))
+                );
+              }
+              const results = await Promise.all(promises);
+              return results.flatMap(snap => snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            })().catch(() => []) : Promise.resolve([])
+          ]);
+
+          // Processar threads
+          const sortedThreads = threadsResult.sort((a, b) => {
+            const dateA = a.updated_at?.toDate?.() || (a.updated_at ? new Date(a.updated_at) : new Date(0));
+            const dateB = b.updated_at?.toDate?.() || (b.updated_at ? new Date(b.updated_at) : new Date(0));
+            return dateB - dateA;
+          });
+          setThreads(sortedThreads);
+
+          // Processar health history
+          const healthData = healthResult.docs.map(doc => {
             const data = doc.data();
             const date = data.hist_date?.toDate?.() || new Date(data.hist_date);
             return {
@@ -99,93 +132,24 @@ export default function ClienteDetalhe() {
               componentes: data.hist_componentes
             };
           });
-          // Sort ascending for chart display
           setHealthHistory(healthData.sort((a, b) => a.date - b.date));
 
-          // Fetch usage data from metricas_diarias (estrutura flat)
-          // Documento: metricas_diarias/{team_id}_{data}
-          if (teamIds.length > 0) {
-            // Calculate date 30 days ago (usando Date object para comparar com Timestamp)
-            const today = new Date();
-            const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+          // Processar métricas de uso
+          const aggregated = metricasResult.reduce((acc, d) => ({
+            logins: acc.logins + (d.logins || 0),
+            pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
+            downloads: acc.downloads + (d.downloads || 0),
+            ai_total: acc.ai_total + (d.uso_ai_total || 0)
+          }), { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
+          setUsageData(aggregated);
 
-            console.log('=== DEBUG MÉTRICAS DE USO (metricas_diarias) ===');
-            console.log('Cliente ID:', id);
-            console.log('Team IDs consultados:', teamIds);
-            console.log('Data mínima (30 dias):', thirtyDaysAgo.toISOString());
-
-            try {
-              const metricasRef = collection(db, 'metricas_diarias');
-              let allMetricas = [];
-
-              // where('in') aceita no máximo 10 itens, então dividimos em chunks
-              const chunkSize = 10;
-              for (let i = 0; i < teamIds.length; i += chunkSize) {
-                const chunk = teamIds.slice(i, i + chunkSize);
-                const q = query(
-                  metricasRef,
-                  where('team_id', 'in', chunk),
-                  where('data', '>=', thirtyDaysAgo)
-                );
-                const snapshot = await getDocs(q);
-                allMetricas.push(...snapshot.docs.map(doc => doc.data()));
-              }
-
-              console.log(`Total de documentos metricas_diarias encontrados: ${allMetricas.length}`);
-
-              // Agregar valores
-              const aggregated = allMetricas.reduce((acc, d) => {
-                return {
-                  logins: acc.logins + (d.logins || 0),
-                  pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
-                  downloads: acc.downloads + (d.downloads || 0),
-                  ai_total: acc.ai_total + (d.uso_ai_total || 0)
-                };
-              }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
-
-              console.log('=== VALORES AGREGADOS FINAIS ===');
-              console.log('Logins:', aggregated.logins);
-              console.log('Peças Criadas:', aggregated.pecas_criadas);
-              console.log('Downloads:', aggregated.downloads);
-              console.log('Uso AI:', aggregated.ai_total);
-              console.log('================================');
-
-              setUsageData(aggregated);
-            } catch (err) {
-              console.error('Erro ao buscar métricas de uso:', err);
-              setUsageData({ logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
-            }
-          }
-
-          // Fetch users from usuarios_lookup for each linked team
-          if (teamIds.length > 0) {
-            const usuariosLookupRef = collection(db, 'usuarios_lookup');
-            const userPromises = teamIds.map(async (teamId) => {
-              try {
-                const userQuery = query(usuariosLookupRef, where('team_id', '==', teamId));
-                const userSnap = await getDocs(userQuery);
-                return userSnap.docs.map(doc => ({
-                  id: doc.id,
-                  ...doc.data(),
-                  team_id: teamId
-                }));
-              } catch {
-                return [];
-              }
-            });
-
-            const userResults = await Promise.all(userPromises);
-            const allUsers = userResults.flat();
-
-            // Sort by name
-            allUsers.sort((a, b) => {
-              const nameA = (a.nome || a.name || '').toLowerCase();
-              const nameB = (b.nome || b.name || '').toLowerCase();
-              return nameA.localeCompare(nameB);
-            });
-
-            setUsuarios(allUsers);
-          }
+          // Processar usuários
+          const sortedUsers = usuariosResult.sort((a, b) => {
+            const nameA = (a.nome || a.name || '').toLowerCase();
+            const nameB = (b.nome || b.name || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+          setUsuarios(sortedUsers);
         }
       } catch (error) {
         console.error('Erro ao buscar cliente:', error);

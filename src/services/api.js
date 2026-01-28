@@ -66,19 +66,26 @@ export async function getUsuariosCountByTeam(teamIds) {
 
   teamIds.forEach(id => counts[id] = 0)
 
+  // OTIMIZAÇÃO: Executar todas as queries de chunks em PARALELO
   const chunkSize = 10
+  const chunkPromises = []
+
   for (let i = 0; i < teamIds.length; i += chunkSize) {
     const chunk = teamIds.slice(i, i + chunkSize)
     const q = query(usuariosRef, where('team_id', 'in', chunk))
-    const snapshot = await getDocs(q)
+    chunkPromises.push(getDocs(q))
+  }
 
+  const snapshots = await Promise.all(chunkPromises)
+
+  snapshots.forEach(snapshot => {
     snapshot.docs.forEach(doc => {
       const teamId = doc.data().team_id
       if (counts[teamId] !== undefined) {
         counts[teamId]++
       }
     })
-  }
+  })
 
   return counts
 }
@@ -92,9 +99,11 @@ export async function getThreadsByTeam(teamIds) {
   if (!teamIds || teamIds.length === 0) return []
 
   const threadsRef = collection(db, 'threads')
-  let allThreads = []
 
+  // OTIMIZAÇÃO: Executar todas as queries de chunks em PARALELO
   const chunkSize = 10
+  const chunkPromises = []
+
   for (let i = 0; i < teamIds.length; i += chunkSize) {
     const chunk = teamIds.slice(i, i + chunkSize)
     const q = query(
@@ -102,12 +111,17 @@ export async function getThreadsByTeam(teamIds) {
       where('team_id', 'in', chunk),
       orderBy('updated_at', 'desc')
     )
-    const snapshot = await getDocs(q)
-    allThreads.push(...snapshot.docs.map(doc => ({
+    chunkPromises.push(getDocs(q))
+  }
+
+  const snapshots = await Promise.all(chunkPromises)
+
+  const allThreads = snapshots.flatMap(snapshot =>
+    snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
-    })))
-  }
+    }))
+  )
 
   return allThreads
 }

@@ -33,23 +33,25 @@ export default function Clientes() {
 
   const fetchData = async () => {
     try {
-      // Fetch clientes
-      const clientesSnapshot = await getDocs(collection(db, 'clientes'));
+      // OTIMIZAÇÃO: Executar queries em PARALELO
+      const [clientesSnapshot, timesSnapshot] = await Promise.all([
+        getDocs(collection(db, 'clientes')),
+        getDocs(collection(db, 'times'))
+      ]);
+
       const clientesData = clientesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       setClientes(clientesData);
 
-      // Fetch times
-      const timesSnapshot = await getDocs(collection(db, 'times'));
       const timesData = timesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       setTimes(timesData);
 
-      // Buscar contagem de usuários para cada time
+      // Buscar contagem de usuários (agora otimizado com Promise.all interno)
       const teamIds = timesData.map(t => t.id);
       const counts = await getUsuariosCountByTeam(teamIds);
       setUsuariosCount(counts);
