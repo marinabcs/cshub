@@ -5,8 +5,9 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import {
   Settings, Save, CheckCircle, AlertTriangle, Sliders, Activity, Clock,
-  Bell, Link2, Zap, Users, ExternalLink, RefreshCw, XCircle
+  Bell, Link2, Zap, Users, ExternalLink, RefreshCw, XCircle, Play, Heart
 } from 'lucide-react';
+import { calcularTodosHealthScores } from '../services/healthScoreJob';
 
 export default function Configuracoes() {
   const navigate = useNavigate();
@@ -19,6 +20,11 @@ export default function Configuracoes() {
   const [testingOpenAI, setTestingOpenAI] = useState(false);
   const [clickUpStatus, setClickUpStatus] = useState(null);
   const [openAIStatus, setOpenAIStatus] = useState(null);
+
+  // Estado para cálculo de Health Score
+  const [calculandoHealth, setCalculandoHealth] = useState(false);
+  const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0, cliente: '', status: '' });
+  const [healthResults, setHealthResults] = useState(null);
 
   // Pesos do Health Score
   const [pesos, setPesos] = useState({
@@ -146,6 +152,24 @@ export default function Configuracoes() {
     }
   };
 
+  const runHealthScoreCalculation = async () => {
+    setCalculandoHealth(true);
+    setHealthResults(null);
+    setHealthProgress({ current: 0, total: 0, cliente: '', status: '' });
+
+    try {
+      const results = await calcularTodosHealthScores((current, total, cliente, status) => {
+        setHealthProgress({ current, total, cliente, status });
+      });
+      setHealthResults(results);
+    } catch (error) {
+      console.error('Erro ao calcular health scores:', error);
+      setHealthResults({ erro: error.message });
+    } finally {
+      setCalculandoHealth(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setSaveSuccess(false);
@@ -256,6 +280,115 @@ export default function Configuracoes() {
           Gerenciar Usuários
           <ExternalLink style={{ width: '14px', height: '14px' }} />
         </button>
+      </div>
+
+      {/* Job de Health Score */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '20px', padding: '24px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '44px',
+              height: '44px',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Heart style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 4px 0' }}>Cálculo de Health Score</h2>
+              <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
+                Executado automaticamente após sincronização (7h30 e 13h30)
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={runHealthScoreCalculation}
+            disabled={calculandoHealth}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 24px',
+              background: calculandoHealth ? 'rgba(16, 185, 129, 0.3)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: calculandoHealth ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {calculandoHealth ? (
+              <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Play style={{ width: '18px', height: '18px' }} />
+            )}
+            {calculandoHealth ? 'Calculando...' : 'Executar Agora'}
+          </button>
+        </div>
+
+        {/* Progress */}
+        {calculandoHealth && healthProgress.total > 0 && (
+          <div style={{ marginTop: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ color: '#94a3b8', fontSize: '13px' }}>
+                Processando: {healthProgress.cliente}
+              </span>
+              <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '600' }}>
+                {healthProgress.current} / {healthProgress.total}
+              </span>
+            </div>
+            <div style={{ width: '100%', height: '8px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '4px', overflow: 'hidden' }}>
+              <div
+                style={{
+                  width: `${(healthProgress.current / healthProgress.total) * 100}%`,
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                  borderRadius: '4px',
+                  transition: 'width 0.3s ease'
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Results */}
+        {healthResults && !healthResults.erro && (
+          <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <CheckCircle style={{ width: '18px', height: '18px', color: '#10b981' }} />
+              <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>Cálculo concluído!</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+              <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '8px' }}>
+                <p style={{ color: '#8b5cf6', fontSize: '20px', fontWeight: '700', margin: '0 0 4px 0' }}>{healthResults.total}</p>
+                <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Total</p>
+              </div>
+              <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px' }}>
+                <p style={{ color: '#10b981', fontSize: '20px', fontWeight: '700', margin: '0 0 4px 0' }}>{healthResults.calculados}</p>
+                <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Calculados</p>
+              </div>
+              <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(100, 116, 139, 0.1)', borderRadius: '8px' }}>
+                <p style={{ color: '#64748b', fontSize: '20px', fontWeight: '700', margin: '0 0 4px 0' }}>{healthResults.pulados}</p>
+                <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Pulados</p>
+              </div>
+              <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px' }}>
+                <p style={{ color: '#ef4444', fontSize: '20px', fontWeight: '700', margin: '0 0 4px 0' }}>{healthResults.erros}</p>
+                <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Erros</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {healthResults?.erro && (
+          <div style={{ marginTop: '16px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <XCircle style={{ width: '18px', height: '18px', color: '#ef4444' }} />
+            <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {healthResults.erro}</span>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>

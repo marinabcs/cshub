@@ -1,0 +1,301 @@
+{
+  "name": "CS Hub - Calcular Health Scores",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger",
+      "name": "Trigger Manual ou Schedule",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7,
+              "triggerAtMinute": 30
+            },
+            {
+              "triggerAtHour": 13,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "Schedule 7h30 e 13h30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 480],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://firestore.googleapis.com/v1/projects/cshub-trakto/databases/(default)/documents:runQuery",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"structuredQuery\": {\n    \"from\": [{ \"collectionId\": \"clientes\" }],\n    \"limit\": 500\n  }\n}",
+        "options": {}
+      },
+      "id": "fetch-clientes",
+      "name": "Buscar Clientes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300],
+      "credentials": {
+        "googleApi": {
+          "id": "CONFIGURE_YOUR_CREDENTIAL",
+          "name": "Google API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar lista de clientes\nconst clientes = [];\n\nfor (const item of $input.all()) {\n  const doc = item.json.document;\n  if (!doc) continue;\n  \n  const fields = doc.fields || {};\n  const docPath = doc.name.split('/').pop();\n  \n  // Extrair campos\n  const cliente = {\n    id: docPath,\n    team_name: fields.team_name?.stringValue || fields.nome?.stringValue || docPath,\n    status: fields.status?.stringValue || 'ativo',\n    times: [],\n    team_id: fields.team_id?.stringValue || null\n  };\n  \n  // Extrair array de times\n  if (fields.times?.arrayValue?.values) {\n    cliente.times = fields.times.arrayValue.values.map(v => v.stringValue);\n  }\n  \n  // Pular inativos e cancelados\n  if (cliente.status === 'inativo' || cliente.status === 'cancelado') {\n    continue;\n  }\n  \n  // Determinar teamIds\n  let teamIds = cliente.times;\n  if (teamIds.length === 0 && cliente.team_id) {\n    teamIds = [cliente.team_id];\n  }\n  if (teamIds.length === 0) {\n    teamIds = [cliente.id];\n  }\n  \n  cliente.teamIds = teamIds;\n  clientes.push(cliente);\n}\n\nreturn clientes.map(c => ({ json: c }));"
+      },
+      "id": "parse-clientes",
+      "name": "Processar Clientes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-clientes",
+      "name": "Loop por Cliente",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://firestore.googleapis.com/v1/projects/cshub-trakto/databases/(default)/documents:runQuery",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"structuredQuery\": {\n    \"from\": [{ \"collectionId\": \"threads\" }],\n    \"where\": {\n      \"fieldFilter\": {\n        \"field\": { \"fieldPath\": \"team_id\" },\n        \"op\": \"IN\",\n        \"value\": {\n          \"arrayValue\": {\n            \"values\": {{ $json.teamIds.slice(0, 10).map(id => ({ stringValue: id })) }}\n          }\n        }\n      }\n    },\n    \"limit\": 1000\n  }\n}",
+        "options": {}
+      },
+      "id": "fetch-threads",
+      "name": "Buscar Threads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300],
+      "credentials": {
+        "googleApi": {
+          "id": "CONFIGURE_YOUR_CREDENTIAL",
+          "name": "Google API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://firestore.googleapis.com/v1/projects/cshub-trakto/databases/(default)/documents:runQuery",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"structuredQuery\": {\n    \"from\": [{ \"collectionId\": \"usuarios_lookup\" }],\n    \"where\": {\n      \"fieldFilter\": {\n        \"field\": { \"fieldPath\": \"team_id\" },\n        \"op\": \"IN\",\n        \"value\": {\n          \"arrayValue\": {\n            \"values\": {{ $json.teamIds.slice(0, 10).map(id => ({ stringValue: id })) }}\n          }\n        }\n      }\n    },\n    \"limit\": 500\n  }\n}",
+        "options": {}
+      },
+      "id": "fetch-usuarios",
+      "name": "Buscar Usuarios",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 480],
+      "credentials": {
+        "googleApi": {
+          "id": "CONFIGURE_YOUR_CREDENTIAL",
+          "name": "Google API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://firestore.googleapis.com/v1/projects/cshub-trakto/databases/(default)/documents:runQuery",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"structuredQuery\": {\n    \"from\": [{ \"collectionId\": \"metricas_diarias\" }],\n    \"where\": {\n      \"compositeFilter\": {\n        \"op\": \"AND\",\n        \"filters\": [\n          {\n            \"fieldFilter\": {\n              \"field\": { \"fieldPath\": \"team_id\" },\n              \"op\": \"IN\",\n              \"value\": {\n                \"arrayValue\": {\n                  \"values\": {{ $json.teamIds.slice(0, 10).map(id => ({ stringValue: id })) }}\n                }\n              }\n            }\n          }\n        ]\n      }\n    },\n    \"limit\": 1000\n  }\n}",
+        "options": {}
+      },
+      "id": "fetch-metricas",
+      "name": "Buscar Metricas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 660],
+      "credentials": {
+        "googleApi": {
+          "id": "CONFIGURE_YOUR_CREDENTIAL",
+          "name": "Google API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pegar dados do cliente do loop\nconst clienteData = $('Loop por Cliente').first().json;\nconst clienteId = clienteData.id;\nconst clienteNome = clienteData.team_name;\n\n// Processar threads\nconst threadsRaw = $('Buscar Threads').all();\nconst threads = [];\nconst now = new Date();\nconst thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);\n\nfor (const item of threadsRaw) {\n  const doc = item.json.document;\n  if (!doc) continue;\n  \n  const fields = doc.fields || {};\n  threads.push({\n    id: doc.name.split('/').pop(),\n    sentimento: fields.sentimento?.stringValue || 'neutro',\n    status: fields.status?.stringValue || '',\n    created_at: fields.created_at?.timestampValue ? new Date(fields.created_at.timestampValue) : null,\n    updated_at: fields.updated_at?.timestampValue ? new Date(fields.updated_at.timestampValue) : null\n  });\n}\n\n// Contar usuarios\nconst usuariosRaw = $('Buscar Usuarios').all();\nlet totalUsers = 0;\nfor (const item of usuariosRaw) {\n  if (item.json.document) totalUsers++;\n}\ntotalUsers = Math.max(1, totalUsers);\n\n// Agregar metricas\nconst metricasRaw = $('Buscar Metricas').all();\nconst usageData = { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 };\n\nfor (const item of metricasRaw) {\n  const doc = item.json.document;\n  if (!doc) continue;\n  \n  const fields = doc.fields || {};\n  usageData.logins += parseInt(fields.logins?.integerValue || '0');\n  usageData.pecas_criadas += parseInt(fields.pecas_criadas?.integerValue || '0');\n  usageData.downloads += parseInt(fields.downloads?.integerValue || '0');\n  usageData.uso_ai_total += parseInt(fields.uso_ai_total?.integerValue || '0');\n}\n\n// ===== CALCULAR HEALTH SCORE =====\n\n// 1. Engajamento (threads recentes)\nconst threadsRecentes = threads.filter(t => t.created_at && t.created_at >= thirtyDaysAgo);\nlet engajamento = 0;\nif (threadsRecentes.length === 0) engajamento = 0;\nelse if (threadsRecentes.length <= 2) engajamento = 50;\nelse if (threadsRecentes.length <= 5) engajamento = 75;\nelse engajamento = 100;\n\n// 2. Sentimento\nlet positivos = 0, negativos = 0, urgentes = 0;\nthreads.forEach(t => {\n  if (t.sentimento === 'positivo') positivos++;\n  else if (t.sentimento === 'negativo') negativos++;\n  else if (t.sentimento === 'urgente') urgentes++;\n});\nlet sentimento = 50;\nif (threads.length > 0) {\n  const propPositivo = positivos / threads.length;\n  const propNegativo = (negativos + urgentes) / threads.length;\n  if (propNegativo > 0.5) sentimento = 25;\n  else if (propNegativo > 0.3) sentimento = 50;\n  else if (propPositivo > 0.5) sentimento = 90;\n  else if (propPositivo > 0.3) sentimento = 75;\n  else sentimento = 60;\n}\n\n// 3. Tickets abertos\nconst ticketsAguardando = threads.filter(t => t.status === 'aguardando_equipe' || t.status === 'ativo').length;\nlet ticketsAbertos = 100;\nif (ticketsAguardando === 1) ticketsAbertos = 75;\nelse if (ticketsAguardando === 2) ticketsAbertos = 50;\nelse if (ticketsAguardando >= 3) ticketsAbertos = 25;\n\n// 4. Tempo sem contato\nlet tempoSemContato = 0;\nif (threads.length > 0) {\n  let mostRecent = null;\n  threads.forEach(t => {\n    if (t.updated_at && (!mostRecent || t.updated_at > mostRecent)) {\n      mostRecent = t.updated_at;\n    }\n  });\n  if (mostRecent) {\n    const daysSince = Math.floor((now - mostRecent) / (1000 * 60 * 60 * 24));\n    if (daysSince <= 3) tempoSemContato = 100;\n    else if (daysSince <= 7) tempoSemContato = 75;\n    else if (daysSince <= 14) tempoSemContato = 50;\n    else if (daysSince <= 30) tempoSemContato = 25;\n  }\n}\n\n// 5. Uso da plataforma\nlet usoPlataforma = 0;\nif (usageData.logins > 0 || usageData.pecas_criadas > 0 || usageData.uso_ai_total > 0) {\n  const avgLogins = usageData.logins / totalUsers;\n  const avgPecas = usageData.pecas_criadas / totalUsers;\n  \n  let loginScore = 0;\n  if (avgLogins >= 10) loginScore = 30;\n  else if (avgLogins >= 5) loginScore = 25;\n  else if (avgLogins >= 2) loginScore = 20;\n  else if (avgLogins >= 1) loginScore = 15;\n  else if (usageData.logins > 0) loginScore = 10;\n  \n  let pecasScore = 0;\n  if (avgPecas >= 5) pecasScore = 40;\n  else if (avgPecas >= 3) pecasScore = 35;\n  else if (avgPecas >= 1) pecasScore = 25;\n  else if (usageData.pecas_criadas > 0) pecasScore = 15;\n  \n  let aiScore = 0;\n  if (usageData.uso_ai_total >= 20) aiScore = 30;\n  else if (usageData.uso_ai_total >= 10) aiScore = 25;\n  else if (usageData.uso_ai_total >= 5) aiScore = 20;\n  else if (usageData.uso_ai_total >= 1) aiScore = 15;\n  \n  usoPlataforma = Math.min(100, loginScore + pecasScore + aiScore);\n}\n\n// Score final\nconst score = Math.round(\n  (engajamento * 0.25) +\n  (sentimento * 0.25) +\n  (ticketsAbertos * 0.20) +\n  (tempoSemContato * 0.15) +\n  (usoPlataforma * 0.15)\n);\n\nlet status = 'critico';\nif (score >= 80) status = 'saudavel';\nelse if (score >= 60) status = 'atencao';\nelse if (score >= 40) status = 'risco';\n\nconst today = new Date().toISOString().split('T')[0];\n\nreturn [{\n  json: {\n    clienteId,\n    clienteNome,\n    score,\n    status,\n    componentes: {\n      engajamento,\n      sentimento,\n      tickets_abertos: ticketsAbertos,\n      tempo_sem_contato: tempoSemContato,\n      uso_plataforma: usoPlataforma\n    },\n    today,\n    threadsCount: threads.length,\n    totalUsers,\n    usageData\n  }\n}];"
+      },
+      "id": "calcular-score",
+      "name": "Calcular Health Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 480]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://firestore.googleapis.com/v1/projects/cshub-trakto/databases/(default)/documents/clientes/{{ $json.clienteId }}?updateMask.fieldPaths=health_score&updateMask.fieldPaths=health_status&updateMask.fieldPaths=health_updated_at",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"fields\": {\n    \"health_score\": { \"integerValue\": \"{{ $json.score }}\" },\n    \"health_status\": { \"stringValue\": \"{{ $json.status }}\" },\n    \"health_updated_at\": { \"timestampValue\": \"{{ new Date().toISOString() }}\" }\n  }\n}",
+        "options": {}
+      },
+      "id": "update-cliente",
+      "name": "Atualizar Cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 400],
+      "credentials": {
+        "googleApi": {
+          "id": "CONFIGURE_YOUR_CREDENTIAL",
+          "name": "Google API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://firestore.googleapis.com/v1/projects/cshub-trakto/databases/(default)/documents/clientes/{{ $json.clienteId }}/health_history/{{ $json.today }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"fields\": {\n    \"hist_date\": { \"stringValue\": \"{{ $json.today }}\" },\n    \"hist_score\": { \"integerValue\": \"{{ $json.score }}\" },\n    \"hist_status\": { \"stringValue\": \"{{ $json.status }}\" },\n    \"hist_componentes\": {\n      \"mapValue\": {\n        \"fields\": {\n          \"engajamento\": { \"integerValue\": \"{{ $json.componentes.engajamento }}\" },\n          \"sentimento\": { \"integerValue\": \"{{ $json.componentes.sentimento }}\" },\n          \"tickets_abertos\": { \"integerValue\": \"{{ $json.componentes.tickets_abertos }}\" },\n          \"tempo_sem_contato\": { \"integerValue\": \"{{ $json.componentes.tempo_sem_contato }}\" },\n          \"uso_plataforma\": { \"integerValue\": \"{{ $json.componentes.uso_plataforma }}\" }\n        }\n      }\n    },\n    \"created_at\": { \"timestampValue\": \"{{ new Date().toISOString() }}\" }\n  }\n}",
+        "options": {}
+      },
+      "id": "save-history",
+      "name": "Salvar Historico",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 560],
+      "credentials": {
+        "googleApi": {
+          "id": "CONFIGURE_YOUR_CREDENTIAL",
+          "name": "Google API"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "merge",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "wait",
+      "name": "Aguardar",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1780, 480],
+      "webhookId": "wait-health"
+    }
+  ],
+  "connections": {
+    "Trigger Manual ou Schedule": {
+      "main": [
+        [{ "node": "Buscar Clientes", "type": "main", "index": 0 }]
+      ]
+    },
+    "Schedule 7h30 e 13h30": {
+      "main": [
+        [{ "node": "Buscar Clientes", "type": "main", "index": 0 }]
+      ]
+    },
+    "Buscar Clientes": {
+      "main": [
+        [{ "node": "Processar Clientes", "type": "main", "index": 0 }]
+      ]
+    },
+    "Processar Clientes": {
+      "main": [
+        [{ "node": "Loop por Cliente", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop por Cliente": {
+      "main": [
+        [
+          { "node": "Buscar Threads", "type": "main", "index": 0 },
+          { "node": "Buscar Usuarios", "type": "main", "index": 0 },
+          { "node": "Buscar Metricas", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    },
+    "Buscar Threads": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 0 }]
+      ]
+    },
+    "Buscar Usuarios": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 1 }]
+      ]
+    },
+    "Buscar Metricas": {
+      "main": [
+        [{ "node": "Merge", "type": "main", "index": 2 }]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [{ "node": "Calcular Health Score", "type": "main", "index": 0 }]
+      ]
+    },
+    "Calcular Health Score": {
+      "main": [
+        [
+          { "node": "Atualizar Cliente", "type": "main", "index": 0 },
+          { "node": "Salvar Historico", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Atualizar Cliente": {
+      "main": [
+        [{ "node": "Aguardar", "type": "main", "index": 0 }]
+      ]
+    },
+    "Salvar Historico": {
+      "main": [
+        [{ "node": "Aguardar", "type": "main", "index": 0 }]
+      ]
+    },
+    "Aguardar": {
+      "main": [
+        [{ "node": "Loop por Cliente", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

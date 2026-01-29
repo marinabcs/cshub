@@ -1,7 +1,10 @@
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { Layout } from './components/Layout'
 import { LoadingPage } from './components/UI/Loading'
+import { collection, query, where, getDocs } from 'firebase/firestore'
+import { db } from './services/firebase'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Clientes from './pages/Clientes'
@@ -15,6 +18,7 @@ import Auditoria from './pages/Auditoria'
 import DebugFirestore from './pages/DebugFirestore'
 import Playbooks from './pages/Playbooks'
 import PlaybookDetalhe from './pages/PlaybookDetalhe'
+import MinhaCarteira from './pages/MinhaCarteira'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -44,6 +48,63 @@ function PublicRoute({ children }) {
   return children
 }
 
+// Rota protegida apenas para admins
+function AdminRoute({ children }) {
+  const { user, isAuthenticated, loading } = useAuth()
+  const [isAdmin, setIsAdmin] = useState(null)
+  const [checkingRole, setCheckingRole] = useState(true)
+
+  useEffect(() => {
+    const checkAdminRole = async () => {
+      if (!user?.email) {
+        setIsAdmin(false)
+        setCheckingRole(false)
+        return
+      }
+
+      try {
+        const q = query(
+          collection(db, 'usuarios_sistema'),
+          where('email', '==', user.email)
+        )
+        const snapshot = await getDocs(q)
+
+        if (!snapshot.empty) {
+          const userData = snapshot.docs[0].data()
+          setIsAdmin(userData.role === 'admin' || userData.role === 'super_admin')
+        } else {
+          setIsAdmin(false)
+        }
+      } catch (error) {
+        console.error('Erro ao verificar role:', error)
+        setIsAdmin(false)
+      } finally {
+        setCheckingRole(false)
+      }
+    }
+
+    if (isAuthenticated) {
+      checkAdminRole()
+    } else {
+      setCheckingRole(false)
+    }
+  }, [user?.email, isAuthenticated])
+
+  if (loading || checkingRole) {
+    return <LoadingPage />
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (!isAdmin) {
+    return <Navigate to="/" replace />
+  }
+
+  return children
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -63,6 +124,7 @@ function AppRoutes() {
         }
       >
         <Route path="/" element={<Dashboard />} />
+        <Route path="/minha-carteira" element={<MinhaCarteira />} />
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/clientes/novo" element={<ClienteForm />} />
         <Route path="/clientes/:id" element={<ClienteDetalhe />} />
@@ -73,7 +135,7 @@ function AppRoutes() {
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/configuracoes/usuarios" element={<Usuarios />} />
-        <Route path="/configuracoes/auditoria" element={<Auditoria />} />
+        <Route path="/configuracoes/auditoria" element={<AdminRoute><Auditoria /></AdminRoute>} />
         {/* Debug page - apenas em desenvolvimento */}
         {import.meta.env.DEV && (
           <Route path="/debug" element={<DebugFirestore />} />

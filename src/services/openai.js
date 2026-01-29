@@ -9,6 +9,12 @@ export const THREAD_CATEGORIAS = {
     color: '#ef4444', // vermelho
     icon: 'Bug',
   },
+  reclamacao: {
+    value: 'reclamacao',
+    label: 'Reclamação',
+    color: '#dc2626', // vermelho escuro
+    icon: 'AlertTriangle',
+  },
   problema_tecnico: {
     value: 'problema_tecnico',
     label: 'Problema Técnico',
@@ -92,25 +98,25 @@ ${conversa}
 
 Retorne APENAS um JSON válido (sem markdown, sem explicações) com:
 {
-  "categoria": "erro_bug" | "problema_tecnico" | "feedback" | "duvida_pergunta" | "solicitacao" | "outro",
+  "categoria": "erro_bug" | "reclamacao" | "problema_tecnico" | "feedback" | "duvida_pergunta" | "solicitacao" | "outro",
   "sentimento": "positivo" | "neutro" | "negativo" | "urgente",
   "resumo": "Resumo em 1-2 frases do que foi discutido"
 }
 
-Critérios:
-- categoria:
-  - erro_bug = cliente reportou erro/bug no sistema
-  - problema_tecnico = dificuldade técnica ou de configuração
-  - feedback = sugestão, elogio ou crítica sobre o produto
-  - duvida_pergunta = pergunta sobre funcionalidade
-  - solicitacao = pedido de feature ou ajuda específica
-  - outro = não se encaixa nas anteriores
+Critérios para CATEGORIA (escolha a mais adequada):
+- erro_bug = cliente reportou erro, bug ou falha no sistema
+- reclamacao = cliente está reclamando ou insatisfeito com o serviço/produto
+- problema_tecnico = dificuldade técnica ou de configuração (não é bug)
+- feedback = sugestão, elogio ou crítica construtiva sobre o produto
+- duvida_pergunta = pergunta sobre como usar uma funcionalidade
+- solicitacao = pedido de feature, recurso ou ajuda específica
+- outro = não se encaixa nas anteriores
 
-- sentimento:
-  - positivo = cliente satisfeito, elogiando
-  - neutro = conversa normal, sem emoção forte
-  - negativo = cliente insatisfeito, reclamando
-  - urgente = problema crítico que precisa atenção imediata`;
+Critérios para SENTIMENTO:
+- positivo = cliente satisfeito, agradecendo ou elogiando
+- neutro = conversa normal, sem emoção forte detectada
+- negativo = cliente insatisfeito, frustrado ou reclamando
+- urgente = problema crítico que impede o uso ou precisa atenção imediata`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

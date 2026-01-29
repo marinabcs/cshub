@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
-import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, Calendar, ChevronRight, Filter, Search, Circle, Bell, AlertOctagon, UserX, Bug } from 'lucide-react';
+import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, Calendar, ChevronRight, Filter, Search, Circle, Bell, Frown, Zap } from 'lucide-react';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 import { STATUS_OPTIONS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { useAlertasCount, useAlertas } from '../hooks/useAlertas';
@@ -19,12 +19,11 @@ const normalizeText = (text) => {
 
 // Mapeamento de ícones por tipo de alerta
 const ALERTA_ICONS = {
-  sem_contato: Clock,
-  sentimento_negativo: AlertTriangle,
-  health_critico: AlertTriangle,
-  erro_bug: Bug,
-  time_orfao: UserX,
-  aviso_previo: AlertOctagon,
+  sem_uso_plataforma: Clock,
+  sentimento_negativo: Frown,
+  resposta_pendente: MessageSquare,
+  problema_reclamacao: AlertTriangle,
+  creditos_baixos: Zap,
 };
 
 export default function Dashboard() {

@@ -1,46 +1,39 @@
 // Tipos de alertas
 export const ALERTA_TIPOS = {
-  sem_contato: {
-    value: 'sem_contato',
-    label: 'Sem Contato',
-    description: 'Time sem interações há mais de 7 dias',
+  sem_uso_plataforma: {
+    value: 'sem_uso_plataforma',
+    label: 'Sem Uso da Plataforma',
+    description: 'Cliente sem usar a plataforma há 15 dias ou mais',
     icon: 'Clock',
     color: '#f59e0b', // amarelo
   },
   sentimento_negativo: {
     value: 'sentimento_negativo',
     label: 'Sentimento Negativo',
-    description: 'Threads com sentimento predominantemente negativo',
+    description: 'Conversa com sentimento negativo detectado',
     icon: 'Frown',
     color: '#f97316', // laranja
   },
-  health_critico: {
-    value: 'health_critico',
-    label: 'Health Crítico',
-    description: 'Time com health score em estado crítico ou risco',
+  resposta_pendente: {
+    value: 'resposta_pendente',
+    label: 'Resposta Pendente',
+    description: 'Aguardando resposta do lado da Trakto',
+    icon: 'MessageCircle',
+    color: '#3b82f6', // azul
+  },
+  problema_reclamacao: {
+    value: 'problema_reclamacao',
+    label: 'Problema/Reclamação',
+    description: 'Cliente reportou problema ou fez reclamação',
     icon: 'AlertTriangle',
     color: '#ef4444', // vermelho
   },
-  erro_bug: {
-    value: 'erro_bug',
-    label: 'Erro/Bug',
-    description: 'Problema técnico reportado pelo cliente',
-    icon: 'Bug',
+  creditos_baixos: {
+    value: 'creditos_baixos',
+    label: 'Créditos AI Baixos',
+    description: 'Poucos créditos de AI restantes',
+    icon: 'Zap',
     color: '#8b5cf6', // roxo
-  },
-  time_orfao: {
-    value: 'time_orfao',
-    label: 'Time Órfão',
-    description: 'Time não vinculado a nenhum cliente',
-    icon: 'UserX',
-    color: '#6b7280', // cinza
-  },
-  aviso_previo: {
-    value: 'aviso_previo',
-    label: 'Aviso Prévio',
-    description: 'Cliente sinalizou intenção de cancelar',
-    icon: 'AlertOctagon',
-    color: '#dc2626', // vermelho escuro
   },
 };
 
@@ -133,64 +126,33 @@ export function formatarTempoRelativo(timestamp) {
   return `há ${diffDays} dias`;
 }
 
-// Gerar alertas de times sem contato
-export function gerarAlertasSemContato(times, alertasExistentes) {
+// Gerar alertas de sem uso da plataforma (15 dias)
+export function gerarAlertasSemUso(clientes, metricas, alertasExistentes) {
   const alertas = [];
-  const DIAS_LIMITE = 7;
-
-  for (const time of times) {
-    // Verificar se já existe alerta pendente para este time
-    const alertaExistente = alertasExistentes.find(
-      a => a.tipo === 'sem_contato' &&
-           a.time_id === time.id &&
-           (a.status === 'pendente' || a.status === 'em_andamento')
-    );
-    if (alertaExistente) continue;
-
-    // Calcular dias sem contato
-    const dias = calcularDiasSemContato(time.ultima_interacao);
-
-    if (dias >= DIAS_LIMITE) {
-      alertas.push({
-        tipo: 'sem_contato',
-        titulo: `Time sem contato há ${dias} dias`,
-        mensagem: `O time ${time.team_name} não tem interações há ${dias} dias.`,
-        prioridade: dias >= 14 ? 'alta' : 'media',
-        status: 'pendente',
-        time_id: time.id,
-        time_name: time.team_name,
-        cliente_id: time.cliente_id || null,
-        cliente_nome: null, // será preenchido pelo hook
-        thread_id: null,
-        responsavel_email: time.responsavel_email || null,
-        responsavel_nome: time.responsavel_nome || null,
-      });
-    }
-  }
-
-  return alertas;
-}
-
-// Gerar alertas de health crítico
-export function gerarAlertasHealthCritico(clientes, alertasExistentes) {
-  const alertas = [];
+  const DIAS_LIMITE = 15;
 
   for (const cliente of clientes) {
+    // Pular inativos/cancelados
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') continue;
+
     // Verificar se já existe alerta pendente
     const alertaExistente = alertasExistentes.find(
-      a => a.tipo === 'health_critico' &&
+      a => a.tipo === 'sem_uso_plataforma' &&
            a.cliente_id === cliente.id &&
            (a.status === 'pendente' || a.status === 'em_andamento')
     );
     if (alertaExistente) continue;
 
-    if (cliente.health_status === 'critico' || cliente.health_status === 'risco') {
-      const isCritico = cliente.health_status === 'critico';
+    // Verificar último uso (baseado em métricas ou última interação)
+    const ultimaInteracao = cliente.ultima_interacao;
+    const dias = calcularDiasSemContato(ultimaInteracao);
+
+    if (dias >= DIAS_LIMITE) {
       alertas.push({
-        tipo: 'health_critico',
-        titulo: `Health ${isCritico ? 'crítico' : 'em risco'}: ${cliente.team_name || cliente.nome}`,
-        mensagem: `O cliente ${cliente.team_name || cliente.nome} está com health score de ${cliente.health_score || 0}%.`,
-        prioridade: isCritico ? 'urgente' : 'alta',
+        tipo: 'sem_uso_plataforma',
+        titulo: `${dias} dias sem uso da plataforma`,
+        mensagem: `O cliente ${cliente.team_name || cliente.nome} não usa a plataforma há ${dias} dias.`,
+        prioridade: dias >= 30 ? 'alta' : 'media',
         status: 'pendente',
         time_id: cliente.times?.[0] || null,
         time_name: null,
@@ -206,38 +168,32 @@ export function gerarAlertasHealthCritico(clientes, alertasExistentes) {
   return alertas;
 }
 
-// Gerar alertas de times órfãos
-export function gerarAlertasTimesOrfaos(times, clientes, alertasExistentes) {
+// Gerar alertas de sentimento negativo
+export function gerarAlertasSentimentoNegativo(threads, alertasExistentes) {
   const alertas = [];
 
-  // Obter todos os times vinculados a clientes
-  const timesVinculados = new Set();
-  clientes.forEach(c => {
-    (c.times || []).forEach(t => timesVinculados.add(t));
-  });
+  for (const thread of threads) {
+    if (thread.sentimento !== 'negativo' && thread.sentimento !== 'urgente') continue;
 
-  for (const time of times) {
-    if (timesVinculados.has(time.id)) continue;
-
-    // Verificar se já existe alerta pendente
+    // Verificar se já existe alerta pendente para esta thread
     const alertaExistente = alertasExistentes.find(
-      a => a.tipo === 'time_orfao' &&
-           a.time_id === time.id &&
+      a => a.tipo === 'sentimento_negativo' &&
+           a.thread_id === thread.id &&
            (a.status === 'pendente' || a.status === 'em_andamento')
     );
     if (alertaExistente) continue;
 
     alertas.push({
-      tipo: 'time_orfao',
-      titulo: `Time órfão: ${time.team_name}`,
-      mensagem: `O time ${time.team_name} não está vinculado a nenhum cliente.`,
-      prioridade: 'baixa',
+      tipo: 'sentimento_negativo',
+      titulo: `Conversa com sentimento ${thread.sentimento}`,
+      mensagem: `A conversa "${thread.assunto || 'Sem assunto'}" foi classificada como ${thread.sentimento}.`,
+      prioridade: thread.sentimento === 'urgente' ? 'urgente' : 'alta',
       status: 'pendente',
-      time_id: time.id,
-      time_name: time.team_name,
-      cliente_id: null,
+      time_id: thread.team_id || null,
+      time_name: null,
+      cliente_id: thread.cliente_id || null,
       cliente_nome: null,
-      thread_id: null,
+      thread_id: thread.id,
       responsavel_email: null,
       responsavel_nome: null,
     });
@@ -246,26 +202,107 @@ export function gerarAlertasTimesOrfaos(times, clientes, alertasExistentes) {
   return alertas;
 }
 
-// Gerar alertas de aviso prévio
-export function gerarAlertasAvisoPrevio(clientes, alertasExistentes) {
+// Gerar alertas de resposta pendente (aguardando Trakto)
+export function gerarAlertasRespostaPendente(threads, alertasExistentes) {
+  const alertas = [];
+
+  for (const thread of threads) {
+    if (thread.status !== 'aguardando_equipe') continue;
+
+    // Verificar se já existe alerta pendente para esta thread
+    const alertaExistente = alertasExistentes.find(
+      a => a.tipo === 'resposta_pendente' &&
+           a.thread_id === thread.id &&
+           (a.status === 'pendente' || a.status === 'em_andamento')
+    );
+    if (alertaExistente) continue;
+
+    // Calcular há quantos dias está pendente
+    const dias = calcularDiasSemContato(thread.updated_at);
+
+    alertas.push({
+      tipo: 'resposta_pendente',
+      titulo: `Resposta pendente há ${dias} ${dias === 1 ? 'dia' : 'dias'}`,
+      mensagem: `A conversa "${thread.assunto || 'Sem assunto'}" está aguardando resposta da equipe.`,
+      prioridade: dias >= 3 ? 'alta' : dias >= 1 ? 'media' : 'baixa',
+      status: 'pendente',
+      time_id: thread.team_id || null,
+      time_name: null,
+      cliente_id: thread.cliente_id || null,
+      cliente_nome: null,
+      thread_id: thread.id,
+      responsavel_email: null,
+      responsavel_nome: null,
+    });
+  }
+
+  return alertas;
+}
+
+// Gerar alertas de problema/reclamação
+export function gerarAlertasProblemaReclamacao(threads, alertasExistentes) {
+  const alertas = [];
+  const CATEGORIAS_PROBLEMA = ['erro_bug', 'reclamacao', 'problema', 'bug', 'erro'];
+
+  for (const thread of threads) {
+    // Verificar se a categoria indica problema
+    const categoria = (thread.categoria || '').toLowerCase();
+    const isProblem = CATEGORIAS_PROBLEMA.some(cat => categoria.includes(cat));
+
+    if (!isProblem) continue;
+
+    // Verificar se já existe alerta pendente para esta thread
+    const alertaExistente = alertasExistentes.find(
+      a => a.tipo === 'problema_reclamacao' &&
+           a.thread_id === thread.id &&
+           (a.status === 'pendente' || a.status === 'em_andamento')
+    );
+    if (alertaExistente) continue;
+
+    alertas.push({
+      tipo: 'problema_reclamacao',
+      titulo: `Problema reportado: ${thread.assunto || 'Sem assunto'}`,
+      mensagem: `Cliente reportou um problema/reclamação que precisa de atenção.`,
+      prioridade: 'alta',
+      status: 'pendente',
+      time_id: thread.team_id || null,
+      time_name: null,
+      cliente_id: thread.cliente_id || null,
+      cliente_nome: null,
+      thread_id: thread.id,
+      responsavel_email: null,
+      responsavel_nome: null,
+    });
+  }
+
+  return alertas;
+}
+
+// Gerar alertas de créditos AI baixos
+export function gerarAlertasCreditosBaixos(clientes, alertasExistentes, limiteCreditos = 100) {
   const alertas = [];
 
   for (const cliente of clientes) {
-    if (cliente.status !== 'aviso_previo') continue;
+    // Pular inativos/cancelados
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') continue;
+
+    const creditosRestantes = cliente.creditos_ai || cliente.ai_credits || 0;
+
+    if (creditosRestantes > limiteCreditos) continue;
 
     // Verificar se já existe alerta pendente
     const alertaExistente = alertasExistentes.find(
-      a => a.tipo === 'aviso_previo' &&
+      a => a.tipo === 'creditos_baixos' &&
            a.cliente_id === cliente.id &&
            (a.status === 'pendente' || a.status === 'em_andamento')
     );
     if (alertaExistente) continue;
 
     alertas.push({
-      tipo: 'aviso_previo',
-      titulo: `Aviso prévio: ${cliente.team_name || cliente.nome}`,
-      mensagem: `O cliente ${cliente.team_name || cliente.nome} sinalizou intenção de cancelar.`,
-      prioridade: 'urgente',
+      tipo: 'creditos_baixos',
+      titulo: `Créditos AI baixos: ${creditosRestantes} restantes`,
+      mensagem: `O cliente ${cliente.team_name || cliente.nome} está com poucos créditos de AI (${creditosRestantes}).`,
+      prioridade: creditosRestantes <= 20 ? 'alta' : 'media',
       status: 'pendente',
       time_id: cliente.times?.[0] || null,
       time_name: null,
@@ -281,12 +318,13 @@ export function gerarAlertasAvisoPrevio(clientes, alertasExistentes) {
 }
 
 // Executar todas as verificações
-export function verificarTodosAlertas(times, clientes, alertasExistentes) {
+export function verificarTodosAlertas(clientes, threads, alertasExistentes, metricas = []) {
   const novosAlertas = [
-    ...gerarAlertasSemContato(times, alertasExistentes),
-    ...gerarAlertasHealthCritico(clientes, alertasExistentes),
-    ...gerarAlertasTimesOrfaos(times, clientes, alertasExistentes),
-    ...gerarAlertasAvisoPrevio(clientes, alertasExistentes),
+    ...gerarAlertasSemUso(clientes, metricas, alertasExistentes),
+    ...gerarAlertasSentimentoNegativo(threads, alertasExistentes),
+    ...gerarAlertasRespostaPendente(threads, alertasExistentes),
+    ...gerarAlertasProblemaReclamacao(threads, alertasExistentes),
+    ...gerarAlertasCreditosBaixos(clientes, alertasExistentes),
   ];
 
   return novosAlertas;

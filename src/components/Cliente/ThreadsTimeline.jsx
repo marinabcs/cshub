@@ -538,8 +538,10 @@ export default function ThreadsTimeline({
                       fontSize: '13px',
                       margin: '0 0 10px 0',
                       overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      lineHeight: '1.4'
                     }}>
                       {busca
                         ? highlightText(thread.resumo_ia || thread.resumo_chat || 'Sem resumo', busca)
