@@ -15,23 +15,28 @@ export function useHealthScore(clienteId) {
   const [error, setError] = useState(null);
 
   /**
-   * Fetch threads from all linked teams
+   * Fetch threads from all linked teams (nova estrutura: collection raiz 'threads')
    */
   const fetchThreads = useCallback(async (teamIds) => {
+    if (!teamIds || teamIds.length === 0) return [];
+
+    const threadsRef = collection(db, 'threads');
     const allThreads = [];
 
-    for (const teamId of teamIds) {
+    // where('in') aceita no máximo 10 itens
+    const chunkSize = 10;
+    for (let i = 0; i < teamIds.length; i += chunkSize) {
+      const chunk = teamIds.slice(i, i + chunkSize);
       try {
-        const threadsRef = collection(db, 'times', teamId, 'threads');
-        const snapshot = await getDocs(threadsRef);
+        const q = query(threadsRef, where('team_id', 'in', chunk));
+        const snapshot = await getDocs(q);
         const threads = snapshot.docs.map(doc => ({
           id: doc.id,
-          ...doc.data(),
-          _teamId: teamId
+          ...doc.data()
         }));
         allThreads.push(...threads);
       } catch (err) {
-        console.error(`Error fetching threads for team ${teamId}:`, err);
+        console.error(`Error fetching threads for teams ${chunk.join(', ')}:`, err);
       }
     }
 
@@ -308,11 +313,15 @@ export function useCalcularTodosHealthScores() {
         }
 
         try {
-          // Fetch threads for all teams
+          // Fetch threads for all teams (nova estrutura: collection raiz 'threads')
           const allThreads = [];
-          for (const teamId of teamIds) {
-            const threadsRef = collection(db, 'times', teamId, 'threads');
-            const threadsSnap = await getDocs(threadsRef);
+          const threadsRef = collection(db, 'threads');
+          const chunkSize = 10;
+
+          for (let i = 0; i < teamIds.length; i += chunkSize) {
+            const chunk = teamIds.slice(i, i + chunkSize);
+            const threadsQuery = query(threadsRef, where('team_id', 'in', chunk));
+            const threadsSnap = await getDocs(threadsQuery);
             allThreads.push(...threadsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
           }
 
@@ -323,8 +332,7 @@ export function useCalcularTodosHealthScores() {
           const metricasRef = collection(db, 'metricas_diarias');
           let allMetricas = [];
 
-          // where('in') aceita no máximo 10 itens
-          const chunkSize = 10;
+          // where('in') aceita no máximo 10 itens (reutilizando chunkSize)
           for (let i = 0; i < teamIds.length; i += chunkSize) {
             const chunk = teamIds.slice(i, i + chunkSize);
             const q = query(

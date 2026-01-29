@@ -44,8 +44,8 @@ export const STATUS_OPTIONS = [
 // Status padrão para novos clientes
 export const DEFAULT_STATUS = 'ativo';
 
-// Status que devem ser exibidos por padrão (excluindo cancelados)
-export const DEFAULT_VISIBLE_STATUS = ['ativo', 'onboarding', 'aviso_previo', 'inativo'];
+// Status que devem ser exibidos por padrão (excluindo inativos e cancelados)
+export const DEFAULT_VISIBLE_STATUS = ['ativo', 'onboarding', 'aviso_previo'];
 
 // Funções utilitárias
 export function getStatusColor(status) {

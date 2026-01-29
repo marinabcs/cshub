@@ -100,7 +100,7 @@ export async function getThreadsByTeam(teamIds) {
 
   const threadsRef = collection(db, 'threads')
 
-  // OTIMIZAÇÃO: Executar todas as queries de chunks em PARALELO
+  // Executar todas as queries de chunks em PARALELO
   const chunkSize = 10
   const chunkPromises = []
 

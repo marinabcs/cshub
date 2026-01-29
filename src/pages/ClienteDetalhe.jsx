@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useHealthScore } from '../hooks/useHealthScore';
 import { getHealthColor, getHealthLabel, getComponenteLabel } from '../utils/healthScore';
@@ -12,6 +12,8 @@ import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoI
 import PlaybooksSection from '../components/Cliente/PlaybooksSection';
 import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
 import HeavyUsersCard from '../components/Cliente/HeavyUsersCard';
+import { useUserActivityStatus } from '../hooks/useUserActivityStatus';
+import { UserActivityDot } from '../components/UserActivityBadge';
 
 // Extrair iniciais do nome (ex: "Marina Barros" → "MB")
 const getInitials = (name) => {
@@ -19,6 +21,101 @@ const getInitials = (name) => {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+};
+
+// Decodificar HTML entities e limpar conteúdo de mensagem
+const cleanMessageContent = (text) => {
+  if (!text) return 'Sem conteúdo';
+
+  // Decodificar HTML entities
+  let cleaned = text
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+
+  // 1. Remover blocos do Microsoft Teams (reuniões)
+  const teamsPatterns = [
+    /_{3,}[\s\S]*?Reunião do Microsoft Teams[\s\S]*/i,
+    /_{3,}[\s\S]*?Microsoft Teams meeting[\s\S]*/i,
+    /Reunião do Microsoft Teams[\s\S]*?(Saiba mais|Learn more)[\s\S]*/i,
+    /Microsoft Teams meeting[\s\S]*?(Saiba mais|Learn more)[\s\S]*/i,
+    /Participe pelo computador[\s\S]*$/i,
+    /Join on your computer[\s\S]*$/i,
+    /https:\/\/teams\.microsoft\.com\/l\/meetup-join[\s\S]*/i,
+    /ID da reunião:[\s\S]*$/i,
+    /Meeting ID:[\s\S]*$/i,
+  ];
+
+  for (const pattern of teamsPatterns) {
+    cleaned = cleaned.replace(pattern, '').trim();
+  }
+
+  // 2. Remover citações de mensagens anteriores (quoted replies)
+  const quotedPatterns = [
+    /On .+wrote:[\s\S]*$/i,                     // "On [date] [person] wrote:"
+    /Em .+escreveu:[\s\S]*$/i,                  // "Em [data] [pessoa] escreveu:"
+    /^>+.*$/gm,                                 // Linhas começando com >
+    /De:.*\nEnviado:.*\nPara:.*\nAssunto:[\s\S]*/i, // Cabeçalho de email citado PT
+    /From:.*\nSent:.*\nTo:.*\nSubject:[\s\S]*/i,   // Cabeçalho de email citado EN
+    /-----\s*Original Message\s*-----[\s\S]*/i,
+    /-----\s*Mensagem Original\s*-----[\s\S]*/i,
+    /---------- Forwarded message ---------[\s\S]*/i,
+    /---------- Mensagem encaminhada ---------[\s\S]*/i,
+  ];
+
+  for (const pattern of quotedPatterns) {
+    cleaned = cleaned.replace(pattern, '').trim();
+  }
+
+  // 3. Remover separadores visuais no final
+  const separatorPatterns = [
+    /_{10,}[\s\S]*$/,                           // Linha de underscores
+    /-{10,}[\s\S]*$/,                           // Linha de hífens
+    /={10,}[\s\S]*$/,                           // Linha de iguais
+    /\*{10,}[\s\S]*$/,                          // Linha de asteriscos
+  ];
+
+  for (const pattern of separatorPatterns) {
+    cleaned = cleaned.replace(pattern, '').trim();
+  }
+
+  // 4. Remover padrões de assinatura comuns
+  const signaturePatterns = [
+    /--\s*\n[\s\S]*$/,                          // -- seguido de qualquer coisa
+    /Enviado do meu (iPhone|Android|iPad)[\s\S]*/i,
+    /Sent from my (iPhone|Android|iPad)[\s\S]*/i,
+    /Enviado pelo Outlook[\s\S]*/i,
+    /Sent from Outlook[\s\S]*/i,
+    /Get Outlook for [\s\S]*/i,
+    /Obter o Outlook para [\s\S]*/i,
+    /Atenciosamente,[\s\S]*$/i,
+    /Att,[\s\S]*$/i,
+    /Abraços?,[\s\S]*$/i,
+    /Best regards,[\s\S]*$/i,
+    /Kind regards,[\s\S]*$/i,
+    /Regards,[\s\S]*$/i,
+    /Cordialmente,[\s\S]*$/i,
+    /Canal de Ética[\s\S]*$/i,
+    /Av\.Industrial[\s\S]*$/i,
+    /CEP \d{5}-?\d{3}[\s\S]*$/i,
+    /\+55\s*\(?\d{2}\)?\s*\d{4,5}-?\d{4}[\s\S]*$/i, // Telefone BR no final
+  ];
+
+  for (const pattern of signaturePatterns) {
+    cleaned = cleaned.replace(pattern, '').trim();
+  }
+
+  // 5. Limpar espaços extras e linhas em branco múltiplas
+  cleaned = cleaned
+    .replace(/\n{3,}/g, '\n\n')                // Máximo 2 linhas em branco
+    .replace(/[ \t]+$/gm, '')                  // Espaços no final das linhas
+    .trim();
+
+  return cleaned || 'Sem conteúdo';
 };
 
 export default function ClienteDetalhe() {
@@ -33,12 +130,16 @@ export default function ClienteDetalhe() {
   const [usuarios, setUsuarios] = useState([]);
   const [showAllUsuarios, setShowAllUsuarios] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [teamIds, setTeamIds] = useState([]);
 
   // Tab state
   const [activeTab, setActiveTab] = useState('resumo');
 
   // Health Score hook
   const { healthData, calculating, calcularESalvar } = useHealthScore(id);
+
+  // User Activity Status hook
+  const { getStatus: getUserActivityStatus } = useUserActivityStatus(teamIds, usuarios);
 
   // Classificação de threads
   const { classificar, classificarManual, classificando, erro: erroClassificacao } = useClassificarThread();
@@ -57,13 +158,16 @@ export default function ClienteDetalhe() {
           setCliente(clienteData);
 
           // Determinar teamIds
-          let teamIds = clienteData.times || [];
-          if (teamIds.length === 0 && clienteData.team_id) {
-            teamIds = [clienteData.team_id];
+          let computedTeamIds = clienteData.times || [];
+          if (computedTeamIds.length === 0 && clienteData.team_id) {
+            computedTeamIds = [clienteData.team_id];
           }
-          if (teamIds.length === 0 && clienteData.id) {
-            teamIds = [clienteData.id];
+          if (computedTeamIds.length === 0 && clienteData.id) {
+            computedTeamIds = [clienteData.id];
           }
+
+          // Salvar teamIds no state para uso pelo hook de atividade
+          setTeamIds(computedTeamIds);
 
           // Data limite para queries
           const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -71,7 +175,7 @@ export default function ClienteDetalhe() {
           // OTIMIZAÇÃO: Executar TODAS as queries em PARALELO
           const [threadsResult, healthResult, metricasResult, usuariosResult] = await Promise.all([
             // 1. Threads
-            teamIds.length > 0 ? getThreadsByTeam(teamIds).catch(() => []) : Promise.resolve([]),
+            computedTeamIds.length > 0 ? getThreadsByTeam(computedTeamIds).catch(() => []) : Promise.resolve([]),
 
             // 2. Health History
             getDocs(query(
@@ -80,13 +184,13 @@ export default function ClienteDetalhe() {
               limit(30)
             )).catch(() => ({ docs: [] })),
 
-            // 3. Métricas de uso (com chunks para teamIds > 10)
-            teamIds.length > 0 ? (async () => {
+            // 3. Métricas de uso (com chunks para computedTeamIds > 10)
+            computedTeamIds.length > 0 ? (async () => {
               const metricasRef = collection(db, 'metricas_diarias');
               const chunkSize = 10;
               const promises = [];
-              for (let i = 0; i < teamIds.length; i += chunkSize) {
-                const chunk = teamIds.slice(i, i + chunkSize);
+              for (let i = 0; i < computedTeamIds.length; i += chunkSize) {
+                const chunk = computedTeamIds.slice(i, i + chunkSize);
                 promises.push(
                   getDocs(query(metricasRef, where('team_id', 'in', chunk), where('data', '>=', thirtyDaysAgo)))
                 );
@@ -95,13 +199,13 @@ export default function ClienteDetalhe() {
               return results.flatMap(snap => snap.docs.map(doc => doc.data()));
             })().catch(() => []) : Promise.resolve([]),
 
-            // 4. Usuários (com chunks para teamIds > 10)
-            teamIds.length > 0 ? (async () => {
+            // 4. Usuários (com chunks para computedTeamIds > 10)
+            computedTeamIds.length > 0 ? (async () => {
               const usuariosRef = collection(db, 'usuarios_lookup');
               const chunkSize = 10;
               const promises = [];
-              for (let i = 0; i < teamIds.length; i += chunkSize) {
-                const chunk = teamIds.slice(i, i + chunkSize);
+              for (let i = 0; i < computedTeamIds.length; i += chunkSize) {
+                const chunk = computedTeamIds.slice(i, i + chunkSize);
                 promises.push(
                   getDocs(query(usuariosRef, where('team_id', 'in', chunk)))
                 );
@@ -730,8 +834,9 @@ export default function ClienteDetalhe() {
                           }}>
                             {getInitials(user.nome || user.name)}
                           </div>
-                          <span style={{ color: user.deleted_at ? '#64748b' : 'white', fontSize: '14px', fontWeight: '500' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', color: user.deleted_at ? '#64748b' : 'white', fontSize: '14px', fontWeight: '500' }}>
                             {user.nome || user.name || '-'}
+                            {!user.deleted_at && <UserActivityDot status={getUserActivityStatus(user.email)} />}
                           </span>
                         </div>
                       </td>
@@ -801,6 +906,85 @@ export default function ClienteDetalhe() {
             <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Os usuários dos times vinculados aparecerão aqui</p>
           </div>
         )}
+      </div>
+      )}
+
+      {/* Stakeholders Section - dentro da aba Pessoas */}
+      {activeTab === 'pessoas' && cliente?.stakeholders && cliente.stakeholders.length > 0 && (
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Star style={{ width: '20px', height: '20px', color: '#f97316' }} />
+            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Stakeholders</h2>
+            <span style={{ padding: '4px 12px', background: 'rgba(249, 115, 22, 0.2)', color: '#fb923c', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
+              {cliente.stakeholders.length} {cliente.stakeholders.length === 1 ? 'pessoa' : 'pessoas'}
+            </span>
+          </div>
+          <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.1)', color: '#f97316', borderRadius: '8px', fontSize: '11px' }}>
+            Contatos de vendas/contratos
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+          {cliente.stakeholders.map((stakeholder, index) => (
+            <div
+              key={stakeholder.id || index}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '16px',
+                background: 'rgba(15, 10, 31, 0.6)',
+                border: '1px solid rgba(249, 115, 22, 0.15)',
+                borderRadius: '12px'
+              }}
+            >
+              <div style={{
+                width: '40px',
+                height: '40px',
+                background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: '600',
+                flexShrink: 0
+              }}>
+                {getInitials(stakeholder.nome)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {stakeholder.nome}
+                </p>
+                {stakeholder.cargo && (
+                  <p style={{ color: '#f97316', fontSize: '12px', margin: '0 0 4px 0' }}>
+                    {stakeholder.cargo}
+                  </p>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <a
+                    href={`mailto:${stakeholder.email}`}
+                    style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Mail style={{ width: '12px', height: '12px' }} />
+                    {stakeholder.email}
+                  </a>
+                  {stakeholder.telefone && (
+                    <a
+                      href={`tel:${stakeholder.telefone}`}
+                      style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Phone style={{ width: '12px', height: '12px' }} />
+                      {stakeholder.telefone}
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
       )}
 
@@ -1056,7 +1240,7 @@ export default function ClienteDetalhe() {
                         </div>
                         <span style={{ color: '#64748b', fontSize: '12px' }}>{formatDate(msg.data)}</span>
                       </div>
-                      <p style={{ color: '#e2e8f0', fontSize: '14px', margin: 0, lineHeight: 1.6 }}>{msg.snippet || 'Sem conteúdo'}</p>
+                      <p style={{ color: '#e2e8f0', fontSize: '14px', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{cleanMessageContent(msg.body || msg.corpo_limpo || msg.corpo || msg.content || msg.snippet)}</p>
                     </div>
                   ))}
                 </div>

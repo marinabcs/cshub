@@ -78,7 +78,7 @@ export function useClassificarThread() {
   return { classificar, classificarManual, classificando, erro };
 }
 
-// Criar alertas automaticamente se sentimento urgente ou erro_bug
+// Criar alertas automaticamente baseado na classificação
 async function criarAlertasSeNecessario(resultado, teamId, threadId, threadData) {
   const alertasParaCriar = [];
 
@@ -87,9 +87,9 @@ async function criarAlertasSeNecessario(resultado, teamId, threadId, threadData)
     alertasParaCriar.push({
       tipo: 'sentimento_negativo',
       titulo: resultado.sentimento === 'urgente'
-        ? `Sentimento URGENTE detectado: ${threadData.team_name || 'Time'}`
-        : `Sentimento negativo: ${threadData.team_name || 'Time'}`,
-      mensagem: resultado.resumo || `Thread classificada com sentimento ${resultado.sentimento}.`,
+        ? `Conversa URGENTE: ${threadData.team_name || 'Cliente'}`
+        : `Conversa com sentimento negativo`,
+      mensagem: resultado.resumo || `Conversa classificada com sentimento ${resultado.sentimento}.`,
       prioridade: resultado.sentimento === 'urgente' ? 'urgente' : 'alta',
       status: 'pendente',
       time_id: teamId,
@@ -105,12 +105,13 @@ async function criarAlertasSeNecessario(resultado, teamId, threadId, threadData)
     });
   }
 
-  // Alerta para erro/bug
-  if (resultado.categoria === 'erro_bug') {
+  // Alerta para problema/reclamação (inclui erro_bug e reclamação)
+  const categoriasProblema = ['erro_bug', 'reclamacao', 'problema', 'bug'];
+  if (categoriasProblema.includes(resultado.categoria)) {
     alertasParaCriar.push({
-      tipo: 'erro_bug',
-      titulo: `Bug reportado: ${threadData.team_name || 'Time'}`,
-      mensagem: resultado.resumo || 'Cliente reportou um erro/bug no sistema.',
+      tipo: 'problema_reclamacao',
+      titulo: `Problema reportado: ${threadData.team_name || 'Cliente'}`,
+      mensagem: resultado.resumo || 'Cliente reportou um problema ou reclamação.',
       prioridade: 'alta',
       status: 'pendente',
       time_id: teamId,

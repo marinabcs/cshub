@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react';
-import { collection, getDocs, doc, deleteDoc } from 'firebase/firestore';
+import { useState, useEffect, useMemo } from 'react';
+import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, ChevronRight, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link } from 'lucide-react';
+import { Users, Search, ChevronRight, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck } from 'lucide-react';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
+
+// Chave para localStorage
+const FILTERS_STORAGE_KEY = 'cshub_clientes_filters';
 
 // Função para normalizar texto (remove acentos)
 const normalizeText = (text) => {
@@ -16,20 +19,84 @@ const normalizeText = (text) => {
     .replace(/[\u0300-\u036f]/g, '');
 };
 
+// Função para carregar filtros do localStorage
+const loadFiltersFromStorage = () => {
+  try {
+    const saved = localStorage.getItem(FILTERS_STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Erro ao carregar filtros:', e);
+  }
+  return null;
+};
+
+// Função para salvar filtros no localStorage
+const saveFiltersToStorage = (filters) => {
+  try {
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+  } catch (e) {
+    console.error('Erro ao salvar filtros:', e);
+  }
+};
+
 export default function Clientes() {
   const [clientes, setClientes] = useState([]);
   const [times, setTimes] = useState([]);
   const [usuariosCount, setUsuariosCount] = useState({});
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterHealthStatus, setFilterHealthStatus] = useState('todos');
-  const [filterClienteStatus, setFilterClienteStatus] = useState(DEFAULT_VISIBLE_STATUS);
-  const [filterType, setFilterType] = useState('todos');
+
+  // Carregar filtros salvos ou usar defaults (lazy initialization)
+  const [searchTerm, setSearchTerm] = useState(() => {
+    const saved = loadFiltersFromStorage();
+    return saved?.searchTerm || '';
+  });
+  const [filterHealthStatus, setFilterHealthStatus] = useState(() => {
+    const saved = loadFiltersFromStorage();
+    return saved?.healthStatus || 'todos';
+  });
+  const [filterClienteStatus, setFilterClienteStatus] = useState(() => {
+    const saved = loadFiltersFromStorage();
+    return saved?.clienteStatus || DEFAULT_VISIBLE_STATUS;
+  });
+  const [filterType, setFilterType] = useState(() => {
+    const saved = loadFiltersFromStorage();
+    return saved?.type || 'todos';
+  });
+
   const [showOrphanModal, setShowOrphanModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [clienteToDelete, setClienteToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Estados para edição em lote
+  const [selectedClientes, setSelectedClientes] = useState(new Set());
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchField, setBatchField] = useState('');
+  const [batchValue, setBatchValue] = useState('');
+  const [batchUpdating, setBatchUpdating] = useState(false);
+
   const navigate = useNavigate();
+
+  // Lista de responsáveis únicos para o batch edit
+  const responsaveis = useMemo(() => {
+    const list = new Set();
+    clientes.forEach(c => {
+      if (c.responsavel_nome) list.add(c.responsavel_nome);
+    });
+    return [...list].sort();
+  }, [clientes]);
+
+  // Salvar filtros quando mudarem
+  useEffect(() => {
+    saveFiltersToStorage({
+      searchTerm,
+      healthStatus: filterHealthStatus,
+      clienteStatus: filterClienteStatus,
+      type: filterType
+    });
+  }, [searchTerm, filterHealthStatus, filterClienteStatus, filterType]);
 
   const fetchData = async () => {
     try {
@@ -87,18 +154,106 @@ export default function Clientes() {
     return `há ${diff} dias`;
   };
 
-  const filteredClientes = clientes.filter(cliente => {
-    const searchNormalized = normalizeText(searchTerm);
-    const nameNormalized = normalizeText(cliente.team_name || '');
-    const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
-    const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
-    const matchesHealthStatus = filterHealthStatus === 'todos' || cliente.health_status === filterHealthStatus;
-    const matchesClienteStatus = filterClienteStatus.length === 0 || filterClienteStatus.includes(cliente.status || 'ativo');
-    const matchesType = filterType === 'todos' || cliente.team_type === filterType;
-    return matchesSearch && matchesHealthStatus && matchesClienteStatus && matchesType;
-  });
+  // Funções para seleção em lote
+  const toggleSelectCliente = (clienteId) => {
+    setSelectedClientes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(clienteId)) {
+        newSet.delete(clienteId);
+      } else {
+        newSet.add(clienteId);
+      }
+      return newSet;
+    });
+  };
 
-  const teamTypes = [...new Set(clientes.map(c => c.team_type).filter(Boolean))];
+  const toggleSelectAll = () => {
+    if (selectedClientes.size === filteredClientes.length) {
+      setSelectedClientes(new Set());
+    } else {
+      setSelectedClientes(new Set(filteredClientes.map(c => c.id)));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedClientes(new Set());
+  };
+
+  // Função para atualização em lote
+  const handleBatchUpdate = async () => {
+    if (!batchField || selectedClientes.size === 0) return;
+
+    setBatchUpdating(true);
+    try {
+      const batch = writeBatch(db);
+      const updates = {};
+
+      // Determinar o campo e valor a atualizar
+      if (batchField === 'status') {
+        updates.status = batchValue;
+      } else if (batchField === 'responsavel') {
+        // Encontrar o cliente com esse responsável para pegar o email
+        const clienteRef = clientes.find(c => c.responsavel_nome === batchValue);
+        updates.responsavel_nome = batchValue;
+        if (clienteRef?.responsavel_email) {
+          updates.responsavel_email = clienteRef.responsavel_email;
+        }
+      } else if (batchField === 'team_type') {
+        updates.team_type = batchValue;
+      }
+
+      // Aplicar updates em todos os clientes selecionados
+      for (const clienteId of selectedClientes) {
+        const clienteRef = doc(db, 'clientes', clienteId);
+        batch.update(clienteRef, updates);
+      }
+
+      await batch.commit();
+
+      // Recarregar dados
+      await fetchData();
+
+      // Limpar seleção e fechar modal
+      setSelectedClientes(new Set());
+      setShowBatchModal(false);
+      setBatchField('');
+      setBatchValue('');
+    } catch (error) {
+      console.error('Erro ao atualizar em lote:', error);
+      alert('Erro ao atualizar clientes. Tente novamente.');
+    } finally {
+      setBatchUpdating(false);
+    }
+  };
+
+  // Extrair tipos únicos (separando combinações por vírgula) e ordenar
+  const teamTypes = useMemo(() => {
+    const allTypes = new Set();
+    clientes.forEach(c => {
+      if (c.team_type) {
+        // Separar por vírgula e adicionar cada tipo individualmente
+        c.team_type.split(',').forEach(type => {
+          const trimmed = type.trim();
+          if (trimmed) allTypes.add(trimmed);
+        });
+      }
+    });
+    return [...allTypes].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [clientes]);
+
+  const filteredClientes = clientes
+    .filter(cliente => {
+      const searchNormalized = normalizeText(searchTerm);
+      const nameNormalized = normalizeText(cliente.team_name || '');
+      const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
+      const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
+      const matchesHealthStatus = filterHealthStatus === 'todos' || cliente.health_status === filterHealthStatus;
+      const matchesClienteStatus = filterClienteStatus.length === 0 || filterClienteStatus.includes(cliente.status || 'ativo');
+      // Filtro de tipo: verifica se o tipo selecionado está contido no team_type do cliente
+      const matchesType = filterType === 'todos' || (cliente.team_type && cliente.team_type.includes(filterType));
+      return matchesSearch && matchesHealthStatus && matchesClienteStatus && matchesType;
+    })
+    .sort((a, b) => (a.team_name || '').localeCompare(b.team_name || '', 'pt-BR'));
 
   const exportToCSV = () => {
     const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Health Score', 'Status', 'Qtd Times'];
@@ -214,6 +369,109 @@ export default function Clientes() {
         </div>
       )}
 
+      {/* Barra de Edição em Lote */}
+      {selectedClientes.size > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 20px',
+          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(6, 182, 212, 0.15) 100%)',
+          border: '1px solid rgba(139, 92, 246, 0.4)',
+          borderRadius: '12px',
+          marginBottom: '24px',
+          position: 'sticky',
+          top: '16px',
+          zIndex: 10
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CheckSquare style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+              <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>
+                {selectedClientes.size} {selectedClientes.size === 1 ? 'cliente selecionado' : 'clientes selecionados'}
+              </span>
+            </div>
+            <button
+              onClick={clearSelection}
+              style={{
+                padding: '6px 12px',
+                background: 'transparent',
+                border: '1px solid rgba(148, 163, 184, 0.3)',
+                borderRadius: '8px',
+                color: '#94a3b8',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <X style={{ width: '14px', height: '14px' }} />
+              Limpar
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => { setBatchField('status'); setShowBatchModal(true); }}
+              style={{
+                padding: '8px 16px',
+                background: 'rgba(16, 185, 129, 0.2)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                borderRadius: '8px',
+                color: '#10b981',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Edit3 style={{ width: '14px', height: '14px' }} />
+              Alterar Status
+            </button>
+            <button
+              onClick={() => { setBatchField('responsavel'); setShowBatchModal(true); }}
+              style={{
+                padding: '8px 16px',
+                background: 'rgba(59, 130, 246, 0.2)',
+                border: '1px solid rgba(59, 130, 246, 0.4)',
+                borderRadius: '8px',
+                color: '#3b82f6',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <UserCheck style={{ width: '14px', height: '14px' }} />
+              Alterar Responsável
+            </button>
+            <button
+              onClick={() => { setBatchField('team_type'); setShowBatchModal(true); }}
+              style={{
+                padding: '8px 16px',
+                background: 'rgba(249, 115, 22, 0.2)',
+                border: '1px solid rgba(249, 115, 22, 0.4)',
+                borderRadius: '8px',
+                color: '#f97316',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Building2 style={{ width: '14px', height: '14px' }} />
+              Alterar Tipo
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>Clientes</h1>
@@ -276,9 +534,12 @@ export default function Clientes() {
           <option value="critico" style={{ background: '#1e1b4b' }}>Crítico</option>
         </select>
         <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
-          style={{ padding: '12px 16px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', cursor: 'pointer', minWidth: '150px' }}>
-          <option value="todos" style={{ background: '#1e1b4b' }}>Todos os tipos</option>
-          {teamTypes.map(type => (<option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>))}
+          style={{ padding: '12px 16px', background: filterType !== 'todos' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 27, 75, 0.4)', border: `1px solid ${filterType !== 'todos' ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.2)'}`, borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', cursor: 'pointer', minWidth: '180px' }}>
+          <option value="todos" style={{ background: '#1e1b4b' }}>Todos os tipos ({clientes.length})</option>
+          {teamTypes.map(type => {
+            const count = clientes.filter(c => c.team_type && c.team_type.includes(type)).length;
+            return (<option key={type} value={type} style={{ background: '#1e1b4b' }}>{type} ({count})</option>);
+          })}
         </select>
       </div>
 
@@ -325,7 +586,7 @@ export default function Clientes() {
             </button>
           );
         })}
-        {(searchTerm || filterHealthStatus !== 'todos' || filterType !== 'todos' || filterClienteStatus.length !== DEFAULT_VISIBLE_STATUS.length) && (
+        {(searchTerm || filterHealthStatus !== 'todos' || filterType !== 'todos' || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
           <>
             <button
               onClick={() => {
@@ -333,6 +594,7 @@ export default function Clientes() {
                 setFilterHealthStatus('todos');
                 setFilterType('todos');
                 setFilterClienteStatus(DEFAULT_VISIBLE_STATUS);
+                localStorage.removeItem(FILTERS_STORAGE_KEY);
               }}
               style={{
                 padding: '6px 12px',
@@ -359,20 +621,79 @@ export default function Clientes() {
         )}
       </div>
 
+      {/* Checkbox Selecionar Todos */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+        <button
+          onClick={toggleSelectAll}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            background: selectedClientes.size === filteredClientes.length && filteredClientes.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '8px',
+            color: '#94a3b8',
+            fontSize: '13px',
+            cursor: 'pointer'
+          }}
+        >
+          {selectedClientes.size === filteredClientes.length && filteredClientes.length > 0 ? (
+            <CheckSquare style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
+          ) : (
+            <Square style={{ width: '16px', height: '16px' }} />
+          )}
+          Selecionar todos ({filteredClientes.length})
+        </button>
+        {selectedClientes.size > 0 && (
+          <span style={{ color: '#64748b', fontSize: '12px' }}>
+            {selectedClientes.size} selecionados
+          </span>
+        )}
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '16px' }}>
         {filteredClientes.length > 0 ? filteredClientes.map((cliente) => {
           const isInativo = cliente.status === 'inativo';
+          const isSelected = selectedClientes.has(cliente.id);
           return (
-          <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)}
+          <div key={cliente.id}
             style={{
-              background: isInativo ? 'rgba(55, 65, 81, 0.3)' : 'rgba(30, 27, 75, 0.4)',
-              border: isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(139, 92, 246, 0.15)',
+              background: isSelected ? 'rgba(139, 92, 246, 0.15)' : isInativo ? 'rgba(55, 65, 81, 0.3)' : 'rgba(30, 27, 75, 0.4)',
+              border: isSelected ? '2px solid rgba(139, 92, 246, 0.6)' : isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(139, 92, 246, 0.15)',
               borderRadius: '16px',
               padding: '20px',
               cursor: 'pointer',
               transition: 'all 0.2s',
-              opacity: isInativo ? 0.7 : 1
+              opacity: isInativo ? 0.7 : 1,
+              position: 'relative'
             }}>
+            {/* Checkbox de seleção */}
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleSelectCliente(cliente.id); }}
+              style={{
+                position: 'absolute',
+                top: '12px',
+                left: '12px',
+                width: '28px',
+                height: '28px',
+                background: isSelected ? 'rgba(139, 92, 246, 0.3)' : 'rgba(15, 10, 31, 0.6)',
+                border: isSelected ? '2px solid #8b5cf6' : '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 5
+              }}
+            >
+              {isSelected ? (
+                <CheckSquare style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
+              ) : (
+                <Square style={{ width: '16px', height: '16px', color: '#64748b' }} />
+              )}
+            </button>
+            <div onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ marginLeft: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
@@ -489,6 +810,7 @@ export default function Clientes() {
                 <ChevronRight style={{ width: '16px', height: '16px', color: isInativo ? '#9ca3af' : '#8b5cf6' }} />
               </div>
             </div>
+            </div>{/* fecha div do clickable area */}
           </div>
         )}) : (
           <div style={{ gridColumn: '1 / -1', padding: '48px', textAlign: 'center', background: 'rgba(30, 27, 75, 0.4)', borderRadius: '16px', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
@@ -655,6 +977,159 @@ export default function Clientes() {
               >
                 <Trash2 style={{ width: '16px', height: '16px' }} />
                 {deleting ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Edição em Lote */}
+      {showBatchModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '32px' }}>
+          <div style={{ background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '20px', width: '100%', maxWidth: '500px', padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                background: 'rgba(139, 92, 246, 0.15)',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Edit3 style={{ width: '24px', height: '24px', color: '#8b5cf6' }} />
+              </div>
+              <div>
+                <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 4px 0' }}>
+                  Editar em Lote
+                </h3>
+                <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>
+                  {selectedClientes.size} clientes selecionados
+                </p>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
+                {batchField === 'status' && 'Novo Status'}
+                {batchField === 'responsavel' && 'Novo Responsável'}
+                {batchField === 'team_type' && 'Novo Tipo'}
+              </label>
+
+              {batchField === 'status' && (
+                <select
+                  value={batchValue}
+                  onChange={(e) => setBatchValue(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#0f0a1f',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '14px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="" style={{ background: '#1e1b4b' }}>Selecione um status...</option>
+                  {STATUS_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value} style={{ background: '#1e1b4b' }}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {batchField === 'responsavel' && (
+                <select
+                  value={batchValue}
+                  onChange={(e) => setBatchValue(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#0f0a1f',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '14px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="" style={{ background: '#1e1b4b' }}>Selecione um responsável...</option>
+                  {responsaveis.map(resp => (
+                    <option key={resp} value={resp} style={{ background: '#1e1b4b' }}>
+                      {resp}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {batchField === 'team_type' && (
+                <select
+                  value={batchValue}
+                  onChange={(e) => setBatchValue(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#0f0a1f',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '14px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="" style={{ background: '#1e1b4b' }}>Selecione um tipo...</option>
+                  {teamTypes.map(type => (
+                    <option key={type} value={type} style={{ background: '#1e1b4b' }}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div style={{ padding: '12px 16px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', marginBottom: '20px' }}>
+              <p style={{ color: '#a78bfa', fontSize: '13px', margin: 0 }}>
+                Esta ação irá alterar {selectedClientes.size} clientes de uma vez.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                onClick={() => { setShowBatchModal(false); setBatchField(''); setBatchValue(''); }}
+                style={{
+                  padding: '12px 20px',
+                  background: 'rgba(15, 10, 31, 0.6)',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  borderRadius: '12px',
+                  color: '#94a3b8',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleBatchUpdate}
+                disabled={!batchValue || batchUpdating}
+                style={{
+                  padding: '12px 20px',
+                  background: !batchValue || batchUpdating ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: !batchValue || batchUpdating ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <CheckSquare style={{ width: '16px', height: '16px' }} />
+                {batchUpdating ? 'Aplicando...' : 'Aplicar Alterações'}
               </button>
             </div>
           </div>

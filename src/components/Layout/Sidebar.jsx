@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History, ClipboardList, Briefcase } from 'lucide-react';
 import { useAlertasCount } from '../../hooks/useAlertas';
 
 export default function Sidebar() {
@@ -50,16 +50,21 @@ export default function Sidebar() {
 
   const menuItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/minha-carteira', icon: Briefcase, label: 'Minha Carteira' },
     { to: '/clientes', icon: Users, label: 'Clientes' },
     { to: '/playbooks', icon: ClipboardList, label: 'Playbooks' },
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/alertas', icon: Bell, label: 'Alertas', badge: alertaCounts.pendentes, urgente: alertaCounts.urgentes > 0 },
   ];
 
+  // Verificar se usuário é admin
+  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'super_admin';
+
   const configItems = [
     { to: '/configuracoes', icon: Settings, label: 'Configurações', exact: true },
     { to: '/configuracoes/usuarios', icon: UserCog, label: 'Usuários' },
-    { to: '/configuracoes/auditoria', icon: History, label: 'Histórico' },
+    // Auditoria apenas para admins
+    ...(isAdmin ? [{ to: '/configuracoes/auditoria', icon: History, label: 'Histórico' }] : []),
   ];
 
   const linkStyle = (isActive) => ({
