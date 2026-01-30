@@ -290,14 +290,27 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
 
   // Exportar PDF
   const exportarPDF = async () => {
-    if (!resumoRef.current) return;
+    if (!resumoRef.current || resumosGerados.length === 0) return;
 
     try {
       const html2pdf = (await import('html2pdf.js')).default;
 
+      // Formatar nome do arquivo com cliente(s) e período
+      const formatarNomeArquivo = () => {
+        const sanitize = (str) => str.replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '-').toLowerCase();
+        const periodoFormatado = `${dataInicio.replace(/-/g, '')}-a-${dataFim.replace(/-/g, '')}`;
+
+        if (resumosGerados.length === 1) {
+          const nomeCliente = sanitize(resumosGerados[0].cliente.team_name || 'cliente');
+          return `resumo-executivo-${nomeCliente}-${periodoFormatado}.pdf`;
+        } else {
+          return `resumo-executivo-${resumosGerados.length}-clientes-${periodoFormatado}.pdf`;
+        }
+      };
+
       const opt = {
         margin: [10, 10, 10, 10],
-        filename: `resumo-executivo-${new Date().toISOString().split('T')[0]}.pdf`,
+        filename: formatarNomeArquivo(),
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
