@@ -91,7 +91,7 @@ export const ALERTA_STATUS = {
 
 // Funções utilitárias
 export function getTipoInfo(tipo) {
-  return ALERTA_TIPOS[tipo] || ALERTA_TIPOS.sem_contato;
+  return ALERTA_TIPOS[tipo] || { value: tipo, label: tipo, color: '#6b7280', icon: 'Bell' };
 }
 
 export function getPrioridadeInfo(prioridade) {

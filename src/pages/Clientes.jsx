@@ -3,7 +3,7 @@ import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch } from 'fire
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, ChevronRight, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck } from 'lucide-react';
+import { Users, Search, ChevronRight, ChevronDown, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check } from 'lucide-react';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 
@@ -62,7 +62,11 @@ export default function Clientes() {
   });
   const [filterType, setFilterType] = useState(() => {
     const saved = loadFiltersFromStorage();
-    return saved?.type || 'todos';
+    // Migrar de string para array se necessário
+    if (saved?.type && typeof saved.type === 'string' && saved.type !== 'todos') {
+      return [saved.type];
+    }
+    return saved?.type && Array.isArray(saved.type) ? saved.type : [];
   });
 
   const [showOrphanModal, setShowOrphanModal] = useState(false);
@@ -76,6 +80,9 @@ export default function Clientes() {
   const [batchField, setBatchField] = useState('');
   const [batchValue, setBatchValue] = useState('');
   const [batchUpdating, setBatchUpdating] = useState(false);
+
+  // Estado para dropdown de escopo
+  const [showEscopoDropdown, setShowEscopoDropdown] = useState(false);
 
   const navigate = useNavigate();
 
@@ -249,8 +256,8 @@ export default function Clientes() {
       const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
       const matchesHealthStatus = filterHealthStatus === 'todos' || cliente.health_status === filterHealthStatus;
       const matchesClienteStatus = filterClienteStatus.length === 0 || filterClienteStatus.includes(cliente.status || 'ativo');
-      // Filtro de tipo: verifica se o tipo selecionado está contido no team_type do cliente
-      const matchesType = filterType === 'todos' || (cliente.team_type && cliente.team_type.includes(filterType));
+      // Filtro de tipo: verifica se algum dos tipos selecionados está contido no team_type do cliente
+      const matchesType = filterType.length === 0 || filterType.some(type => cliente.team_type && cliente.team_type.includes(type));
       return matchesSearch && matchesHealthStatus && matchesClienteStatus && matchesType;
     })
     .sort((a, b) => (a.team_name || '').localeCompare(b.team_name || '', 'pt-BR'));
@@ -533,66 +540,194 @@ export default function Clientes() {
           <option value="risco" style={{ background: '#1e1b4b' }}>Risco</option>
           <option value="critico" style={{ background: '#1e1b4b' }}>Crítico</option>
         </select>
-        <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
-          style={{ padding: '12px 16px', background: filterType !== 'todos' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 27, 75, 0.4)', border: `1px solid ${filterType !== 'todos' ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.2)'}`, borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', cursor: 'pointer', minWidth: '180px' }}>
-          <option value="todos" style={{ background: '#1e1b4b' }}>Todos os tipos ({clientes.length})</option>
-          {teamTypes.map(type => {
-            const count = clientes.filter(c => c.team_type && c.team_type.includes(type)).length;
-            return (<option key={type} value={type} style={{ background: '#1e1b4b' }}>{type} ({count})</option>);
-          })}
-        </select>
       </div>
 
-      {/* Filtro de Status do Cliente */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ color: '#94a3b8', fontSize: '13px', marginRight: '8px' }}>Status:</span>
-        {STATUS_OPTIONS.map(opt => {
-          const isSelected = filterClienteStatus.includes(opt.value);
-          return (
-            <button
-              key={opt.value}
-              onClick={() => {
-                if (isSelected) {
-                  setFilterClienteStatus(filterClienteStatus.filter(s => s !== opt.value));
-                } else {
-                  setFilterClienteStatus([...filterClienteStatus, opt.value]);
-                }
-              }}
-              style={{
-                padding: '6px 12px',
-                background: isSelected ? `${opt.color}20` : 'transparent',
-                border: `1px solid ${isSelected ? opt.color : 'rgba(139, 92, 246, 0.2)'}`,
-                borderRadius: '16px',
-                color: isSelected ? opt.color : '#64748b',
-                fontSize: '12px',
-                fontWeight: isSelected ? '500' : '400',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.2s'
-              }}
-            >
-              <span style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: opt.color
-              }}></span>
-              {opt.label}
-              <span style={{ color: isSelected ? opt.color : '#64748b', opacity: 0.7 }}>
-                ({clientes.filter(c => (c.status || 'ativo') === opt.value).length})
-              </span>
-            </button>
-          );
-        })}
-        {(searchTerm || filterHealthStatus !== 'todos' || filterType !== 'todos' || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
+      {/* Filtros de Status e Escopo */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+        {/* Filtro de Status do Cliente */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ color: '#94a3b8', fontSize: '13px', marginRight: '8px', minWidth: '50px' }}>Status:</span>
+          {STATUS_OPTIONS.map(opt => {
+            const isSelected = filterClienteStatus.includes(opt.value);
+            return (
+              <button
+                key={opt.value}
+                onClick={() => {
+                  if (isSelected) {
+                    setFilterClienteStatus(filterClienteStatus.filter(s => s !== opt.value));
+                  } else {
+                    setFilterClienteStatus([...filterClienteStatus, opt.value]);
+                  }
+                }}
+                style={{
+                  padding: '6px 12px',
+                  background: isSelected ? `${opt.color}20` : 'transparent',
+                  border: `1px solid ${isSelected ? opt.color : 'rgba(139, 92, 246, 0.2)'}`,
+                  borderRadius: '16px',
+                  color: isSelected ? opt.color : '#64748b',
+                  fontSize: '12px',
+                  fontWeight: isSelected ? '500' : '400',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <span style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: opt.color
+                }}></span>
+                {opt.label}
+                <span style={{ color: isSelected ? opt.color : '#64748b', opacity: 0.7 }}>
+                  ({clientes.filter(c => (c.status || 'ativo') === opt.value).length})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Filtro de Escopo/Tipo - Dropdown */}
+        {teamTypes.length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ color: '#94a3b8', fontSize: '13px', marginRight: '8px', minWidth: '50px' }}>Escopo:</span>
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowEscopoDropdown(!showEscopoDropdown)}
+                style={{
+                  padding: '6px 12px',
+                  background: filterType.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
+                  border: `1px solid ${filterType.length > 0 ? '#8b5cf6' : 'rgba(139, 92, 246, 0.2)'}`,
+                  borderRadius: '16px',
+                  color: filterType.length > 0 ? '#a78bfa' : '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {filterType.length === 0 ? 'Todos os escopos' : `${filterType.length} selecionado${filterType.length > 1 ? 's' : ''}`}
+                <ChevronDown style={{ width: '14px', height: '14px' }} />
+              </button>
+
+              {/* Dropdown */}
+              {showEscopoDropdown && (
+                <>
+                  {/* Overlay para fechar */}
+                  <div
+                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
+                    onClick={() => setShowEscopoDropdown(false)}
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    marginTop: '8px',
+                    background: '#1e1b4b',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    padding: '8px',
+                    minWidth: '220px',
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    zIndex: 100,
+                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+                  }}>
+                    {/* Botão limpar */}
+                    {filterType.length > 0 && (
+                      <button
+                        onClick={() => setFilterType([])}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          marginBottom: '8px',
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                          borderRadius: '8px',
+                          color: '#ef4444',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <X style={{ width: '12px', height: '12px' }} />
+                        Limpar seleção
+                      </button>
+                    )}
+
+                    {/* Lista de tipos */}
+                    {teamTypes.map(type => {
+                      const isSelected = filterType.includes(type);
+                      const count = clientes.filter(c => c.team_type && c.team_type.includes(type)).length;
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => {
+                            if (isSelected) {
+                              setFilterType(filterType.filter(t => t !== type));
+                            } else {
+                              setFilterType([...filterType, type]);
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: isSelected ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+                            border: 'none',
+                            borderRadius: '8px',
+                            color: isSelected ? '#a78bfa' : '#94a3b8',
+                            fontSize: '13px',
+                            fontWeight: isSelected ? '500' : '400',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            textAlign: 'left'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '4px',
+                              border: `2px solid ${isSelected ? '#8b5cf6' : 'rgba(139, 92, 246, 0.3)'}`,
+                              background: isSelected ? '#8b5cf6' : 'transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}>
+                              {isSelected && <Check style={{ width: '12px', height: '12px', color: 'white' }} />}
+                            </div>
+                            {type}
+                          </div>
+                          <span style={{ color: '#64748b', fontSize: '11px' }}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Botão limpar filtros */}
+        {(searchTerm || filterHealthStatus !== 'todos' || filterType.length > 0 || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
           <>
             <button
               onClick={() => {
                 setSearchTerm('');
                 setFilterHealthStatus('todos');
-                setFilterType('todos');
+                setFilterType([]);
                 setFilterClienteStatus(DEFAULT_VISIBLE_STATUS);
                 localStorage.removeItem(FILTERS_STORAGE_KEY);
               }}

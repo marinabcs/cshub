@@ -14,11 +14,38 @@ export function useAlertas(filtros = {}) {
     setError(null);
 
     try {
-      const alertasSnap = await getDocs(collection(db, 'alertas'));
-      let alertasData = alertasSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      // Buscar alertas e clientes em paralelo
+      const [alertasSnap, clientesSnap] = await Promise.all([
+        getDocs(collection(db, 'alertas')),
+        getDocs(collection(db, 'clientes'))
+      ]);
+
+      // Criar mapas de clientes
+      const clientesInativos = new Set();
+      const clientesMap = new Map();
+      clientesSnap.docs.forEach(doc => {
+        const data = doc.data();
+        clientesMap.set(doc.id, data);
+        if (data.status === 'inativo' || data.status === 'cancelado') {
+          clientesInativos.add(doc.id);
+        }
+      });
+
+      let alertasData = alertasSnap.docs.map(doc => {
+        const data = doc.data();
+        const cliente = data.cliente_id ? clientesMap.get(data.cliente_id) : null;
+        return {
+          id: doc.id,
+          ...data,
+          // Enriquecer com dados do cliente
+          team_type: data.team_type || cliente?.team_type || null,
+          cliente_nome: data.cliente_nome || cliente?.team_name || null,
+          responsavel_nome: data.responsavel_nome || cliente?.responsavel_nome || null
+        };
+      });
+
+      // Excluir alertas de clientes inativos/cancelados
+      alertasData = alertasData.filter(a => !a.cliente_id || !clientesInativos.has(a.cliente_id));
 
       // Aplicar filtros
       if (filtros.tipos && filtros.tipos.length > 0) {
@@ -65,8 +92,25 @@ export function useAlertasCount() {
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const alertasSnap = await getDocs(collection(db, 'alertas'));
-        const alertas = alertasSnap.docs.map(doc => doc.data());
+        // Buscar alertas e clientes em paralelo
+        const [alertasSnap, clientesSnap] = await Promise.all([
+          getDocs(collection(db, 'alertas')),
+          getDocs(collection(db, 'clientes'))
+        ]);
+
+        // Criar mapa de clientes inativos/cancelados
+        const clientesInativos = new Set();
+        clientesSnap.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.status === 'inativo' || data.status === 'cancelado') {
+            clientesInativos.add(doc.id);
+          }
+        });
+
+        // Filtrar alertas excluindo clientes inativos/cancelados
+        const alertas = alertasSnap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(a => !a.cliente_id || !clientesInativos.has(a.cliente_id));
 
         setCounts({
           pendentes: alertas.filter(a => a.status === 'pendente').length,
@@ -140,6 +184,9 @@ export function useAtualizarAlerta() {
   return { atualizarStatus, updating };
 }
 
+// Tipos válidos de alertas (novos)
+const TIPOS_VALIDOS = ['sem_uso_plataforma', 'sentimento_negativo', 'resposta_pendente', 'problema_reclamacao', 'creditos_baixos'];
+
 // Hook para verificar e gerar novos alertas
 export function useVerificarAlertas() {
   const [verificando, setVerificando] = useState(false);
@@ -151,18 +198,18 @@ export function useVerificarAlertas() {
 
     try {
       // Buscar dados necessários
-      const [timesSnap, clientesSnap, alertasSnap] = await Promise.all([
-        getDocs(collection(db, 'times')),
+      const [threadsSnap, clientesSnap, alertasSnap] = await Promise.all([
+        getDocs(collection(db, 'threads')),
         getDocs(collection(db, 'clientes')),
         getDocs(collection(db, 'alertas'))
       ]);
 
-      const times = timesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const threads = threadsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const clientes = clientesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const alertasExistentes = alertasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       // Gerar novos alertas
-      const novosAlertas = verificarTodosAlertas(times, clientes, alertasExistentes);
+      const novosAlertas = verificarTodosAlertas(clientes, threads, alertasExistentes);
 
       // Salvar novos alertas
       let criados = 0;
@@ -184,7 +231,7 @@ export function useVerificarAlertas() {
 
       setResultados({
         verificados: {
-          times: times.length,
+          threads: threads.length,
           clientes: clientes.length
         },
         alertasExistentes: alertasExistentes.filter(a => a.status === 'pendente' || a.status === 'em_andamento').length,
@@ -203,6 +250,49 @@ export function useVerificarAlertas() {
   };
 
   return { verificarEGerarAlertas, verificando, resultados };
+}
+
+// Hook para limpar alertas com tipos antigos/inválidos
+export function useLimparAlertasAntigos() {
+  const [limpando, setLimpando] = useState(false);
+  const [resultado, setResultado] = useState(null);
+
+  const limparAlertasAntigos = async () => {
+    setLimpando(true);
+    setResultado(null);
+
+    try {
+      const alertasSnap = await getDocs(collection(db, 'alertas'));
+      const alertasInvalidos = alertasSnap.docs.filter(doc => {
+        const data = doc.data();
+        // Alerta com tipo que não existe mais
+        return !TIPOS_VALIDOS.includes(data.tipo);
+      });
+
+      let removidos = 0;
+      for (const doc of alertasInvalidos) {
+        // Marcar como ignorado em vez de deletar (manter histórico)
+        await updateDoc(doc.ref, {
+          status: 'ignorado',
+          updated_at: Timestamp.now(),
+          resolved_at: Timestamp.now(),
+          motivo_fechamento: 'Tipo de alerta descontinuado'
+        });
+        removidos++;
+      }
+
+      setResultado({ success: true, removidos });
+      return { success: true, removidos };
+    } catch (e) {
+      console.error('Erro ao limpar alertas:', e);
+      setResultado({ success: false, error: e.message });
+      return { success: false, error: e.message };
+    } finally {
+      setLimpando(false);
+    }
+  };
+
+  return { limparAlertasAntigos, limpando, resultado };
 }
 
 // Hook para buscar alertas de um time específico

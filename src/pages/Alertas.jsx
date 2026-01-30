@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Clock, UserX, AlertTriangle, AlertOctagon, Bug, RefreshCw, Check, ChevronRight, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye } from 'lucide-react';
-import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas } from '../hooks/useAlertas';
+import { Bell, Clock, AlertTriangle, RefreshCw, Check, ChevronRight, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye, Frown, MessageSquare, Zap } from 'lucide-react';
+import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas, useLimparAlertasAntigos } from '../hooks/useAlertas';
 import {
   ALERTA_TIPOS,
   ALERTA_PRIORIDADES,
@@ -17,12 +17,11 @@ import { db } from '../services/firebase';
 
 // Mapeamento de ícones por tipo
 const TIPO_ICONS = {
-  sem_contato: Clock,
-  sentimento_negativo: AlertTriangle,
-  health_critico: AlertTriangle,
-  erro_bug: Bug,
-  time_orfao: UserX,
-  aviso_previo: AlertOctagon,
+  sem_uso_plataforma: Clock,
+  sentimento_negativo: Frown,
+  resposta_pendente: MessageSquare,
+  problema_reclamacao: AlertTriangle,
+  creditos_baixos: Zap,
 };
 
 export default function Alertas() {
@@ -62,6 +61,7 @@ export default function Alertas() {
   const { counts } = useAlertasCount();
   const { atualizarStatus, updating } = useAtualizarAlerta();
   const { verificarEGerarAlertas, verificando, resultados } = useVerificarAlertas();
+  const { limparAlertasAntigos, limpando, resultado: resultadoLimpeza } = useLimparAlertasAntigos();
 
   // Responsáveis únicos e tipos de time
   const responsaveis = [...new Set(alertas.map(a => a.responsavel_nome).filter(Boolean))].sort();
@@ -276,26 +276,54 @@ export default function Alertas() {
             {countPendentes} pendente{countPendentes !== 1 ? 's' : ''} • {countEmAndamento} em andamento • {countResolvidosHoje} resolvido{countResolvidosHoje !== 1 ? 's' : ''} hoje
           </p>
         </div>
-        <button
-          onClick={handleVerificar}
-          disabled={verificando}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '12px 20px',
-            background: verificando ? 'rgba(139, 92, 246, 0.5)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-            border: 'none',
-            borderRadius: '12px',
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: verificando ? 'not-allowed' : 'pointer'
-          }}
-        >
-          <RefreshCw style={{ width: '18px', height: '18px', animation: verificando ? 'spin 1s linear infinite' : 'none' }} />
-          {verificando ? 'Verificando...' : 'Verificar Novos Alertas'}
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={async () => {
+              const result = await limparAlertasAntigos();
+              if (result.success) {
+                refetch();
+              }
+            }}
+            disabled={limpando}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: limpando ? 'rgba(100, 116, 139, 0.5)' : 'rgba(100, 116, 139, 0.2)',
+              border: '1px solid rgba(100, 116, 139, 0.3)',
+              borderRadius: '12px',
+              color: '#94a3b8',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: limpando ? 'not-allowed' : 'pointer'
+            }}
+            title="Marcar alertas com tipos antigos como ignorados"
+          >
+            <X style={{ width: '18px', height: '18px', animation: limpando ? 'spin 1s linear infinite' : 'none' }} />
+            {limpando ? 'Limpando...' : 'Limpar Antigos'}
+          </button>
+          <button
+            onClick={handleVerificar}
+            disabled={verificando}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: verificando ? 'rgba(139, 92, 246, 0.5)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: verificando ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <RefreshCw style={{ width: '18px', height: '18px', animation: verificando ? 'spin 1s linear infinite' : 'none' }} />
+            {verificando ? 'Verificando...' : 'Verificar Novos Alertas'}
+          </button>
+        </div>
       </div>
 
       {/* Resultado da verificação */}
@@ -317,48 +345,43 @@ export default function Alertas() {
             </span>
           </div>
           <span style={{ color: '#64748b', fontSize: '13px' }}>
-            {resultados.verificados.times} times • {resultados.verificados.clientes} clientes
+            {resultados.verificados.threads} conversas • {resultados.verificados.clientes} clientes
           </span>
         </div>
       )}
 
-      {/* Filtros */}
+      {/* Resultado da limpeza */}
+      {resultadoLimpeza && resultadoLimpeza.success && (
+        <div style={{
+          padding: '16px 20px',
+          background: 'rgba(100, 116, 139, 0.1)',
+          border: '1px solid rgba(100, 116, 139, 0.3)',
+          borderRadius: '12px',
+          marginBottom: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          <Check style={{ width: '20px', height: '20px', color: '#64748b' }} />
+          <span style={{ color: '#94a3b8', fontWeight: '500' }}>
+            Limpeza concluída! {resultadoLimpeza.removidos} alerta{resultadoLimpeza.removidos !== 1 ? 's' : ''} com tipos antigos foi{resultadoLimpeza.removidos !== 1 ? 'ram' : ''} marcado{resultadoLimpeza.removidos !== 1 ? 's' : ''} como ignorado{resultadoLimpeza.removidos !== 1 ? 's' : ''}.
+          </span>
+        </div>
+      )}
+
+      {/* Filtros - Layout compacto */}
       <div style={{
         background: 'rgba(30, 27, 75, 0.4)',
         border: '1px solid rgba(139, 92, 246, 0.15)',
-        borderRadius: '16px',
-        padding: '20px',
-        marginBottom: '24px'
+        borderRadius: '12px',
+        padding: '12px 16px',
+        marginBottom: '16px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-          <Filter style={{ width: '18px', height: '18px', color: '#8b5cf6' }} />
-          <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>Filtros</span>
-          {(filtroTipos.length > 0 || filtroPrioridades.length > 0 || filtroStatus.length !== 2 || filtroResponsavel !== 'todos') && (
-            <button
-              onClick={limparFiltros}
-              style={{
-                padding: '4px 10px',
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                borderRadius: '8px',
-                color: '#ef4444',
-                fontSize: '12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-            >
-              <X style={{ width: '12px', height: '12px' }} />
-              Limpar
-            </button>
-          )}
-        </div>
-
-        {/* Status */}
-        <div style={{ marginBottom: '16px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', display: 'block' }}>Status:</span>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {/* Linha 1: Status, Prioridade e botão limpar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '10px' }}>
+          {/* Status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#64748b', fontSize: '11px', whiteSpace: 'nowrap' }}>Status:</span>
             {Object.values(ALERTA_STATUS).map(status => {
               const isSelected = filtroStatus.includes(status.value);
               return (
@@ -366,12 +389,12 @@ export default function Alertas() {
                   key={status.value}
                   onClick={() => toggleFiltroStatus(status.value)}
                   style={{
-                    padding: '6px 12px',
+                    padding: '4px 8px',
                     background: isSelected ? `${status.color}20` : 'transparent',
                     border: `1px solid ${isSelected ? status.color : 'rgba(139, 92, 246, 0.2)'}`,
-                    borderRadius: '16px',
+                    borderRadius: '12px',
                     color: isSelected ? status.color : '#64748b',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     fontWeight: isSelected ? '500' : '400',
                     cursor: 'pointer'
                   }}
@@ -381,12 +404,12 @@ export default function Alertas() {
               );
             })}
           </div>
-        </div>
 
-        {/* Prioridade */}
-        <div style={{ marginBottom: '16px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', display: 'block' }}>Prioridade:</span>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ width: '1px', height: '20px', background: 'rgba(139, 92, 246, 0.2)' }} />
+
+          {/* Prioridade */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#64748b', fontSize: '11px', whiteSpace: 'nowrap' }}>Prioridade:</span>
             {Object.values(ALERTA_PRIORIDADES).map(prio => {
               const isSelected = filtroPrioridades.includes(prio.value);
               return (
@@ -394,12 +417,12 @@ export default function Alertas() {
                   key={prio.value}
                   onClick={() => toggleFiltroPrioridade(prio.value)}
                   style={{
-                    padding: '6px 12px',
+                    padding: '4px 8px',
                     background: isSelected ? `${prio.color}20` : 'transparent',
                     border: `1px solid ${isSelected ? prio.color : 'rgba(139, 92, 246, 0.2)'}`,
-                    borderRadius: '16px',
+                    borderRadius: '12px',
                     color: isSelected ? prio.color : '#64748b',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     fontWeight: isSelected ? '500' : '400',
                     cursor: 'pointer'
                   }}
@@ -409,12 +432,38 @@ export default function Alertas() {
               );
             })}
           </div>
+
+          {/* Botão limpar */}
+          {(filtroTipos.length > 0 || filtroPrioridades.length > 0 || filtroStatus.length !== 2 || filtroResponsavel !== 'todos' || filtroTeamType !== 'todos') && (
+            <>
+              <div style={{ width: '1px', height: '20px', background: 'rgba(139, 92, 246, 0.2)' }} />
+              <button
+                onClick={limparFiltros}
+                style={{
+                  padding: '4px 8px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '8px',
+                  color: '#ef4444',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <X style={{ width: '10px', height: '10px' }} />
+                Limpar
+              </button>
+            </>
+          )}
         </div>
 
-        {/* Tipo */}
-        <div>
-          <span style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', display: 'block' }}>Tipo:</span>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        {/* Linha 2: Tipo, Time e Responsável */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          {/* Tipo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#64748b', fontSize: '11px', whiteSpace: 'nowrap' }}>Tipo:</span>
             {Object.values(ALERTA_TIPOS).map(tipo => {
               const isSelected = filtroTipos.includes(tipo.value);
               return (
@@ -422,12 +471,12 @@ export default function Alertas() {
                   key={tipo.value}
                   onClick={() => toggleFiltroTipo(tipo.value)}
                   style={{
-                    padding: '6px 12px',
+                    padding: '4px 8px',
                     background: isSelected ? `${tipo.color}20` : 'transparent',
                     border: `1px solid ${isSelected ? tipo.color : 'rgba(139, 92, 246, 0.2)'}`,
-                    borderRadius: '16px',
+                    borderRadius: '12px',
                     color: isSelected ? tipo.color : '#64748b',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     fontWeight: isSelected ? '500' : '400',
                     cursor: 'pointer'
                   }}
@@ -437,56 +486,60 @@ export default function Alertas() {
               );
             })}
           </div>
-        </div>
 
-        {/* Tipo de Time */}
-        <div>
-          <span style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', display: 'block' }}>Tipo de Time:</span>
-          <select
-            value={filtroTeamType}
-            onChange={(e) => setFiltroTeamType(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              background: 'rgba(30, 27, 75, 0.4)',
-              border: '1px solid rgba(139, 92, 246, 0.2)',
-              borderRadius: '8px',
-              color: 'white',
-              fontSize: '12px',
-              outline: 'none',
-              cursor: 'pointer',
-              minWidth: '140px'
-            }}
-          >
-            <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
-            {teamTypes.map(type => (
-              <option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>
-            ))}
-          </select>
-        </div>
+          <div style={{ width: '1px', height: '20px', background: 'rgba(139, 92, 246, 0.2)' }} />
 
-        {/* Responsável */}
-        <div>
-          <span style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', display: 'block' }}>Responsável:</span>
-          <select
-            value={filtroResponsavel}
-            onChange={(e) => setFiltroResponsavel(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              background: 'rgba(30, 27, 75, 0.4)',
-              border: '1px solid rgba(139, 92, 246, 0.2)',
-              borderRadius: '8px',
-              color: 'white',
-              fontSize: '12px',
-              outline: 'none',
-              cursor: 'pointer',
-              minWidth: '140px'
-            }}
-          >
-            <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
-            {responsaveis.map(resp => (
-              <option key={resp} value={resp} style={{ background: '#1e1b4b' }}>{resp}</option>
-            ))}
-          </select>
+          {/* Tipo de Time */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#64748b', fontSize: '11px', whiteSpace: 'nowrap' }}>Time:</span>
+            <select
+              value={filtroTeamType}
+              onChange={(e) => setFiltroTeamType(e.target.value)}
+              style={{
+                padding: '4px 8px',
+                background: 'rgba(15, 10, 31, 0.6)',
+                border: '1px solid rgba(139, 92, 246, 0.2)',
+                borderRadius: '8px',
+                color: 'white',
+                fontSize: '11px',
+                outline: 'none',
+                cursor: 'pointer',
+                minWidth: '100px'
+              }}
+            >
+              <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
+              {teamTypes.map(type => (
+                <option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ width: '1px', height: '20px', background: 'rgba(139, 92, 246, 0.2)' }} />
+
+          {/* Responsável */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#64748b', fontSize: '11px', whiteSpace: 'nowrap' }}>Resp:</span>
+            <select
+              value={filtroResponsavel}
+              onChange={(e) => setFiltroResponsavel(e.target.value)}
+              style={{
+                padding: '4px 8px',
+                background: 'rgba(15, 10, 31, 0.6)',
+                border: '1px solid rgba(139, 92, 246, 0.2)',
+                borderRadius: '8px',
+                color: 'white',
+                fontSize: '11px',
+                outline: 'none',
+                cursor: 'pointer',
+                minWidth: '120px'
+              }}
+            >
+              <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
+              {responsaveis.map(resp => (
+                <option key={resp} value={resp} style={{ background: '#1e1b4b' }}>{resp}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

@@ -19,6 +19,7 @@ import DebugFirestore from './pages/DebugFirestore'
 import Playbooks from './pages/Playbooks'
 import PlaybookDetalhe from './pages/PlaybookDetalhe'
 import MinhaCarteira from './pages/MinhaCarteira'
+import Documentos from './pages/Documentos'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -131,6 +132,7 @@ function AppRoutes() {
         <Route path="/clientes/:id/editar" element={<ClienteForm />} />
         <Route path="/playbooks" element={<Playbooks />} />
         <Route path="/playbooks/:id" element={<PlaybookDetalhe />} />
+        <Route path="/documentos" element={<Documentos />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
