@@ -61,16 +61,26 @@ export default function MinhaCarteira() {
     fetchData(selectedResponsavel);
   }, [selectedResponsavel]);
 
-  // Filtrar clientes por status do cadastro (client-side)
+  // Filtrar clientes por status do cadastro (client-side) e recalcular stats
   useEffect(() => {
     let filtered = allClientes;
 
-    // Filtrar por status do cadastro
-    if (filterStatus.length > 0 && filterStatus.length < STATUS_OPTIONS.length) {
+    // Filtrar por status do cadastro (sempre aplica se houver filtros selecionados)
+    if (filterStatus.length > 0) {
       filtered = filtered.filter(c => filterStatus.includes(c.status || 'ativo'));
     }
 
     setClientes(filtered);
+
+    // Recalcular stats baseado nos clientes filtrados
+    setStats(prev => ({
+      ...prev,
+      total: filtered.length,
+      saudaveis: filtered.filter(c => c.health_status === 'saudavel').length,
+      atencao: filtered.filter(c => c.health_status === 'atencao').length,
+      risco: filtered.filter(c => c.health_status === 'risco').length,
+      critico: filtered.filter(c => c.health_status === 'critico').length
+    }));
   }, [filterStatus, allClientes]);
 
   const fetchData = async (responsavelEmail) => {
@@ -124,18 +134,18 @@ export default function MinhaCarteira() {
 
       // Aplicar filtro de status inicial
       let filtered = clientesData;
-      if (filterStatus.length > 0 && filterStatus.length < STATUS_OPTIONS.length) {
+      if (filterStatus.length > 0) {
         filtered = filtered.filter(c => filterStatus.includes(c.status || 'ativo'));
       }
       setClientes(filtered);
 
-      // Calcular stats
+      // Calcular stats baseado nos clientes FILTRADOS
       const statsCalc = {
-        total: clientesData.length,
-        saudaveis: clientesData.filter(c => c.health_status === 'saudavel').length,
-        atencao: clientesData.filter(c => c.health_status === 'atencao').length,
-        risco: clientesData.filter(c => c.health_status === 'risco').length,
-        critico: clientesData.filter(c => c.health_status === 'critico').length,
+        total: filtered.length,
+        saudaveis: filtered.filter(c => c.health_status === 'saudavel').length,
+        atencao: filtered.filter(c => c.health_status === 'atencao').length,
+        risco: filtered.filter(c => c.health_status === 'risco').length,
+        critico: filtered.filter(c => c.health_status === 'critico').length,
         threadsPendentes: 0,
         alertasPendentes: 0
       };
