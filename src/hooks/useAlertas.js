@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, doc, addDoc, updateDoc, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, addDoc, updateDoc, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { verificarTodosAlertas, ordenarAlertas } from '../utils/alertas';
 import { isClickUpConfigured, criarTarefaClickUp, buscarTarefaClickUp, buscarUsuariosClickUpPorEmails } from '../services/clickup';
+
+// Constantes de performance
+const MAX_ALERTAS_LISTAGEM = 500; // Limite para listagens gerais
 
 // Hook para buscar e gerenciar alertas
 export function useAlertas(filtros = {}) {
@@ -82,6 +85,7 @@ export function useAlertas(filtros = {}) {
 }
 
 // Hook para contar alertas pendentes (para o sidebar)
+// Otimizado: usa queries filtradas ao invés de carregar tudo
 export function useAlertasCount() {
   const [counts, setCounts] = useState({
     pendentes: 0,
@@ -93,30 +97,37 @@ export function useAlertasCount() {
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        // Buscar alertas e clientes em paralelo
-        const [alertasSnap, clientesSnap] = await Promise.all([
-          getDocs(collection(db, 'alertas')),
+        // Buscar apenas alertas ativos (pendentes ou em_andamento) + clientes em paralelo
+        const alertasRef = collection(db, 'alertas');
+        const [pendentesSnap, emAndamentoSnap, clientesSnap] = await Promise.all([
+          getDocs(query(alertasRef, where('status', '==', 'pendente'))),
+          getDocs(query(alertasRef, where('status', '==', 'em_andamento'))),
           getDocs(collection(db, 'clientes'))
         ]);
 
         // Criar mapa de clientes inativos/cancelados
         const clientesInativos = new Set();
-        clientesSnap.docs.forEach(doc => {
-          const data = doc.data();
+        clientesSnap.docs.forEach(d => {
+          const data = d.data();
           if (data.status === 'inativo' || data.status === 'cancelado') {
-            clientesInativos.add(doc.id);
+            clientesInativos.add(d.id);
           }
         });
 
-        // Filtrar alertas excluindo clientes inativos/cancelados
-        const alertas = alertasSnap.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
+        // Processar alertas pendentes
+        const alertasPendentes = pendentesSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(a => !a.cliente_id || !clientesInativos.has(a.cliente_id));
+
+        // Processar alertas em andamento
+        const alertasEmAndamento = emAndamentoSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
           .filter(a => !a.cliente_id || !clientesInativos.has(a.cliente_id));
 
         setCounts({
-          pendentes: alertas.filter(a => a.status === 'pendente').length,
-          urgentes: alertas.filter(a => a.status === 'pendente' && a.prioridade === 'urgente').length,
-          emAndamento: alertas.filter(a => a.status === 'em_andamento').length
+          pendentes: alertasPendentes.length,
+          urgentes: alertasPendentes.filter(a => a.prioridade === 'urgente').length,
+          emAndamento: alertasEmAndamento.length
         });
       } catch (e) {
         console.error('Erro ao contar alertas:', e);
@@ -198,19 +209,21 @@ export function useVerificarAlertas() {
     setResultados(null);
 
     try {
-      // Buscar dados necessários
-      const [threadsSnap, clientesSnap, alertasSnap] = await Promise.all([
+      // Buscar dados necessários (incluindo métricas diárias para alertas de sem uso)
+      const [threadsSnap, clientesSnap, alertasSnap, metricasSnap] = await Promise.all([
         getDocs(collection(db, 'threads')),
         getDocs(collection(db, 'clientes')),
-        getDocs(collection(db, 'alertas'))
+        getDocs(collection(db, 'alertas')),
+        getDocs(collection(db, 'metricas_diarias'))
       ]);
 
       const threads = threadsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const clientes = clientesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const alertasExistentes = alertasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const metricas = metricasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       // Gerar novos alertas
-      const novosAlertas = verificarTodosAlertas(clientes, threads, alertasExistentes);
+      const novosAlertas = verificarTodosAlertas(clientes, threads, alertasExistentes, metricas);
 
       // Salvar novos alertas e criar tarefas no ClickUp
       let criados = 0;

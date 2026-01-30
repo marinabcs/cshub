@@ -179,51 +179,61 @@ VITE_CLICKUP_TEAM_ID=xxxxxxx
 
 ---
 
-## 🐛 BUG PENDENTE - Alertas não encontram clientes (30/01/2026)
+## ✅ BUG RESOLVIDO - Alertas não encontravam clientes (30/01/2026)
 
-### Problema:
-Os alertas de sentimento negativo não estão sendo criados porque o cliente não é encontrado no `clientesMap`.
+### Problema original:
+Os alertas de sentimento negativo não eram criados porque o cliente não era encontrado no `clientesMap`.
 
-### Sintoma nos logs:
+### Causa raiz:
+O campo `times` (array de team_ids) nos clientes não estava sendo mapeado no `clientesMap`.
+
+### Solução aplicada (30/01/2026):
+1. Adicionado mapeamento do array `cliente.times` no `clientesMap` em `/src/utils/alertas.js`
+2. Corrigida função `gerarAlertasSemUso` para buscar threads usando todos os IDs possíveis do cliente
+
+### Código corrigido:
+```javascript
+// Mapear por CADA ID no array times (principal fonte de team_ids)
+if (cliente.times && Array.isArray(cliente.times)) {
+  for (const timeId of cliente.times) {
+    if (timeId) {
+      clientesMap[timeId] = cliente;
+    }
+  }
+}
 ```
-[Alerta Sentimento] Thread: clienteId=651b546c5d1c6eea66d8b1f1, cliente encontrado=false
-[Alerta Sentimento] Cliente não encontrado, pulando
-```
 
-### Causa provável:
-O `team_id` nas threads (ex: `651b546c5d1c6eea66d8b1f1` - formato MongoDB) não bate com o `id` dos clientes no Firestore (que é o doc.id do Firestore).
-
-### O que foi feito:
-1. Adicionado mapeamento múltiplo no `clientesMap` (id, team_id, _id, teamId, mongo_id)
-2. Adicionado logs detalhados em `/src/utils/alertas.js` para debug
-
-### Para resolver:
-1. Verificar nos logs do console qual campo do cliente contém o ID que bate com `thread.team_id`
-2. Ao rodar a verificação de alertas, os logs vão mostrar:
-   - Exemplo completo de um cliente (todos os campos)
-   - Exemplo de uma thread (campos relevantes)
-   - Se há match entre os IDs
-3. Provavelmente precisa verificar se o Firestore doc.id dos clientes É o ID MongoDB, ou se está em outro campo
-
-### Arquivos relevantes:
-- `/src/utils/alertas.js` - Função `verificarTodosAlertas` e `gerarAlertasSentimentoNegativo`
-- `/src/hooks/useAlertas.js` - Hook `useVerificarAlertas`
+### Arquivos modificados:
+- `/src/utils/alertas.js` - Função `verificarTodosAlertas` (linhas 447-458)
 
 ---
 
-## 🔒 PENDÊNCIAS DE SEGURANÇA
+## 🔒 SEGURANÇA (Atualizado: 30/01/2026)
 
-### A revisar:
-1. API keys expostas no frontend (VITE_* são visíveis)
-2. Validação de inputs do usuário
-3. Regras de segurança do Firebase
-4. Rate limiting nas APIs
+### ✅ Implementado:
+1. ✅ Firestore Security Rules completas (`firestore.rules`)
+2. ✅ Console.logs removidos em produção (`vite.config.js` com `esbuild.drop`)
+3. ✅ Utilitário de logging criado (`/src/utils/logger.js`)
+4. ✅ Fallbacks hardcoded removidos do `vite.config.js`
+5. ✅ `.env` no `.gitignore`
+
+### ⚠️ Pendente (requer Cloud Functions):
+1. API keys expostas no frontend (VITE_* são visíveis no bundle)
+   - **Solução ideal:** Mover chamadas OpenAI e ClickUp para Firebase Cloud Functions
+   - Ver `/SEGURANCA.md` para detalhes de implementação
+2. Validação de inputs do usuário (usar Zod)
+3. Rate limiting nas APIs
 
 ---
 
-## ⚡ PENDÊNCIAS DE PERFORMANCE
+## ⚡ PERFORMANCE (Atualizado: 30/01/2026)
 
-### A otimizar:
-1. Queries que buscam todos os documentos (getDocs sem filtro)
-2. Verificação de alertas processa todas as threads
-3. Considerar paginação para listas grandes
+### ✅ Otimizado:
+1. ✅ `useAlertasCount` - Usa queries filtradas por status (não carrega todos alertas)
+2. ✅ Console.logs removidos em produção (menos overhead)
+3. ✅ Índices Firestore configurados para queries comuns
+
+### ⚠️ A otimizar futuramente:
+1. Adicionar paginação em listas grandes (Clientes, Analytics)
+2. Implementar cache client-side para dados frequentes
+3. Lazy loading para componentes pesados

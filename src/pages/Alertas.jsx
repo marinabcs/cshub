@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Clock, AlertTriangle, RefreshCw, Check, ChevronRight, ChevronDown, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye, Zap, Ban } from 'lucide-react';
-import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas, useLimparAlertasAntigos, useLimparAlertasClientesInativos, useLimparAlertasInvalidos, useSincronizarClickUp } from '../hooks/useAlertas';
+import { Bell, Clock, AlertTriangle, RefreshCw, Check, ChevronRight, ChevronDown, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye } from 'lucide-react';
+import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas, useSincronizarClickUp } from '../hooks/useAlertas';
 import {
   ALERTA_TIPOS,
   ALERTA_PRIORIDADES,
@@ -55,119 +55,54 @@ export default function Alertas() {
   const [criandoTarefa, setCriandoTarefa] = useState(false);
   const [loadingMembros, setLoadingMembros] = useState(false);
 
-  // Estado para deletar todos os alertas (TEMPORÁRIO)
-  const [deletandoTodos, setDeletandoTodos] = useState(false);
-  const [progressoDelete, setProgressoDelete] = useState({ atual: 0, total: 0 });
+  // Estado para seleção múltipla
+  const [selectedAlertas, setSelectedAlertas] = useState(new Set());
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchStatus, setBatchStatus] = useState('');
+  const [atualizandoBatch, setAtualizandoBatch] = useState(false);
 
-  // Estado para criar alerta de teste (TEMPORÁRIO)
-  const [criandoTeste, setCriandoTeste] = useState(false);
+  // Funções para seleção múltipla
+  const toggleSelectAlerta = (alertaId) => {
+    const newSelected = new Set(selectedAlertas);
+    if (newSelected.has(alertaId)) {
+      newSelected.delete(alertaId);
+    } else {
+      newSelected.add(alertaId);
+    }
+    setSelectedAlertas(newSelected);
+  };
 
-  // Função para deletar todos os alertas em batches (TEMPORÁRIO)
-  const handleDeletarTodosAlertas = async () => {
-    if (!confirm('ATENÇÃO: Isso vai deletar TODOS os alertas. Tem certeza?')) return;
-    if (!confirm('Última chance! Realmente deseja deletar todos os alertas?')) return;
-
-    setDeletandoTodos(true);
-    setProgressoDelete({ atual: 0, total: 0 });
-
-    try {
-      const alertasRef = collection(db, 'alertas');
-      const snapshot = await getDocs(alertasRef);
-
-      setProgressoDelete({ atual: 0, total: snapshot.size });
-
-      if (snapshot.empty) {
-        alert('Nenhum alerta para deletar.');
-        setDeletandoTodos(false);
-        return;
-      }
-
-      // Deletar em batches pequenos com delay para evitar quota
-      let deletados = 0;
-      const batchSize = 10;
-      const docs = snapshot.docs;
-
-      for (let i = 0; i < docs.length; i += batchSize) {
-        const batch = docs.slice(i, i + batchSize);
-
-        await Promise.all(batch.map(docSnap => deleteDoc(docSnap.ref)));
-
-        deletados += batch.length;
-        setProgressoDelete({ atual: deletados, total: docs.length });
-
-        // Pequeno delay entre batches para evitar rate limit
-        if (i + batchSize < docs.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-
-      alert(`${deletados} alertas deletados com sucesso!`);
-      refetch();
-    } catch (error) {
-      console.error('Erro ao deletar alertas:', error);
-      alert(`Erro ao deletar: ${error.message}`);
-    } finally {
-      setDeletandoTodos(false);
-      setProgressoDelete({ atual: 0, total: 0 });
+  const toggleSelectAll = () => {
+    if (selectedAlertas.size === alertasFiltrados.length) {
+      setSelectedAlertas(new Set());
+    } else {
+      setSelectedAlertas(new Set(alertasFiltrados.map(a => a.id)));
     }
   };
 
-  // Função para criar alerta de teste (TEMPORÁRIO)
-  const handleCriarAlertaTeste = async () => {
-    setCriandoTeste(true);
+  const handleBatchStatusChange = async () => {
+    if (!batchStatus || selectedAlertas.size === 0) return;
 
+    setAtualizandoBatch(true);
     try {
-      const alertaTeste = {
-        tipo: 'problema_reclamacao',
-        titulo: 'Teste de integração ClickUp',
-        mensagem: 'Este é um alerta de teste para verificar a integração com o ClickUp.',
-        prioridade: 'media',
-        status: 'pendente',
-        cliente_id: null,
-        cliente_nome: 'Cliente Teste',
-        thread_id: null,
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now(),
-        resolved_at: null,
-        clickup_task_id: null,
-        clickup_task_url: null
-      };
+      const promises = Array.from(selectedAlertas).map(alertaId =>
+        updateDoc(doc(db, 'alertas', alertaId), {
+          status: batchStatus,
+          updated_at: Timestamp.now(),
+          ...(batchStatus === 'resolvido' || batchStatus === 'ignorado' ? { resolved_at: Timestamp.now() } : {})
+        })
+      );
 
-      // 1. Criar alerta no Firebase
-      const docRef = await addDoc(collection(db, 'alertas'), alertaTeste);
-
-      // 2. Criar tarefa no ClickUp
-      if (isClickUpConfigured()) {
-        try {
-          const clickupResult = await criarTarefaClickUp(
-            alertaTeste,
-            {
-              nome: `[CS Hub] ${alertaTeste.titulo}`,
-              descricao: `**Cliente:** ${alertaTeste.cliente_nome}\n\n**Tipo:** ${alertaTeste.tipo}\n\n**Mensagem:**\n${alertaTeste.mensagem}\n\n---\n_Alerta de teste criado pelo CS Hub_`
-            }
-          );
-
-          if (clickupResult && clickupResult.id) {
-            await updateDoc(doc(db, 'alertas', docRef.id), {
-              clickup_task_id: clickupResult.id,
-              clickup_task_url: clickupResult.url
-            });
-            alert(`Alerta criado com sucesso!\n\nTarefa ClickUp: ${clickupResult.url}`);
-          }
-        } catch (clickupError) {
-          console.error('Erro ao criar tarefa no ClickUp:', clickupError);
-          alert(`Alerta criado, mas erro no ClickUp: ${clickupError.message}`);
-        }
-      } else {
-        alert('Alerta criado! (ClickUp não configurado)');
-      }
-
+      await Promise.all(promises);
+      setSelectedAlertas(new Set());
+      setShowBatchModal(false);
+      setBatchStatus('');
       refetch();
     } catch (error) {
-      console.error('Erro ao criar alerta de teste:', error);
+      console.error('Erro ao atualizar alertas:', error);
       alert(`Erro: ${error.message}`);
     } finally {
-      setCriandoTeste(false);
+      setAtualizandoBatch(false);
     }
   };
 
@@ -180,9 +115,6 @@ export default function Alertas() {
   const { counts } = useAlertasCount();
   const { atualizarStatus, updating } = useAtualizarAlerta();
   const { verificarEGerarAlertas, verificando, resultados } = useVerificarAlertas();
-  const { limparAlertasAntigos, limpando, resultado: resultadoLimpeza } = useLimparAlertasAntigos();
-  const { limparAlertasClientesInativos, limpando: limpandoInativos, resultado: resultadoInativos } = useLimparAlertasClientesInativos();
-  const { limparAlertasInvalidos, limpando: limpandoInvalidos, resultado: resultadoInvalidos } = useLimparAlertasInvalidos();
   const { sincronizarComClickUp, sincronizando, resultado: resultadoSync } = useSincronizarClickUp();
 
   // Handler para sincronizar com ClickUp
@@ -427,34 +359,6 @@ export default function Alertas() {
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
           <button
-            onClick={async () => {
-              const result1 = await limparAlertasAntigos();
-              const result2 = await limparAlertasClientesInativos();
-              const result3 = await limparAlertasInvalidos();
-              if (result1.success || result2.success || result3.success) {
-                refetch();
-              }
-            }}
-            disabled={limpando || limpandoInativos || limpandoInvalidos}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 20px',
-              background: (limpando || limpandoInativos || limpandoInvalidos) ? 'rgba(100, 116, 139, 0.5)' : 'rgba(100, 116, 139, 0.2)',
-              border: '1px solid rgba(100, 116, 139, 0.3)',
-              borderRadius: '12px',
-              color: '#94a3b8',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: (limpando || limpandoInativos || limpandoInvalidos) ? 'not-allowed' : 'pointer'
-            }}
-            title="Limpar alertas inválidos, tipos antigos e de clientes inativos"
-          >
-            <X style={{ width: '18px', height: '18px', animation: (limpando || limpandoInativos || limpandoInvalidos) ? 'spin 1s linear infinite' : 'none' }} />
-            {(limpando || limpandoInativos || limpandoInvalidos) ? 'Limpando...' : 'Limpar Inválidos'}
-          </button>
-          <button
             onClick={handleVerificar}
             disabled={verificando}
             style={{
@@ -498,49 +402,6 @@ export default function Alertas() {
             {sincronizando ? 'Sincronizando...' : 'Sincronizar ClickUp'}
           </button>
 
-          {/* BOTÕES TEMPORÁRIOS - REMOVER DEPOIS */}
-          <button
-            onClick={handleCriarAlertaTeste}
-            disabled={criandoTeste}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 20px',
-              background: criandoTeste ? 'rgba(16, 185, 129, 0.5)' : '#10b981',
-              border: 'none',
-              borderRadius: '12px',
-              color: 'white',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: criandoTeste ? 'not-allowed' : 'pointer'
-            }}
-          >
-            <Zap style={{ width: '18px', height: '18px', animation: criandoTeste ? 'spin 1s linear infinite' : 'none' }} />
-            {criandoTeste ? 'Criando...' : 'CRIAR TESTE'}
-          </button>
-          <button
-            onClick={handleDeletarTodosAlertas}
-            disabled={deletandoTodos}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 20px',
-              background: deletandoTodos ? 'rgba(239, 68, 68, 0.5)' : '#ef4444',
-              border: 'none',
-              borderRadius: '12px',
-              color: 'white',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: deletandoTodos ? 'not-allowed' : 'pointer'
-            }}
-          >
-            <AlertTriangle style={{ width: '18px', height: '18px', animation: deletandoTodos ? 'spin 1s linear infinite' : 'none' }} />
-            {deletandoTodos
-              ? `Deletando... ${progressoDelete.atual}/${progressoDelete.total}`
-              : 'DELETAR TODOS'}
-          </button>
         </div>
       </div>
 
@@ -589,29 +450,6 @@ export default function Alertas() {
           </div>
           <span style={{ color: '#64748b', fontSize: '13px' }}>
             {resultadoSync.total} alertas verificados {resultadoSync.erros > 0 && `• ${resultadoSync.erros} erros`}
-          </span>
-        </div>
-      )}
-
-      {/* Resultado da limpeza */}
-      {((resultadoLimpeza && resultadoLimpeza.success) || (resultadoInativos && resultadoInativos.success) || (resultadoInvalidos && resultadoInvalidos.success)) && (
-        <div style={{
-          padding: '16px 20px',
-          background: 'rgba(100, 116, 139, 0.1)',
-          border: '1px solid rgba(100, 116, 139, 0.3)',
-          borderRadius: '12px',
-          marginBottom: '24px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px'
-        }}>
-          <Check style={{ width: '20px', height: '20px', color: '#64748b' }} />
-          <span style={{ color: '#94a3b8', fontWeight: '500' }}>
-            Limpeza concluída!
-            {resultadoLimpeza?.removidos > 0 && ` ${resultadoLimpeza.removidos} tipos antigos.`}
-            {resultadoInativos?.fechados > 0 && ` ${resultadoInativos.fechados} clientes inativos.`}
-            {resultadoInvalidos?.fechados > 0 && ` ${resultadoInvalidos.fechados} dados inválidos (999 dias).`}
-            {(resultadoLimpeza?.removidos === 0 && resultadoInativos?.fechados === 0 && resultadoInvalidos?.fechados === 0) && ' Nenhum alerta para limpar.'}
           </span>
         </div>
       )}
@@ -1133,6 +971,71 @@ export default function Alertas() {
           )}
       </div>
 
+      {/* Barra de seleção múltipla */}
+      {alertasFiltrados.length > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 16px',
+          background: selectedAlertas.size > 0 ? 'rgba(139, 92, 246, 0.1)' : 'rgba(30, 27, 75, 0.4)',
+          border: selectedAlertas.size > 0 ? '1px solid rgba(139, 92, 246, 0.3)' : '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '12px',
+          marginBottom: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={toggleSelectAll}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                background: 'transparent',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '8px',
+                color: '#a78bfa',
+                fontSize: '13px',
+                cursor: 'pointer'
+              }}
+            >
+              {selectedAlertas.size === alertasFiltrados.length ? (
+                <CheckCircle style={{ width: '16px', height: '16px' }} />
+              ) : (
+                <div style={{ width: '16px', height: '16px', border: '2px solid #a78bfa', borderRadius: '4px' }} />
+              )}
+              {selectedAlertas.size === alertasFiltrados.length ? 'Desmarcar todos' : 'Selecionar todos'}
+            </button>
+            {selectedAlertas.size > 0 && (
+              <span style={{ color: '#94a3b8', fontSize: '13px' }}>
+                {selectedAlertas.size} selecionado{selectedAlertas.size !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          {selectedAlertas.size > 0 && (
+            <button
+              onClick={() => setShowBatchModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                border: 'none',
+                borderRadius: '8px',
+                color: 'white',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              <Pencil style={{ width: '14px', height: '14px' }} />
+              Alterar Status
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Lista de Alertas */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {alertasFiltrados.length > 0 ? alertasFiltrados.map(alerta => {
@@ -1141,18 +1044,43 @@ export default function Alertas() {
           const statusInfo = getStatusInfo(alerta.status);
           const IconComponent = TIPO_ICONS[alerta.tipo] || Bell;
 
+          const isSelected = selectedAlertas.has(alerta.id);
+
           return (
             <div
               key={alerta.id}
               style={{
-                background: 'rgba(30, 27, 75, 0.4)',
-                border: `1px solid ${alerta.prioridade === 'urgente' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(139, 92, 246, 0.15)'}`,
+                background: isSelected ? 'rgba(139, 92, 246, 0.1)' : 'rgba(30, 27, 75, 0.4)',
+                border: `1px solid ${isSelected ? 'rgba(139, 92, 246, 0.4)' : alerta.prioridade === 'urgente' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(139, 92, 246, 0.15)'}`,
                 borderRadius: '16px',
                 padding: '20px',
                 transition: 'all 0.2s'
               }}
             >
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+                {/* Checkbox */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSelectAlerta(alerta.id);
+                  }}
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    background: isSelected ? '#8b5cf6' : 'transparent',
+                    border: isSelected ? 'none' : '2px solid rgba(139, 92, 246, 0.4)',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    marginTop: '12px'
+                  }}
+                >
+                  {isSelected && <Check style={{ width: '14px', height: '14px', color: 'white' }} />}
+                </button>
+
                 {/* Ícone */}
                 <div style={{
                   width: '48px',
@@ -2099,6 +2027,133 @@ export default function Alertas() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Mudança de Status em Lote */}
+      {showBatchModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#1e1b4b',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '400px',
+            padding: '24px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>
+                Alterar Status em Lote
+              </h3>
+              <button
+                onClick={() => {
+                  setShowBatchModal(false);
+                  setBatchStatus('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  padding: '4px'
+                }}
+              >
+                <X style={{ width: '20px', height: '20px' }} />
+              </button>
+            </div>
+
+            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '20px' }}>
+              {selectedAlertas.size} alerta{selectedAlertas.size !== 1 ? 's' : ''} selecionado{selectedAlertas.size !== 1 ? 's' : ''}
+            </p>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ color: '#94a3b8', fontSize: '13px', display: 'block', marginBottom: '8px' }}>
+                Novo Status
+              </label>
+              <select
+                value={batchStatus}
+                onChange={(e) => setBatchStatus(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  background: '#0f0a1f',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  borderRadius: '10px',
+                  color: 'white',
+                  fontSize: '14px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">Selecione...</option>
+                <option value="pendente">Pendente</option>
+                <option value="em_andamento">Em Andamento</option>
+                <option value="resolvido">Resolvido</option>
+                <option value="ignorado">Ignorado</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowBatchModal(false);
+                  setBatchStatus('');
+                }}
+                style={{
+                  padding: '10px 20px',
+                  background: 'rgba(100, 116, 139, 0.2)',
+                  border: '1px solid rgba(100, 116, 139, 0.3)',
+                  borderRadius: '10px',
+                  color: '#94a3b8',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleBatchStatusChange}
+                disabled={!batchStatus || atualizandoBatch}
+                style={{
+                  padding: '10px 20px',
+                  background: !batchStatus || atualizandoBatch ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: !batchStatus || atualizandoBatch ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {atualizandoBatch ? (
+                  <>
+                    <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+                    Atualizando...
+                  </>
+                ) : (
+                  <>
+                    <Check style={{ width: '16px', height: '16px' }} />
+                    Aplicar
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

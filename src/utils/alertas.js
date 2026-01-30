@@ -128,6 +128,19 @@ export function gerarAlertasSemUso(clientes, metricas, alertasExistentes, thread
   // Debug: contar clientes por motivo de skip
   let skipInativo = 0, skipSemData = 0, skipAlertaExiste = 0, skipDiasInsuficientes = 0;
 
+  // Criar mapa de métricas por team_id (pegar a mais recente de cada cliente)
+  const metricasMap = {};
+  for (const metrica of metricas) {
+    const teamId = metrica.team_id;
+    if (!teamId) continue;
+
+    const dataMetrica = metrica.data?.toDate?.() || new Date(metrica.data);
+    if (!metricasMap[teamId] || dataMetrica > metricasMap[teamId]) {
+      metricasMap[teamId] = dataMetrica;
+    }
+  }
+  console.log(`[Alertas Sem Uso] Métricas diárias: ${metricas.length} registros, ${Object.keys(metricasMap).length} clientes únicos`);
+
   for (const cliente of clientes) {
     // Pular inativos/cancelados
     if (cliente.status === 'inativo' || cliente.status === 'cancelado') {
@@ -141,8 +154,16 @@ export function gerarAlertasSemUso(clientes, metricas, alertasExistentes, thread
     let ultimaInteracao = cliente.ultima_interacao || cliente.last_activity_at || cliente.ultimo_acesso;
 
     // Se não tem no cliente, buscar nas threads
-    if (!ultimaInteracao && threadsMap[cliente.id]) {
-      const threadsCliente = threadsMap[cliente.id];
+    // Tentar múltiplos IDs: cliente.id, cliente.team_id, e todos os IDs em cliente.times
+    const possiveisIds = [cliente.id, cliente.team_id, ...(cliente.times || [])].filter(Boolean);
+
+    if (!ultimaInteracao) {
+      let threadsCliente = [];
+      for (const possId of possiveisIds) {
+        if (threadsMap[possId]) {
+          threadsCliente = threadsCliente.concat(threadsMap[possId]);
+        }
+      }
       if (threadsCliente.length > 0) {
         // Pegar a thread mais recente
         const ultimaThread = threadsCliente.sort((a, b) => {
@@ -152,6 +173,23 @@ export function gerarAlertasSemUso(clientes, metricas, alertasExistentes, thread
         })[0];
         ultimaInteracao = ultimaThread.updated_at;
       }
+    }
+
+    // Se ainda não tem, buscar nas métricas diárias
+    if (!ultimaInteracao) {
+      for (const possId of possiveisIds) {
+        if (metricasMap[possId]) {
+          const dataMetrica = metricasMap[possId];
+          if (!ultimaInteracao || dataMetrica > ultimaInteracao) {
+            ultimaInteracao = dataMetrica;
+          }
+        }
+      }
+    }
+
+    // Se ainda não tem data, usar created_at do cliente (se existir)
+    if (!ultimaInteracao && cliente.created_at) {
+      ultimaInteracao = cliente.created_at;
     }
 
     if (!ultimaInteracao) {
@@ -175,6 +213,11 @@ export function gerarAlertasSemUso(clientes, metricas, alertasExistentes, thread
 
     // Só gerar alerta se temos dados válidos (menos de 365 dias indica dado real)
     if (dias >= DIAS_LIMITE && dias < 365) {
+      // Pegar todos os responsáveis (array com itens OU fallback para single)
+      const responsaveis = (cliente?.responsaveis && cliente.responsaveis.length > 0)
+        ? cliente.responsaveis
+        : (cliente?.responsavel_email ? [{ email: cliente.responsavel_email, nome: cliente.responsavel_nome }] : []);
+
       alertas.push({
         tipo: 'sem_uso_plataforma',
         titulo: `${dias} dias sem uso da plataforma`,
@@ -186,8 +229,9 @@ export function gerarAlertasSemUso(clientes, metricas, alertasExistentes, thread
         cliente_id: cliente.id,
         cliente_nome: cliente.team_name || cliente.nome,
         thread_id: null,
-        responsavel_email: cliente.responsavel_email || null,
-        responsavel_nome: cliente.responsavel_nome || null,
+        responsaveis: responsaveis,
+        responsavel_email: responsaveis[0]?.email || null,
+        responsavel_nome: responsaveis.map(r => r.nome).join(', ') || null,
       });
     } else {
       skipDiasInsuficientes++;
@@ -444,9 +488,17 @@ export function verificarTodosAlertas(clientes, threads, alertasExistentes, metr
     if (cliente.id) {
       clientesMap[cliente.id] = cliente;
     }
-    // Mapear pelo team_id
+    // Mapear pelo team_id (singular)
     if (cliente.team_id) {
       clientesMap[cliente.team_id] = cliente;
+    }
+    // Mapear por CADA ID no array times (principal fonte de team_ids)
+    if (cliente.times && Array.isArray(cliente.times)) {
+      for (const timeId of cliente.times) {
+        if (timeId) {
+          clientesMap[timeId] = cliente;
+        }
+      }
     }
     // Mapear pelo _id (formato MongoDB)
     if (cliente._id) {
@@ -462,8 +514,11 @@ export function verificarTodosAlertas(clientes, threads, alertasExistentes, metr
     }
   }
 
-  console.log(`[Alertas] ClientesMap tem ${Object.keys(clientesMap).length} entradas`);
-  console.log(`[Alertas] Primeiros 10 IDs no mapa:`, Object.keys(clientesMap).slice(0, 10));
+  console.log(`[Alertas] ClientesMap tem ${Object.keys(clientesMap).length} entradas (${clientes.length} clientes)`);
+
+  // Contar clientes com array times
+  const clientesComTimes = clientes.filter(c => c.times && c.times.length > 0).length;
+  console.log(`[Alertas] Clientes com array 'times': ${clientesComTimes}`);
 
   // Mostrar IDs das threads para comparação
   const threadIds = threads.slice(0, 10).map(t => t.cliente_id || t.team_id);
@@ -471,7 +526,7 @@ export function verificarTodosAlertas(clientes, threads, alertasExistentes, metr
 
   // Verificar se algum ID de thread existe no mapa
   const matchCount = threadIds.filter(id => clientesMap[id]).length;
-  console.log(`[Alertas] Matches encontrados nos primeiros 10: ${matchCount}`);
+  console.log(`[Alertas] Matches encontrados nos primeiros 10: ${matchCount}/${threadIds.length}`);
 
   // Criar mapa de threads por cliente
   const threadsMap = {};
