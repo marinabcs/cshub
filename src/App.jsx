@@ -21,6 +21,7 @@ import PlaybookDetalhe from './pages/PlaybookDetalhe'
 import PlaybookForm from './pages/PlaybookForm'
 import MinhaCarteira from './pages/MinhaCarteira'
 import Documentos from './pages/Documentos'
+import ResumoExecutivo from './pages/ResumoExecutivo'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -137,6 +138,7 @@ function AppRoutes() {
         <Route path="/playbooks/:id/editar" element={<PlaybookForm />} />
         <Route path="/documentos" element={<Documentos />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/resumo-executivo" element={<ResumoExecutivo />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/configuracoes/usuarios" element={<Usuarios />} />
