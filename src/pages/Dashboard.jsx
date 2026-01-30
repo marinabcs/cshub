@@ -423,7 +423,11 @@ export default function Dashboard() {
                         {getHealthLabel(cliente.health_status)}
                       </span>
                     </div>
-                    <span style={{ color: '#64748b', fontSize: '13px' }}>{cliente.responsavel_nome || 'Sem responsável'}</span>
+                    <span style={{ color: '#64748b', fontSize: '13px' }}>
+                      {(cliente.responsaveis && cliente.responsaveis.length > 0)
+                        ? cliente.responsaveis.map(r => r.nome?.split(' ')[0] || r.email?.split('@')[0]).join(', ')
+                        : cliente.responsavel_nome?.split(' ')[0] || 'Sem responsável'}
+                    </span>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>

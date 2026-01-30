@@ -2,7 +2,7 @@
 
 ## 📋 ESTADO ATUAL DO PROJETO (Atualizado: Janeiro 2026)
 
-### Status: Em desenvolvimento - Bloqueado no Firebase
+### Status: Em desenvolvimento - Firebase configurado ✅
 
 **O que está pronto:**
 - ✅ Frontend React completo com todas as páginas
@@ -13,17 +13,18 @@
 - ✅ Página Analytics com 5 abas (Uso, Conversas, Usuários, Vendas, Churn)
 - ✅ Otimizações de performance (Promise.all, queries paralelas)
 - ✅ Documentação técnica completa
+- ✅ Firebase configurado com índices
+- ✅ Threads e mensagens funcionando
 
-**Bloqueio atual:**
-- ⚠️ **Firebase precisa ser configurado pelo time técnico**
-- Não conseguimos validar threads porque as collections não estão populadas
-- Ver `/docs/FIREBASE_SETUP.md` para instruções de setup
+**Índices criados no Firebase:**
+- `threads`: team_id + updated_at
+- `metricas_diarias`: team_id + data
+- `mensagens`: thread_id + data
+- `alertas`: status + created_at
 
 **Próximos passos:**
-1. Time técnico configura Firebase (collections, índices, regras)
-2. Popular dados de teste ou conectar ingestão real de emails
-3. Validar funcionamento das threads e classificação
-4. Criar tutorial operacional para usuários finais
+1. Testar outras funcionalidades (Analytics, Alertas, etc)
+2. Criar tutorial operacional para usuários finais
 
 ### Arquivos de documentação:
 - `/docs/TECHNICAL.md` - Documentação técnica completa (arquitetura, APIs, etc)
