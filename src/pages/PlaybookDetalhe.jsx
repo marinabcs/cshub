@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ClipboardList, Clock, ListChecks, Users, Check, Calendar, Play, X, ChevronDown, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ClipboardList, Clock, ListChecks, Users, Check, Calendar, Play, X, ChevronDown, Loader2, AlertTriangle, Pencil, FileText, ExternalLink } from 'lucide-react';
 import { buscarPlaybook, aplicarPlaybook } from '../services/playbooks';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -168,26 +168,47 @@ export default function PlaybookDetalhe() {
               </p>
             </div>
           </div>
-          <button
-            onClick={abrirModal}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '14px 24px',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-              border: 'none',
-              borderRadius: '12px',
-              color: 'white',
-              fontSize: '15px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)'
-            }}
-          >
-            <Play style={{ width: '18px', height: '18px' }} />
-            Aplicar a Cliente
-          </button>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => navigate(`/playbooks/${id}/editar`)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '14px 24px',
+                background: 'rgba(30, 27, 75, 0.6)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '12px',
+                color: 'white',
+                fontSize: '15px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              <Pencil style={{ width: '18px', height: '18px' }} />
+              Editar
+            </button>
+            <button
+              onClick={abrirModal}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '14px 24px',
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                border: 'none',
+                borderRadius: '12px',
+                color: 'white',
+                fontSize: '15px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)'
+              }}
+            >
+              <Play style={{ width: '18px', height: '18px' }} />
+              Aplicar a Cliente
+            </button>
+          </div>
         </div>
       </div>
 
@@ -317,6 +338,46 @@ export default function PlaybookDetalhe() {
                 <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0, lineHeight: 1.5 }}>
                   {etapa.descricao}
                 </p>
+
+                {/* Documentos da etapa */}
+                {etapa.documentos && etapa.documentos.length > 0 && (
+                  <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {etapa.documentos.map((doc, docIndex) => (
+                      <a
+                        key={docIndex}
+                        href={doc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 12px',
+                          background: 'rgba(6, 182, 212, 0.1)',
+                          border: '1px solid rgba(6, 182, 212, 0.2)',
+                          borderRadius: '8px',
+                          color: '#06b6d4',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          textDecoration: 'none',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(6, 182, 212, 0.2)';
+                          e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.4)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(6, 182, 212, 0.1)';
+                          e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.2)';
+                        }}
+                      >
+                        <FileText style={{ width: '14px', height: '14px' }} />
+                        {doc.nome}
+                        <ExternalLink style={{ width: '12px', height: '12px', opacity: 0.7 }} />
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Prazo */}

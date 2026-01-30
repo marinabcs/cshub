@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Clock, ListChecks, ChevronRight, Plus, Loader2, Sparkles } from 'lucide-react';
+import { ClipboardList, Clock, ListChecks, ChevronRight, Plus, Loader2, Sparkles, Search } from 'lucide-react';
 import { buscarPlaybooks } from '../services/playbooks';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -48,11 +48,50 @@ const PLAYBOOKS_PADRAO = {
   }
 };
 
+// Função para normalizar texto (remove acentos)
+const normalizeText = (text) => {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+};
+
 export default function Playbooks() {
   const navigate = useNavigate();
   const [playbooks, setPlaybooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [criando, setCriando] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Filtrar e ordenar playbooks
+  const filteredPlaybooks = useMemo(() => {
+    let result = [...playbooks];
+
+    // Filtrar por busca
+    if (searchTerm) {
+      const searchNormalized = normalizeText(searchTerm);
+      result = result.filter(p =>
+        normalizeText(p.nome).includes(searchNormalized) ||
+        normalizeText(p.descricao).includes(searchNormalized)
+      );
+    }
+
+    // Ordenar: ativos primeiro (alfabético), depois inativos (alfabético)
+    result.sort((a, b) => {
+      // Primeiro por status (ativos primeiro)
+      const aAtivo = a.ativo !== false;
+      const bAtivo = b.ativo !== false;
+
+      if (aAtivo && !bAtivo) return -1; // a ativo, b inativo -> a vem primeiro
+      if (!aAtivo && bAtivo) return 1;  // a inativo, b ativo -> b vem primeiro
+
+      // Depois por nome (alfabético crescente)
+      return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
+    });
+
+    return result;
+  }, [playbooks, searchTerm]);
 
   const fetchPlaybooks = async () => {
     try {
@@ -101,7 +140,7 @@ export default function Playbooks() {
   return (
     <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
             <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: 0 }}>Playbooks</h1>
@@ -122,50 +161,74 @@ export default function Playbooks() {
           </p>
         </div>
         <button
-          onClick={() => {/* TODO: Criar novo playbook */}}
-          disabled
+          onClick={() => navigate('/playbooks/novo')}
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
             padding: '12px 20px',
-            background: 'rgba(139, 92, 246, 0.3)',
+            background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)',
             border: 'none',
             borderRadius: '12px',
-            color: '#94a3b8',
+            color: 'white',
             fontSize: '14px',
             fontWeight: '600',
-            cursor: 'not-allowed',
-            opacity: 0.6
+            cursor: 'pointer'
           }}
-          title="Em breve"
         >
           <Plus style={{ width: '18px', height: '18px' }} />
           Novo Playbook
         </button>
       </div>
 
+      {/* Busca */}
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ position: 'relative', maxWidth: '400px' }}>
+          <Search style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', width: '18px', height: '18px', color: '#64748b' }} />
+          <input
+            type="text"
+            placeholder="Buscar playbook..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '12px 14px 12px 44px',
+              background: 'rgba(30, 27, 75, 0.4)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              outline: 'none',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
+      </div>
+
       {/* Grid de Playbooks */}
-      {playbooks.length > 0 ? (
+      {filteredPlaybooks.length > 0 ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
-          {playbooks.map(playbook => (
+          {filteredPlaybooks.map(playbook => {
+            const isInativo = playbook.ativo === false;
+            return (
             <div
               key={playbook.id}
               onClick={() => navigate(`/playbooks/${playbook.id}`)}
               style={{
-                background: 'rgba(30, 27, 75, 0.4)',
-                border: '1px solid rgba(139, 92, 246, 0.15)',
+                background: isInativo ? 'rgba(55, 65, 81, 0.3)' : 'rgba(30, 27, 75, 0.4)',
+                border: isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(139, 92, 246, 0.15)',
                 borderRadius: '16px',
                 padding: '24px',
                 cursor: 'pointer',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease',
+                opacity: isInativo ? 0.7 : 1
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.border = '1px solid rgba(139, 92, 246, 0.4)';
+                e.currentTarget.style.border = isInativo ? '1px solid rgba(107, 114, 128, 0.4)' : '1px solid rgba(139, 92, 246, 0.4)';
                 e.currentTarget.style.transform = 'translateY(-2px)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.border = '1px solid rgba(139, 92, 246, 0.15)';
+                e.currentTarget.style.border = isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(139, 92, 246, 0.15)';
                 e.currentTarget.style.transform = 'translateY(0)';
               }}
             >
@@ -174,20 +237,34 @@ export default function Playbooks() {
                 <div style={{
                   width: '52px',
                   height: '52px',
-                  background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(6, 182, 212, 0.2) 100%)',
-                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  background: isInativo ? 'rgba(107, 114, 128, 0.3)' : 'linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(6, 182, 212, 0.2) 100%)',
+                  border: isInativo ? '1px solid rgba(107, 114, 128, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)',
                   borderRadius: '14px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0
                 }}>
-                  <ClipboardList style={{ width: '26px', height: '26px', color: '#8b5cf6' }} />
+                  <ClipboardList style={{ width: '26px', height: '26px', color: isInativo ? '#9ca3af' : '#8b5cf6' }} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 6px 0' }}>
-                    {playbook.nome}
-                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                    <h3 style={{ color: isInativo ? '#9ca3af' : 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>
+                      {playbook.nome}
+                    </h3>
+                    {isInativo && (
+                      <span style={{
+                        padding: '2px 8px',
+                        background: 'rgba(107, 114, 128, 0.2)',
+                        borderRadius: '6px',
+                        color: '#9ca3af',
+                        fontSize: '10px',
+                        fontWeight: '500'
+                      }}>
+                        Inativo
+                      </span>
+                    )}
+                  </div>
                   <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0, lineHeight: 1.5 }}>
                     {playbook.descricao}
                   </p>
@@ -201,10 +278,10 @@ export default function Playbooks() {
                   alignItems: 'center',
                   gap: '6px',
                   padding: '6px 12px',
-                  background: 'rgba(6, 182, 212, 0.1)',
-                  border: '1px solid rgba(6, 182, 212, 0.2)',
+                  background: isInativo ? 'rgba(107, 114, 128, 0.1)' : 'rgba(6, 182, 212, 0.1)',
+                  border: isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(6, 182, 212, 0.2)',
                   borderRadius: '20px',
-                  color: '#06b6d4',
+                  color: isInativo ? '#9ca3af' : '#06b6d4',
                   fontSize: '12px',
                   fontWeight: '500'
                 }}>
@@ -216,10 +293,10 @@ export default function Playbooks() {
                   alignItems: 'center',
                   gap: '6px',
                   padding: '6px 12px',
-                  background: 'rgba(249, 115, 22, 0.1)',
-                  border: '1px solid rgba(249, 115, 22, 0.2)',
+                  background: isInativo ? 'rgba(107, 114, 128, 0.1)' : 'rgba(249, 115, 22, 0.1)',
+                  border: isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(249, 115, 22, 0.2)',
                   borderRadius: '20px',
-                  color: '#f97316',
+                  color: isInativo ? '#9ca3af' : '#f97316',
                   fontSize: '12px',
                   fontWeight: '500'
                 }}>
@@ -234,15 +311,28 @@ export default function Playbooks() {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '12px 16px',
-                background: 'rgba(139, 92, 246, 0.1)',
-                border: '1px solid rgba(139, 92, 246, 0.2)',
+                background: isInativo ? 'rgba(107, 114, 128, 0.1)' : 'rgba(139, 92, 246, 0.1)',
+                border: isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(139, 92, 246, 0.2)',
                 borderRadius: '12px'
               }}>
-                <span style={{ color: '#a78bfa', fontSize: '14px', fontWeight: '500' }}>Ver Detalhes</span>
-                <ChevronRight style={{ width: '18px', height: '18px', color: '#a78bfa' }} />
+                <span style={{ color: isInativo ? '#9ca3af' : '#a78bfa', fontSize: '14px', fontWeight: '500' }}>Ver Detalhes</span>
+                <ChevronRight style={{ width: '18px', height: '18px', color: isInativo ? '#9ca3af' : '#a78bfa' }} />
               </div>
             </div>
-          ))}
+          )})}
+        </div>
+      ) : playbooks.length > 0 ? (
+        <div style={{
+          padding: '48px',
+          textAlign: 'center',
+          background: 'rgba(30, 27, 75, 0.4)',
+          borderRadius: '20px',
+          border: '1px solid rgba(139, 92, 246, 0.15)'
+        }}>
+          <Search style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
+          <p style={{ color: '#94a3b8', fontSize: '16px', margin: 0 }}>
+            Nenhum playbook encontrado para "{searchTerm}"
+          </p>
         </div>
       ) : (
         <div style={{

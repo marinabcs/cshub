@@ -37,11 +37,8 @@ export async function buscarPlaybooks() {
     const playbooksRef = collection(db, 'playbooks');
     const snapshot = await getDocs(playbooksRef);
 
-    // Filtrar e ordenar no cliente para evitar necessidade de índice
-    return snapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter(p => p.ativo !== false) // Inclui se ativo=true ou não definido
-      .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    // Retornar todos os playbooks (ordenação e filtros são feitos na página)
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
     console.error('Erro ao buscar playbooks:', error);
     throw error;

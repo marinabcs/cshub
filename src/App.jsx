@@ -18,6 +18,7 @@ import Auditoria from './pages/Auditoria'
 import DebugFirestore from './pages/DebugFirestore'
 import Playbooks from './pages/Playbooks'
 import PlaybookDetalhe from './pages/PlaybookDetalhe'
+import PlaybookForm from './pages/PlaybookForm'
 import MinhaCarteira from './pages/MinhaCarteira'
 import Documentos from './pages/Documentos'
 
@@ -131,7 +132,9 @@ function AppRoutes() {
         <Route path="/clientes/:id" element={<ClienteDetalhe />} />
         <Route path="/clientes/:id/editar" element={<ClienteForm />} />
         <Route path="/playbooks" element={<Playbooks />} />
+        <Route path="/playbooks/novo" element={<PlaybookForm />} />
         <Route path="/playbooks/:id" element={<PlaybookDetalhe />} />
+        <Route path="/playbooks/:id/editar" element={<PlaybookForm />} />
         <Route path="/documentos" element={<Documentos />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/alertas" element={<Alertas />} />

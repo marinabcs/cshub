@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam } from '../services/api';
-import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, Calendar, UserCircle, Phone, Mail, Briefcase } from 'lucide-react';
+import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, UserCircle, Phone, Mail, Briefcase, Eye, EyeOff, Key } from 'lucide-react';
 import { STATUS_OPTIONS, DEFAULT_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { logAction, calculateChanges } from '../utils/audit';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,7 +27,6 @@ const CATEGORIAS_PRODUTO = [
   { value: 'integracao', label: 'Integração', usaPlatforma: false }
 ];
 
-const TIPOS_REUNIAO = ['Kickoff', 'Review', 'Suporte', 'Treinamento', 'QBR'];
 
 export default function ClienteForm() {
   const { id } = useParams();
@@ -51,7 +50,8 @@ export default function ClienteForm() {
   const [timesSelecionados, setTimesSelecionados] = useState([]);
   const [timesOriginais, setTimesOriginais] = useState([]);
   const [stakeholders, setStakeholders] = useState([]);
-  const [reunioes, setReunioes] = useState([]);
+  const [senhaPadrao, setSenhaPadrao] = useState('');
+  const [showSenha, setShowSenha] = useState(false);
 
   // Filter state for teams
   const [searchTime, setSearchTime] = useState('');
@@ -59,13 +59,9 @@ export default function ClienteForm() {
 
   // Modal states
   const [showStakeholderModal, setShowStakeholderModal] = useState(false);
-  const [showReuniaoModal, setShowReuniaoModal] = useState(false);
 
   // New stakeholder form
   const [novoStakeholder, setNovoStakeholder] = useState({ nome: '', email: '', cargo: '', telefone: '' });
-
-  // New reuniao form
-  const [novaReuniao, setNovaReuniao] = useState({ data: '', tipo: '', participantes: '', resumo: '' });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -108,7 +104,7 @@ export default function ClienteForm() {
             setTimesSelecionados(data.times || []);
             setTimesOriginais(data.times || []);
             setStakeholders(data.stakeholders || []);
-            setReunioes(data.reunioes || []);
+            setSenhaPadrao(data.senha_padrao || '');
           }
         }
       } catch (error) {
@@ -227,20 +223,6 @@ export default function ClienteForm() {
     setStakeholders(prev => prev.filter((_, i) => i !== index));
   };
 
-  const addReuniao = () => {
-    if (!novaReuniao.data || !novaReuniao.tipo) {
-      alert('Data e tipo são obrigatórios');
-      return;
-    }
-    setReunioes(prev => [...prev, { ...novaReuniao, id: Date.now(), created_at: new Date() }]);
-    setNovaReuniao({ data: '', tipo: '', participantes: '', resumo: '' });
-    setShowReuniaoModal(false);
-  };
-
-  const removeReuniao = (index) => {
-    setReunioes(prev => prev.filter((_, i) => i !== index));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!nome.trim()) {
@@ -285,7 +267,7 @@ export default function ClienteForm() {
         team_types: teamTypesArray,
         team_type: teamTypesArray.length === 1 ? teamTypesArray[0] : teamTypesArray.join(', '),
         stakeholders,
-        reunioes,
+        senha_padrao: senhaPadrao,
         updated_at: new Date()
       };
 
@@ -817,97 +799,60 @@ export default function ClienteForm() {
               </div>
             </div>
 
-            {/* Reuniões Realizadas */}
+            {/* Senha Padrão @trakto */}
             <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <Key style={{ width: '18px', height: '18px', color: '#f59e0b' }} />
                 <h2 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>
-                  Reuniões Realizadas
-                  {reunioes.length > 0 && (
-                    <span style={{ marginLeft: '8px', padding: '2px 8px', background: 'rgba(124, 58, 237, 0.3)', borderRadius: '10px', fontSize: '12px', color: '#a78bfa' }}>
-                      {reunioes.length}
-                    </span>
-                  )}
+                  Senha Padrão (@trakto)
                 </h2>
+              </div>
+              <p style={{ color: '#64748b', fontSize: '12px', marginBottom: '12px' }}>
+                Senha de acesso do usuário @trakto na plataforma do cliente
+              </p>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showSenha ? 'text' : 'password'}
+                  value={senhaPadrao}
+                  onChange={(e) => setSenhaPadrao(e.target.value)}
+                  placeholder="Digite a senha padrão"
+                  style={{
+                    width: '100%',
+                    padding: '12px 48px 12px 16px',
+                    background: '#0f0a1f',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '14px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
                 <button
                   type="button"
-                  onClick={() => setShowReuniaoModal(true)}
+                  onClick={() => setShowSenha(!showSenha)}
                   style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 12px',
-                    background: 'rgba(139, 92, 246, 0.2)',
-                    border: '1px solid rgba(139, 92, 246, 0.3)',
-                    borderRadius: '8px',
-                    color: '#a78bfa',
-                    fontSize: '12px',
-                    cursor: 'pointer'
+                    justifyContent: 'center'
                   }}
+                  title={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
                 >
-                  <Plus style={{ width: '14px', height: '14px' }} />
-                  Adicionar
+                  {showSenha ? (
+                    <EyeOff style={{ width: '18px', height: '18px', color: '#64748b' }} />
+                  ) : (
+                    <Eye style={{ width: '18px', height: '18px', color: '#64748b' }} />
+                  )}
                 </button>
               </div>
-
-              {reunioes.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-                  {reunioes.map((reu, idx) => (
-                    <div key={reu.id || idx} style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      justifyContent: 'space-between',
-                      padding: '12px 16px',
-                      background: 'rgba(15, 10, 31, 0.6)',
-                      border: '1px solid rgba(139, 92, 246, 0.1)',
-                      borderRadius: '10px'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flex: 1 }}>
-                        <div style={{
-                          width: '36px',
-                          height: '36px',
-                          background: 'rgba(6, 182, 212, 0.2)',
-                          borderRadius: '8px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}>
-                          <Calendar style={{ width: '18px', height: '18px', color: '#22d3ee' }} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                            <span style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>{reu.tipo}</span>
-                            <span style={{ color: '#64748b', fontSize: '12px' }}>
-                              {new Date(reu.data).toLocaleDateString('pt-BR')}
-                            </span>
-                          </div>
-                          {reu.participantes && (
-                            <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>
-                              Participantes: {reu.participantes}
-                            </p>
-                          )}
-                          {reu.resumo && (
-                            <p style={{ color: '#64748b', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {reu.resumo}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeReuniao(idx)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', flexShrink: 0 }}
-                      >
-                        <Trash2 style={{ width: '16px', height: '16px', color: '#ef4444' }} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '16px' }}>
-                  Nenhuma reunião cadastrada
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -1032,83 +977,6 @@ export default function ClienteForm() {
         </div>
       )}
 
-      {/* Modal Reunião */}
-      {showReuniaoModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', width: '100%', maxWidth: '500px', padding: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Adicionar Reunião</h3>
-              <button onClick={() => setShowReuniaoModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                <X style={{ width: '20px', height: '20px', color: '#64748b' }} />
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Data *</label>
-                  <input
-                    type="date"
-                    value={novaReuniao.data}
-                    onChange={(e) => setNovaReuniao(prev => ({ ...prev, data: e.target.value }))}
-                    style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Tipo *</label>
-                  <select
-                    value={novaReuniao.tipo}
-                    onChange={(e) => setNovaReuniao(prev => ({ ...prev, tipo: e.target.value }))}
-                    style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', cursor: 'pointer', boxSizing: 'border-box' }}
-                  >
-                    <option value="" style={{ background: '#1e1b4b' }}>Selecione...</option>
-                    {TIPOS_REUNIAO.map(tipo => (
-                      <option key={tipo} value={tipo} style={{ background: '#1e1b4b' }}>{tipo}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Participantes</label>
-                <input
-                  type="text"
-                  value={novaReuniao.participantes}
-                  onChange={(e) => setNovaReuniao(prev => ({ ...prev, participantes: e.target.value }))}
-                  placeholder="Ex: João, Maria, Pedro"
-                  style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Resumo</label>
-                <textarea
-                  value={novaReuniao.resumo}
-                  onChange={(e) => setNovaReuniao(prev => ({ ...prev, resumo: e.target.value }))}
-                  placeholder="Pontos discutidos, próximos passos..."
-                  rows={3}
-                  style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
-              <button
-                type="button"
-                onClick={() => setShowReuniaoModal(false)}
-                style={{ padding: '10px 20px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={addReuniao}
-                style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}
-              >
-                Adicionar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

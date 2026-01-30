@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { useHealthScore } from '../hooks/useHealthScore';
 import { getHealthColor, getHealthLabel, getComponenteLabel } from '../utils/healthScore';
@@ -144,6 +144,7 @@ export default function ClienteDetalhe() {
   // Classificação de threads
   const { classificar, classificarManual, classificando, erro: erroClassificacao } = useClassificarThread();
   const [showManualClassification, setShowManualClassification] = useState(false);
+  const [showSenhaPadrao, setShowSenhaPadrao] = useState(false);
   const [manualCategoria, setManualCategoria] = useState('');
   const [manualSentimento, setManualSentimento] = useState('');
   const [manualResumo, setManualResumo] = useState('');
@@ -779,6 +780,67 @@ export default function ClienteDetalhe() {
           topN={5}
         />
       </div>
+      )}
+
+      {/* Senha Padrão @trakto */}
+      {cliente.senha_padrao && (
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(245, 158, 11, 0.2)',
+          borderRadius: '16px',
+          padding: '20px',
+          marginBottom: '32px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                background: 'rgba(245, 158, 11, 0.15)',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Key style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
+              </div>
+              <div>
+                <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Senha Padrão (@trakto)</p>
+                <p style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0, fontFamily: 'monospace', letterSpacing: '1px' }}>
+                  {showSenhaPadrao ? cliente.senha_padrao : '••••••••••'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowSenhaPadrao(!showSenhaPadrao)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.2)',
+                borderRadius: '10px',
+                color: '#f59e0b',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              {showSenhaPadrao ? (
+                <>
+                  <EyeOff style={{ width: '16px', height: '16px' }} />
+                  Ocultar
+                </>
+              ) : (
+                <>
+                  <Eye style={{ width: '16px', height: '16px' }} />
+                  Mostrar
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       )}
         </>
       )}
