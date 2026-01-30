@@ -56,13 +56,12 @@ const getInitials = (name) => {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 };
 
-// Definição das abas
+// Definição das abas (otimizado - removido Vendas, mesclado Uso+Conversas)
 const TABS = [
-  { id: 'usoPlatforma', label: 'Uso da Plataforma', icon: Monitor },
-  { id: 'conversas', label: 'Conversas', icon: MessageSquare },
+  { id: 'engajamento', label: 'Engajamento', icon: Activity },
   { id: 'usuarios', label: 'Usuários', icon: Users },
-  { id: 'vendas', label: 'Vendas', icon: DollarSign },
-  { id: 'churn', label: 'Prevenção de Churn', icon: ShieldAlert }
+  { id: 'churn', label: 'Prevenção de Churn', icon: ShieldAlert },
+  { id: 'inativos', label: 'Inativos', icon: Clock }
 ];
 
 export default function Analytics() {
@@ -75,13 +74,14 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true);
 
   // Aba ativa
-  const [activeTab, setActiveTab] = useState('usoPlatforma');
+  const [activeTab, setActiveTab] = useState('engajamento');
 
   // Filtros globais
   const [periodo, setPeriodo] = useState('30');
-  const [responsavel, setResponsavel] = useState('todos');
-  const [teamType, setTeamType] = useState('todos');
-  const [showFilters, setShowFilters] = useState(false);
+  const [periodoCustom, setPeriodoCustom] = useState({ inicio: '', fim: '' });
+  const [responsaveis, setResponsaveisFilter] = useState([]); // multiselect
+  const [teamTypes, setTeamTypesFilter] = useState([]); // multiselect
+  const [showFilters, setShowFilters] = useState(null); // 'resp' | 'type' | null
 
   // Dados de tendência
   const [tendenciaData, setTendenciaData] = useState([]);
@@ -214,70 +214,209 @@ export default function Analytics() {
     setTendenciaData(data);
   };
 
-  // Filtrar dados por período
+  // Filtrar dados por período (suporta período customizado)
   const getDataDoPeriodo = () => {
+    if (periodo === 'custom' && periodoCustom.inicio) {
+      return new Date(periodoCustom.inicio);
+    }
     const hoje = new Date();
     const diasAtras = new Date(hoje);
     diasAtras.setDate(diasAtras.getDate() - parseInt(periodo));
     return diasAtras;
   };
 
-  // Clientes filtrados
+  const getDataFimPeriodo = () => {
+    if (periodo === 'custom' && periodoCustom.fim) {
+      return new Date(periodoCustom.fim);
+    }
+    return new Date();
+  };
+
+  // Dados do período anterior (para comparativo)
+  const getDataPeriodoAnterior = () => {
+    const diasPeriodo = periodo === 'custom'
+      ? Math.ceil((getDataFimPeriodo() - getDataDoPeriodo()) / (1000 * 60 * 60 * 24))
+      : parseInt(periodo);
+    const inicio = new Date(getDataDoPeriodo());
+    inicio.setDate(inicio.getDate() - diasPeriodo);
+    return inicio;
+  };
+
+  // Função auxiliar para verificar se cliente tem algum dos tipos selecionados
+  const clienteMatchesTipos = (clienteTeamType, tiposSelecionados) => {
+    if (tiposSelecionados.length === 0) return true;
+    if (!clienteTeamType) return false;
+    // Separar tipos do cliente por vírgula
+    const tiposCliente = clienteTeamType.split(',').map(t => t.trim());
+    // Verificar se algum tipo do cliente está nos selecionados
+    return tiposCliente.some(tipo => tiposSelecionados.includes(tipo));
+  };
+
+  // Clientes ativos filtrados (exclui inativos/cancelados das métricas principais)
   const clientesFiltrados = useMemo(() => {
     return clientes.filter(c => {
-      const matchesResponsavel = responsavel === 'todos' || c.responsavel_nome === responsavel;
-      const matchesType = teamType === 'todos' || c.team_type === teamType;
+      // Excluir inativos/cancelados das métricas principais
+      if (c.status === 'inativo' || c.status === 'cancelado') return false;
+      const matchesResponsavel = responsaveis.length === 0 || responsaveis.includes(c.responsavel_nome);
+      const matchesType = clienteMatchesTipos(c.team_type, teamTypes);
       return matchesResponsavel && matchesType;
     });
-  }, [clientes, responsavel, teamType]);
+  }, [clientes, responsaveis, teamTypes]);
 
-  // Threads filtradas por período
+  // Clientes inativos/cancelados COM atividade (para aba Inativos)
+  const clientesInativos = useMemo(() => {
+    const dataLimite = getDataDoPeriodo();
+    const clientesInativosCancelados = clientes.filter(c =>
+      c.status === 'inativo' || c.status === 'cancelado'
+    );
+
+    // Verificar quais têm atividade no período
+    return clientesInativosCancelados.map(c => {
+      const teamIds = c.times || [c.id];
+      const threadsCliente = threads.filter(t => teamIds.includes(t._teamId));
+      const threadsNoPeriodo = threadsCliente.filter(t => {
+        const threadDate = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
+        return threadDate >= dataLimite;
+      });
+      const metricasCliente = metricasDiarias.filter(m => teamIds.includes(m.team_id));
+      const metricasNoPeriodo = metricasCliente.filter(m => {
+        const data = m.data?.toDate ? m.data.toDate() : new Date(m.data);
+        return data >= dataLimite;
+      });
+      const totalUso = metricasNoPeriodo.reduce((sum, m) =>
+        sum + (m.logins || 0) + (m.pecas_criadas || 0) + (m.downloads || 0), 0);
+
+      return {
+        ...c,
+        threadsNoPeriodo: threadsNoPeriodo.length,
+        usoNoPeriodo: totalUso,
+        temAtividade: threadsNoPeriodo.length > 0 || totalUso > 0
+      };
+    }).filter(c => c.temAtividade)
+      .sort((a, b) => b.usoNoPeriodo - a.usoNoPeriodo); // Ordenar por uso decrescente
+  }, [clientes, threads, metricasDiarias, periodo, periodoCustom]);
+
+  // Threads filtradas por período (exclui inativos/cancelados)
   const threadsFiltradas = useMemo(() => {
+    const dataLimite = getDataDoPeriodo();
+    const dataFim = getDataFimPeriodo();
+    return threads.filter(t => {
+      const threadDate = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
+      const matchesPeriodo = threadDate >= dataLimite && threadDate <= dataFim;
+      const cliente = clientes.find(c => c.id === t.clienteId);
+      // Excluir threads de clientes inativos/cancelados
+      if (cliente?.status === 'inativo' || cliente?.status === 'cancelado') return false;
+      const matchesResponsavel = responsaveis.length === 0 || responsaveis.includes(cliente?.responsavel_nome);
+      const matchesType = clienteMatchesTipos(cliente?.team_type, teamTypes);
+      return matchesPeriodo && matchesResponsavel && matchesType;
+    });
+  }, [threads, clientes, periodo, periodoCustom, responsaveis, teamTypes]);
+
+  // Threads do período anterior (para comparativo)
+  const threadsPeriodoAnterior = useMemo(() => {
+    const dataLimiteAnterior = getDataPeriodoAnterior();
     const dataLimite = getDataDoPeriodo();
     return threads.filter(t => {
       const threadDate = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
-      const matchesPeriodo = threadDate >= dataLimite;
       const cliente = clientes.find(c => c.id === t.clienteId);
-      const matchesResponsavel = responsavel === 'todos' || cliente?.responsavel_nome === responsavel;
-      const matchesType = teamType === 'todos' || cliente?.team_type === teamType;
-      return matchesPeriodo && matchesResponsavel && matchesType;
+      if (cliente?.status === 'inativo' || cliente?.status === 'cancelado') return false;
+      return threadDate >= dataLimiteAnterior && threadDate < dataLimite;
     });
-  }, [threads, clientes, periodo, responsavel, teamType]);
+  }, [threads, clientes, periodo, periodoCustom]);
 
-  // Alertas filtrados
+  // Alertas filtrados (exclui inativos/cancelados)
   const alertasFiltrados = useMemo(() => {
     const dataLimite = getDataDoPeriodo();
+    const dataFim = getDataFimPeriodo();
     return alertas.filter(a => {
       const alertaDate = a.created_at?.toDate ? a.created_at.toDate() : new Date(a.created_at);
-      const matchesPeriodo = alertaDate >= dataLimite;
+      const matchesPeriodo = alertaDate >= dataLimite && alertaDate <= dataFim;
       const cliente = clientes.find(c => c.id === a.cliente_id);
-      const matchesResponsavel = responsavel === 'todos' || cliente?.responsavel_nome === responsavel;
-      const matchesType = teamType === 'todos' || cliente?.team_type === teamType;
+      // Excluir alertas de clientes inativos/cancelados
+      if (cliente?.status === 'inativo' || cliente?.status === 'cancelado') return false;
+      const matchesResponsavel = responsaveis.length === 0 || responsaveis.includes(cliente?.responsavel_nome);
+      const matchesType = clienteMatchesTipos(cliente?.team_type, teamTypes);
       return matchesPeriodo && matchesResponsavel && matchesType;
     });
-  }, [alertas, clientes, periodo, responsavel, teamType]);
+  }, [alertas, clientes, periodo, periodoCustom, responsaveis, teamTypes]);
 
-  // Lista de responsáveis
-  const responsaveis = useMemo(() => {
-    return [...new Set(clientes.map(c => c.responsavel_nome).filter(Boolean))];
+  // Lista de responsáveis disponíveis
+  const responsaveisDisponiveis = useMemo(() => {
+    return [...new Set(clientes.filter(c => c.status !== 'inativo' && c.status !== 'cancelado').map(c => c.responsavel_nome).filter(Boolean))];
   }, [clientes]);
 
-  // Lista de tipos
-  const teamTypes = useMemo(() => {
-    return [...new Set(clientes.map(c => c.team_type).filter(Boolean))];
+  // Lista de tipos disponíveis (separando tipos compostos)
+  const teamTypesDisponiveis = useMemo(() => {
+    const allTypes = new Set();
+    clientes
+      .filter(c => c.status !== 'inativo' && c.status !== 'cancelado')
+      .forEach(c => {
+        if (c.team_type) {
+          // Separar tipos compostos por vírgula
+          c.team_type.split(',').forEach(type => {
+            const trimmed = type.trim();
+            if (trimmed) allTypes.add(trimmed);
+          });
+        }
+      });
+    return [...allTypes].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [clientes]);
 
-  // ========== SEÇÃO 1: VISÃO GERAL ==========
+  // ========== SEÇÃO 1: VISÃO GERAL (com comparativos) ==========
   const visaoGeral = useMemo(() => {
     const clientesAtivos = clientesFiltrados.filter(c => c.status === 'ativo' || !c.status).length;
     const totalTimes = clientesFiltrados.length;
     const totalThreads = threadsFiltradas.length;
+    const totalThreadsAnterior = threadsPeriodoAnterior.length;
     const alertasPendentes = alertasFiltrados.filter(a => a.status === 'pendente').length;
-    const healthScoreTotal = clientesFiltrados.reduce((sum, c) => sum + (c.health_score || 0), 0);
-    const healthScoreMedio = clientesFiltrados.length > 0 ? Math.round(healthScoreTotal / clientesFiltrados.length) : 0;
 
-    return { clientesAtivos, totalTimes, totalThreads, alertasPendentes, healthScoreMedio };
-  }, [clientesFiltrados, threadsFiltradas, alertasFiltrados]);
+    // Health Score médio apenas de clientes ativos (não inativos/cancelados)
+    const clientesComHealth = clientesFiltrados.filter(c =>
+      (c.status === 'ativo' || !c.status) && c.health_score !== undefined
+    );
+    const healthScoreTotal = clientesComHealth.reduce((sum, c) => sum + (c.health_score || 0), 0);
+    const healthScoreMedio = clientesComHealth.length > 0 ? Math.round(healthScoreTotal / clientesComHealth.length) : 0;
+
+    // Calcular variação percentual
+    const variacaoThreads = totalThreadsAnterior > 0
+      ? Math.round(((totalThreads - totalThreadsAnterior) / totalThreadsAnterior) * 100)
+      : 0;
+
+    return { clientesAtivos, totalTimes, totalThreads, alertasPendentes, healthScoreMedio, variacaoThreads };
+  }, [clientesFiltrados, threadsFiltradas, threadsPeriodoAnterior, alertasFiltrados]);
+
+  // ========== TOP 5 CLIENTES MAIS ENGAJADOS ==========
+  const topClientesEngajados = useMemo(() => {
+    const dataLimite = getDataDoPeriodo();
+    return clientesFiltrados
+      .map(c => {
+        const teamIds = c.times || [c.id];
+        const threadsCliente = threads.filter(t => teamIds.includes(t._teamId));
+        const threadsNoPeriodo = threadsCliente.filter(t => {
+          const threadDate = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
+          return threadDate >= dataLimite;
+        });
+        const metricasCliente = metricasDiarias.filter(m => teamIds.includes(m.team_id));
+        const metricasNoPeriodo = metricasCliente.filter(m => {
+          const data = m.data?.toDate ? m.data.toDate() : new Date(m.data);
+          return data >= dataLimite;
+        });
+        const totalLogins = metricasNoPeriodo.reduce((sum, m) => sum + (m.logins || 0), 0);
+        const totalPecas = metricasNoPeriodo.reduce((sum, m) => sum + (m.pecas_criadas || 0), 0);
+        const scoreEngajamento = totalLogins + (totalPecas * 2) + (threadsNoPeriodo.length * 3);
+
+        return {
+          ...c,
+          threadsNoPeriodo: threadsNoPeriodo.length,
+          totalLogins,
+          totalPecas,
+          scoreEngajamento
+        };
+      })
+      .filter(c => c.scoreEngajamento > 0)
+      .sort((a, b) => b.scoreEngajamento - a.scoreEngajamento)
+      .slice(0, 5);
+  }, [clientesFiltrados, threads, metricasDiarias, periodo, periodoCustom]);
 
   // ========== SEÇÃO 2: DISTRIBUIÇÃO POR STATUS DO CLIENTE ==========
   const statusClienteData = useMemo(() => {
@@ -520,15 +659,18 @@ export default function Analytics() {
       userMap[key].dias_ativos += 1;
     });
 
-    // Calcular score de atividade
-    const users = Object.values(userMap).map(u => {
-      const cliente = clientes.find(c => (c.times || []).includes(u.team_id) || c.id === u.team_id);
-      return {
-        ...u,
-        clienteNome: cliente?.team_name || '-',
-        activity_score: u.logins + (u.pecas_criadas * 2) + u.downloads + (u.uso_ai_total * 1.5)
-      };
-    });
+    // Calcular score de atividade (excluindo usuários de clientes inativos/cancelados)
+    const users = Object.values(userMap)
+      .map(u => {
+        const cliente = clientes.find(c => (c.times || []).includes(u.team_id) || c.id === u.team_id);
+        return {
+          ...u,
+          clienteNome: cliente?.team_name || '-',
+          clienteStatus: cliente?.status,
+          activity_score: u.logins + (u.pecas_criadas * 2) + u.downloads + (u.uso_ai_total * 1.5)
+        };
+      })
+      .filter(u => u.clienteStatus !== 'inativo' && u.clienteStatus !== 'cancelado');
 
     // Top heavy users
     const heavyUsers = [...users].sort((a, b) => b.activity_score - a.activity_score).slice(0, 15);
@@ -721,11 +863,31 @@ export default function Analytics() {
 
   const clearFilters = () => {
     setPeriodo('30');
-    setResponsavel('todos');
-    setTeamType('todos');
+    setPeriodoCustom({ inicio: '', fim: '' });
+    setResponsaveisFilter([]);
+    setTeamTypesFilter([]);
+    setShowFilters(null);
   };
 
-  const hasFilters = periodo !== '30' || responsavel !== 'todos' || teamType !== 'todos';
+  const hasFilters = periodo !== '30' || responsaveis.length > 0 || teamTypes.length > 0;
+
+  // Fechar dropdown ao clicar fora
+  const handleClickOutside = () => {
+    if (showFilters) setShowFilters(null);
+  };
+
+  // Toggle para multiselect
+  const toggleResponsavel = (resp) => {
+    setResponsaveisFilter(prev =>
+      prev.includes(resp) ? prev.filter(r => r !== resp) : [...prev, resp]
+    );
+  };
+
+  const toggleTeamType = (type) => {
+    setTeamTypesFilter(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
 
   if (loading) {
     return (
@@ -736,6 +898,275 @@ export default function Analytics() {
   }
 
   // ========== RENDERIZAÇÃO DAS ABAS ==========
+
+  // ========== ABA ENGAJAMENTO (MESCLADO USO + CONVERSAS) ==========
+  const renderTabEngajamento = () => (
+    <>
+      {/* Cards principais com comparativo */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <MessageSquare style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Threads ({periodo === 'custom' ? 'período' : periodo + 'd'})</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{threadsFiltradas.length}</p>
+                {visaoGeral.variacaoThreads !== 0 && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px', background: visaoGeral.variacaoThreads > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: visaoGeral.variacaoThreads > 0 ? '#10b981' : '#ef4444', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>
+                    {visaoGeral.variacaoThreads > 0 ? <ArrowUpRight style={{ width: '12px', height: '12px' }} /> : <ArrowDownRight style={{ width: '12px', height: '12px' }} />}
+                    {Math.abs(visaoGeral.variacaoThreads)}%
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Users style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Logins</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalLogins}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <FileSpreadsheet style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Peças Criadas</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalPecasCriadas}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Zap style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Uso de AI</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalUsoAI}</p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertTriangle style={{ width: '22px', height: '22px', color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Negativas/Urgentes</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{(sentimentoData.find(s => s.name === 'Negativo')?.value || 0) + (sentimentoData.find(s => s.name === 'Urgente')?.value || 0)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Top 5 Engajados + Gráficos */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        {/* Top 5 Clientes Mais Engajados */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            <Award style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Top 5 Mais Engajados</h3>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {topClientesEngajados.map((cliente, index) => (
+              <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', cursor: 'pointer', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <span style={{ width: '28px', height: '28px', background: index < 3 ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'rgba(139, 92, 246, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px', fontWeight: '700' }}>
+                  {index + 1}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cliente.team_name}</p>
+                  <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.totalLogins} logins • {cliente.totalPecas} peças</p>
+                </div>
+                <span style={{ padding: '4px 8px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>
+                  {cliente.scoreEngajamento}
+                </span>
+              </div>
+            ))}
+            {topClientesEngajados.length === 0 && (
+              <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Sem dados de engajamento</p>
+            )}
+          </div>
+        </div>
+
+        {/* Threads por Categoria */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Threads por Categoria</h3>
+          {threadsPorCategoria.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={threadsPorCategoria} layout="vertical" margin={{ left: 10, right: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
+                <XAxis type="number" stroke="#64748b" fontSize={10} tickLine={false} />
+                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} width={90} />
+                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
+                <Bar dataKey="value" name="Threads" radius={[0, 4, 4, 0]}>
+                  {threadsPorCategoria.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados</div>
+          )}
+        </div>
+
+        {/* Sentimento das Conversas */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Sentimento</h3>
+          {sentimentoData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={sentimentoData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
+                  {sentimentoData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
+                <Legend verticalAlign="bottom" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '11px' }}>{value}</span>} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados</div>
+          )}
+        </div>
+      </div>
+
+      {/* Gráfico de tendência (full width) */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Tendência (últimos 30 dias)</h3>
+          </div>
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={tendenciaData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorThreads" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorAlertasCriados" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" />
+              <XAxis dataKey="data" stroke="#64748b" fontSize={10} tickLine={false} />
+              <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+              <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} labelStyle={{ color: '#94a3b8' }} itemStyle={{ color: 'white' }} />
+              <Legend verticalAlign="top" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '11px' }}>{value}</span>} />
+              <Area type="monotone" dataKey="threads" name="Threads" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorThreads)" />
+              <Area type="monotone" dataKey="alertasCriados" name="Alertas" stroke="#f97316" fillOpacity={1} fill="url(#colorAlertasCriados)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+    </>
+  );
+
+  // ========== ABA INATIVOS (clientes inativos/cancelados com atividade) ==========
+  const renderTabInativos = () => (
+    <>
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+          <Clock style={{ width: '24px', height: '24px', color: '#f59e0b' }} />
+          <div>
+            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Clientes Inativos/Cancelados com Atividade</h2>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0 0' }}>
+              Clientes que ainda utilizam a plataforma apesar do status. Podem ser oportunidades de reativação.
+            </p>
+          </div>
+          <span style={{ marginLeft: 'auto', padding: '6px 14px', background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}>
+            {clientesInativos.length} clientes
+          </span>
+        </div>
+      </div>
+
+      {clientesInativos.length > 0 ? (
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'rgba(15, 10, 31, 0.6)' }}>
+                <th style={{ padding: '14px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Cliente</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Status</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Threads (período)</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Uso (período)</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Responsável</th>
+                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clientesInativos.map((cliente, index) => (
+                <tr key={cliente.id} style={{ background: index % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
+                  <td style={{ padding: '14px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
+                    <p style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 0 0' }}>{cliente.team_type || '-'}</p>
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    <span style={{
+                      padding: '4px 10px',
+                      background: cliente.status === 'cancelado' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(100, 116, 139, 0.2)',
+                      color: cliente.status === 'cancelado' ? '#ef4444' : '#94a3b8',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      textTransform: 'capitalize'
+                    }}>
+                      {cliente.status}
+                    </span>
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', color: cliente.threadsNoPeriodo > 0 ? '#8b5cf6' : '#64748b', fontSize: '14px', fontWeight: '600', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    {cliente.threadsNoPeriodo}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', color: cliente.usoNoPeriodo > 0 ? '#06b6d4' : '#64748b', fontSize: '14px', fontWeight: '600', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    {cliente.usoNoPeriodo}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    {cliente.responsavel_nome || '-'}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                    <button
+                      onClick={() => navigate(`/clientes/${cliente.id}`)}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'rgba(139, 92, 246, 0.2)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '6px',
+                        color: '#a78bfa',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Ver Cliente
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '48px', textAlign: 'center' }}>
+          <UserCheck style={{ width: '48px', height: '48px', color: '#10b981', margin: '0 auto 16px' }} />
+          <p style={{ color: 'white', fontSize: '16px', fontWeight: '500', margin: '0 0 8px 0' }}>Nenhum cliente inativo com atividade</p>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Todos os clientes inativos/cancelados estão sem uso no período selecionado</p>
+        </div>
+      )}
+    </>
+  );
+
   const renderTabUsoPlatforma = () => (
     <>
       {/* Cards de métricas de uso */}
@@ -1088,60 +1519,11 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Performance por Responsável */}
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Performance por Responsável (CS)</h3>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'rgba(15, 10, 31, 0.6)' }}>
-                <th style={{ padding: '14px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Responsável</th>
-                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Clientes</th>
-                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Health Médio</th>
-                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Alertas</th>
-                <th style={{ padding: '14px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Threads</th>
-              </tr>
-            </thead>
-            <tbody>
-              {performancePorResponsavel.map((resp, index) => (
-                <tr key={resp.nome} style={{ background: index % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
-                  <td style={{ padding: '14px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '600', fontSize: '12px' }}>
-                        {getInitials(resp.nome)}
-                      </div>
-                      <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>{resp.nome}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', color: 'white', fontSize: '14px', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>{resp.qtdClientes}</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    <span style={{ color: resp.healthScoreMedio >= 80 ? STATUS_COLORS.saudavel : resp.healthScoreMedio >= 60 ? STATUS_COLORS.atencao : resp.healthScoreMedio >= 40 ? STATUS_COLORS.risco : STATUS_COLORS.critico, fontSize: '12px', fontWeight: '600' }}>{resp.healthScoreMedio}%</span>
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    {resp.alertasPendentes > 0 ? (
-                      <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.2)', color: '#f97316', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>{resp.alertasPendentes}</span>
-                    ) : (
-                      <span style={{ color: '#64748b', fontSize: '12px' }}>0</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    {resp.threadsAguardando > 0 ? (
-                      <span style={{ padding: '4px 10px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>{resp.threadsAguardando}</span>
-                    ) : (
-                      <span style={{ color: '#64748b', fontSize: '12px' }}>0</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Seção removida - Performance por CS movida para relatórios específicos */}
     </>
   );
 
+  // Função renderTabVendas removida (aba Vendas foi excluída)
   const renderTabVendas = () => (
     <>
       {/* Cards de oportunidades */}
@@ -1381,9 +1763,13 @@ export default function Analytics() {
                   <div style={{ width: '36px', height: '36px', background: `${getHealthColor(cliente.health_status)}20`, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span style={{ color: getHealthColor(cliente.health_status), fontSize: '14px', fontWeight: '700' }}>{cliente.health_score || 0}</span>
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
                     <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
-                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.responsavel_nome || 'Sem responsável'}</p>
+                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {cliente.responsaveis?.length > 0
+                        ? cliente.responsaveis.join(', ')
+                        : (cliente.responsavel_nome || 'Sem responsável')}
+                    </p>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1542,45 +1928,177 @@ export default function Analytics() {
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: periodo === 'custom' ? '180px 150px 150px 1fr 1fr' : '180px 1fr 1fr', gap: '16px', alignItems: 'end' }}>
+          {/* Período */}
           <div>
             <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Período</label>
             <select value={periodo} onChange={(e) => setPeriodo(e.target.value)} style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
               <option value="7" style={{ background: '#1e1b4b' }}>Últimos 7 dias</option>
+              <option value="15" style={{ background: '#1e1b4b' }}>Últimos 15 dias</option>
               <option value="30" style={{ background: '#1e1b4b' }}>Últimos 30 dias</option>
+              <option value="60" style={{ background: '#1e1b4b' }}>Últimos 60 dias</option>
               <option value="90" style={{ background: '#1e1b4b' }}>Últimos 90 dias</option>
-              <option value="365" style={{ background: '#1e1b4b' }}>Último ano</option>
+              <option value="custom" style={{ background: '#1e1b4b' }}>Personalizado</option>
             </select>
           </div>
 
-          <div>
-            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Responsável</label>
-            <select value={responsavel} onChange={(e) => setResponsavel(e.target.value)} style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
-              <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
-              {responsaveis.map(r => (
-                <option key={r} value={r} style={{ background: '#1e1b4b' }}>{r}</option>
-              ))}
-            </select>
+          {/* Datas customizadas */}
+          {periodo === 'custom' && (
+            <>
+              <div>
+                <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Início</label>
+                <input
+                  type="date"
+                  value={periodoCustom.inicio}
+                  onChange={(e) => setPeriodoCustom(prev => ({ ...prev, inicio: e.target.value }))}
+                  style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Fim</label>
+                <input
+                  type="date"
+                  value={periodoCustom.fim}
+                  onChange={(e) => setPeriodoCustom(prev => ({ ...prev, fim: e.target.value }))}
+                  style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none' }}
+                />
+              </div>
+            </>
+          )}
+
+          {/* Responsáveis - Dropdown Multiselect */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>
+              Responsáveis {responsaveis.length > 0 && <span style={{ color: '#8b5cf6' }}>({responsaveis.length})</span>}
+            </label>
+            <div
+              onClick={() => setShowFilters(showFilters === 'resp' ? false : 'resp')}
+              style={{
+                padding: '10px 14px',
+                background: '#0f0a1f',
+                border: '1px solid #3730a3',
+                borderRadius: '10px',
+                color: responsaveis.length > 0 ? 'white' : '#64748b',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {responsaveis.length === 0 ? 'Todos' : responsaveis.length === 1 ? responsaveis[0] : `${responsaveis.length} selecionados`}
+              </span>
+              <ChevronDown style={{ width: '16px', height: '16px', color: '#64748b', flexShrink: 0 }} />
+            </div>
+            {showFilters === 'resp' && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#1e1b4b', border: '1px solid #3730a3', borderRadius: '10px', zIndex: 50, maxHeight: '200px', overflowY: 'auto' }}>
+                {responsaveisDisponiveis.map(r => (
+                  <div
+                    key={r}
+                    onClick={(e) => { e.stopPropagation(); toggleResponsavel(r); }}
+                    style={{
+                      padding: '10px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      background: responsaveis.includes(r) ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
+                      borderBottom: '1px solid rgba(139, 92, 246, 0.1)'
+                    }}
+                  >
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '4px',
+                      border: responsaveis.includes(r) ? '2px solid #8b5cf6' : '2px solid #64748b',
+                      background: responsaveis.includes(r) ? '#8b5cf6' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {responsaveis.includes(r) && <span style={{ color: 'white', fontSize: '10px', fontWeight: 'bold' }}>✓</span>}
+                    </div>
+                    <span style={{ color: 'white', fontSize: '13px' }}>{r}</span>
+                  </div>
+                ))}
+                {responsaveisDisponiveis.length === 0 && (
+                  <div style={{ padding: '10px 14px', color: '#64748b', fontSize: '13px' }}>Nenhum responsável</div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div>
-            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Tipo de Time</label>
-            <select value={teamType} onChange={(e) => setTeamType(e.target.value)} style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
-              <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
-              {teamTypes.map(t => (
-                <option key={t} value={t} style={{ background: '#1e1b4b' }}>{t}</option>
-              ))}
-            </select>
+          {/* Tipos de Time - Dropdown Multiselect */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>
+              Tipo de Time {teamTypes.length > 0 && <span style={{ color: '#06b6d4' }}>({teamTypes.length})</span>}
+            </label>
+            <div
+              onClick={() => setShowFilters(showFilters === 'type' ? false : 'type')}
+              style={{
+                padding: '10px 14px',
+                background: '#0f0a1f',
+                border: '1px solid #3730a3',
+                borderRadius: '10px',
+                color: teamTypes.length > 0 ? 'white' : '#64748b',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
+                {teamTypes.length === 0 ? 'Todos' : teamTypes.length === 1 ? teamTypes[0] : `${teamTypes.length} selecionados`}
+              </span>
+              <ChevronDown style={{ width: '16px', height: '16px', color: '#64748b', flexShrink: 0 }} />
+            </div>
+            {showFilters === 'type' && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#1e1b4b', border: '1px solid #3730a3', borderRadius: '10px', zIndex: 50, maxHeight: '200px', overflowY: 'auto' }}>
+                {teamTypesDisponiveis.map(t => (
+                  <div
+                    key={t}
+                    onClick={(e) => { e.stopPropagation(); toggleTeamType(t); }}
+                    style={{
+                      padding: '10px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      background: teamTypes.includes(t) ? 'rgba(6, 182, 212, 0.2)' : 'transparent',
+                      borderBottom: '1px solid rgba(139, 92, 246, 0.1)'
+                    }}
+                  >
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '4px',
+                      border: teamTypes.includes(t) ? '2px solid #06b6d4' : '2px solid #64748b',
+                      background: teamTypes.includes(t) ? '#06b6d4' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {teamTypes.includes(t) && <span style={{ color: 'white', fontSize: '10px', fontWeight: 'bold' }}>✓</span>}
+                    </div>
+                    <span style={{ color: 'white', fontSize: '13px', textTransform: 'capitalize' }}>{t}</span>
+                  </div>
+                ))}
+                {teamTypesDisponiveis.length === 0 && (
+                  <div style={{ padding: '10px 14px', color: '#64748b', fontSize: '13px' }}>Nenhum tipo</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Conteúdo da Aba Ativa */}
-      {activeTab === 'usoPlatforma' && renderTabUsoPlatforma()}
-      {activeTab === 'conversas' && renderTabConversas()}
+      {activeTab === 'engajamento' && renderTabEngajamento()}
       {activeTab === 'usuarios' && renderTabUsuarios()}
-      {activeTab === 'vendas' && renderTabVendas()}
       {activeTab === 'churn' && renderTabChurn()}
+      {activeTab === 'inativos' && renderTabInativos()}
     </div>
   );
 }

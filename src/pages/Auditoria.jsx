@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, orderBy, limit, where, startAfter } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { ArrowLeft, History, Search, Filter, X, ChevronDown, ChevronRight, User, FileText, Users, Settings, MessageSquare, Calendar, RefreshCw } from 'lucide-react';
+import { ArrowLeft, History, Search, Filter, X, ChevronDown, ChevronRight, User, FileText, Users, Settings, MessageSquare, Calendar, RefreshCw, Download } from 'lucide-react';
 import { getActionLabel, getEntityLabel, getActionColor, formatValue } from '../utils/audit';
 
 const ENTITIES = [
@@ -133,6 +133,48 @@ export default function Auditoria() {
     setEndDate('');
   };
 
+  // Exportar para CSV
+  const exportToCSV = () => {
+    if (filteredLogs.length === 0) return;
+
+    const headers = ['Data/Hora', 'Usuário', 'Email', 'Ação', 'Entidade', 'Nome', 'Alterações'];
+
+    const rows = filteredLogs.map(log => {
+      const timestamp = log.timestamp?.toDate ? log.timestamp.toDate() : new Date(log.created_at);
+      const formattedDate = timestamp.toLocaleDateString('pt-BR') + ' ' + timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const changes = log.changes ? Object.entries(log.changes).map(([field, values]) =>
+        `${field}: ${formatValue(values.old)} → ${formatValue(values.new)}`
+      ).join('; ') : '';
+
+      return [
+        formattedDate,
+        log.user_name || '-',
+        log.user_email || '-',
+        getActionLabel(log.action),
+        getEntityLabel(log.entity),
+        log.entity_name || '-',
+        changes
+      ];
+    });
+
+    // Criar conteúdo CSV
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    // Download do arquivo
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `auditoria_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return '-';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -238,26 +280,48 @@ export default function Auditoria() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => fetchLogs(true)}
-            disabled={refreshing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 16px',
-              background: 'rgba(139, 92, 246, 0.1)',
-              border: '1px solid rgba(139, 92, 246, 0.3)',
-              borderRadius: '12px',
-              color: '#a78bfa',
-              fontWeight: '500',
-              cursor: refreshing ? 'not-allowed' : 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            <RefreshCw style={{ width: '16px', height: '16px', animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
-            {refreshing ? 'Atualizando...' : 'Atualizar'}
-          </button>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={exportToCSV}
+              disabled={filteredLogs.length === 0}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                background: filteredLogs.length > 0 ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'rgba(100, 116, 139, 0.2)',
+                border: 'none',
+                borderRadius: '12px',
+                color: 'white',
+                fontWeight: '500',
+                cursor: filteredLogs.length > 0 ? 'pointer' : 'not-allowed',
+                fontSize: '14px'
+              }}
+            >
+              <Download style={{ width: '16px', height: '16px' }} />
+              Exportar CSV
+            </button>
+            <button
+              onClick={() => fetchLogs(true)}
+              disabled={refreshing}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '12px',
+                color: '#a78bfa',
+                fontWeight: '500',
+                cursor: refreshing ? 'not-allowed' : 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              <RefreshCw style={{ width: '16px', height: '16px', animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+              {refreshing ? 'Atualizando...' : 'Atualizar'}
+            </button>
+          </div>
         </div>
       </div>
 
