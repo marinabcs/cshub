@@ -3,7 +3,7 @@ import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch } from 'fire
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, ChevronRight, ChevronDown, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check } from 'lucide-react';
+import { Users, Search, ChevronRight, ChevronDown, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 
@@ -54,7 +54,11 @@ export default function Clientes() {
   });
   const [filterHealthStatus, setFilterHealthStatus] = useState(() => {
     const saved = loadFiltersFromStorage();
-    return saved?.healthStatus || 'todos';
+    // Migrar de string para array se necessário
+    if (saved?.healthStatus && typeof saved.healthStatus === 'string' && saved.healthStatus !== 'todos') {
+      return [saved.healthStatus];
+    }
+    return saved?.healthStatus && Array.isArray(saved.healthStatus) ? saved.healthStatus : [];
   });
   const [filterClienteStatus, setFilterClienteStatus] = useState(() => {
     const saved = loadFiltersFromStorage();
@@ -81,8 +85,14 @@ export default function Clientes() {
   const [batchValue, setBatchValue] = useState('');
   const [batchUpdating, setBatchUpdating] = useState(false);
 
-  // Estado para dropdown de escopo
+  // Estado para dropdowns de filtro
   const [showEscopoDropdown, setShowEscopoDropdown] = useState(false);
+  const [showHealthDropdown, setShowHealthDropdown] = useState(false);
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [sortOption, setSortOption] = useState(() => {
+    const saved = loadFiltersFromStorage();
+    return saved?.sortOption || 'name_asc';
+  });
 
   const navigate = useNavigate();
 
@@ -101,9 +111,10 @@ export default function Clientes() {
       searchTerm,
       healthStatus: filterHealthStatus,
       clienteStatus: filterClienteStatus,
-      type: filterType
+      type: filterType,
+      sortOption
     });
-  }, [searchTerm, filterHealthStatus, filterClienteStatus, filterType]);
+  }, [searchTerm, filterHealthStatus, filterClienteStatus, filterType, sortOption]);
 
   const fetchData = async () => {
     try {
@@ -248,19 +259,39 @@ export default function Clientes() {
     return [...allTypes].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [clientes]);
 
+  // Ordem de prioridade do health para ordenação
+  const healthOrder = { critical: 1, at_risk: 2, neutral: 3, healthy: 4 };
+
   const filteredClientes = clientes
     .filter(cliente => {
       const searchNormalized = normalizeText(searchTerm);
       const nameNormalized = normalizeText(cliente.team_name || '');
       const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
       const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
-      const matchesHealthStatus = filterHealthStatus === 'todos' || cliente.health_status === filterHealthStatus;
+      const matchesHealthStatus = filterHealthStatus.length === 0 || filterHealthStatus.includes(cliente.health_status);
       const matchesClienteStatus = filterClienteStatus.length === 0 || filterClienteStatus.includes(cliente.status || 'ativo');
       // Filtro de tipo: verifica se algum dos tipos selecionados está contido no team_type do cliente
       const matchesType = filterType.length === 0 || filterType.some(type => cliente.team_type && cliente.team_type.includes(type));
       return matchesSearch && matchesHealthStatus && matchesClienteStatus && matchesType;
     })
-    .sort((a, b) => (a.team_name || '').localeCompare(b.team_name || '', 'pt-BR'));
+    .sort((a, b) => {
+      switch (sortOption) {
+        case 'name_asc':
+          return (a.team_name || '').localeCompare(b.team_name || '', 'pt-BR');
+        case 'name_desc':
+          return (b.team_name || '').localeCompare(a.team_name || '', 'pt-BR');
+        case 'health_asc': // Pior para melhor
+          return (healthOrder[a.health_status] || 5) - (healthOrder[b.health_status] || 5);
+        case 'health_desc': // Melhor para pior
+          return (healthOrder[b.health_status] || 5) - (healthOrder[a.health_status] || 5);
+        case 'score_asc':
+          return (a.health_score || 0) - (b.health_score || 0);
+        case 'score_desc':
+          return (b.health_score || 0) - (a.health_score || 0);
+        default:
+          return (a.team_name || '').localeCompare(b.team_name || '', 'pt-BR');
+      }
+    });
 
   const exportToCSV = () => {
     const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Health Score', 'Status', 'Qtd Times'];
@@ -526,234 +557,413 @@ export default function Clientes() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
-          <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px', color: '#64748b' }} />
+      {/* Linha 1: Busca, Health e Escopo */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Busca */}
+        <div style={{ position: 'relative', flex: '1', minWidth: '200px' }}>
+          <Search style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', width: '18px', height: '18px', color: '#64748b' }} />
           <input type="text" placeholder="Buscar por nome ou responsável..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ width: '100%', padding: '12px 16px 12px 48px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-        </div>
-        <select value={filterHealthStatus} onChange={(e) => setFilterHealthStatus(e.target.value)}
-          style={{ padding: '12px 16px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', color: 'white', fontSize: '14px', outline: 'none', cursor: 'pointer', minWidth: '150px' }}>
-          <option value="todos" style={{ background: '#1e1b4b' }}>Health: Todos</option>
-          <option value="saudavel" style={{ background: '#1e1b4b' }}>Saudável</option>
-          <option value="atencao" style={{ background: '#1e1b4b' }}>Atenção</option>
-          <option value="risco" style={{ background: '#1e1b4b' }}>Risco</option>
-          <option value="critico" style={{ background: '#1e1b4b' }}>Crítico</option>
-        </select>
-      </div>
-
-      {/* Filtros de Status e Escopo */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
-        {/* Filtro de Status do Cliente */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ color: '#94a3b8', fontSize: '13px', marginRight: '8px', minWidth: '50px' }}>Status:</span>
-          {STATUS_OPTIONS.map(opt => {
-            const isSelected = filterClienteStatus.includes(opt.value);
-            return (
-              <button
-                key={opt.value}
-                onClick={() => {
-                  if (isSelected) {
-                    setFilterClienteStatus(filterClienteStatus.filter(s => s !== opt.value));
-                  } else {
-                    setFilterClienteStatus([...filterClienteStatus, opt.value]);
-                  }
-                }}
-                style={{
-                  padding: '6px 12px',
-                  background: isSelected ? `${opt.color}20` : 'transparent',
-                  border: `1px solid ${isSelected ? opt.color : 'rgba(139, 92, 246, 0.2)'}`,
-                  borderRadius: '16px',
-                  color: isSelected ? opt.color : '#64748b',
-                  fontSize: '12px',
-                  fontWeight: isSelected ? '500' : '400',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <span style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: opt.color
-                }}></span>
-                {opt.label}
-                <span style={{ color: isSelected ? opt.color : '#64748b', opacity: 0.7 }}>
-                  ({clientes.filter(c => (c.status || 'ativo') === opt.value).length})
-                </span>
-              </button>
-            );
-          })}
+            style={{ width: '100%', padding: '10px 14px 10px 42px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
         </div>
 
-        {/* Filtro de Escopo/Tipo - Dropdown */}
-        {teamTypes.length > 0 && (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ color: '#94a3b8', fontSize: '13px', marginRight: '8px', minWidth: '50px' }}>Escopo:</span>
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setShowEscopoDropdown(!showEscopoDropdown)}
-                style={{
-                  padding: '6px 12px',
-                  background: filterType.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
-                  border: `1px solid ${filterType.length > 0 ? '#8b5cf6' : 'rgba(139, 92, 246, 0.2)'}`,
-                  borderRadius: '16px',
-                  color: filterType.length > 0 ? '#a78bfa' : '#94a3b8',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                {filterType.length === 0 ? 'Todos os escopos' : `${filterType.length} selecionado${filterType.length > 1 ? 's' : ''}`}
-                <ChevronDown style={{ width: '14px', height: '14px' }} />
-              </button>
+        {/* Health Dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => { setShowHealthDropdown(!showHealthDropdown); setShowEscopoDropdown(false); setShowSortDropdown(false); }}
+            style={{
+              padding: '10px 14px',
+              background: filterHealthStatus.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
+              border: `1px solid ${filterHealthStatus.length > 0 ? '#8b5cf6' : 'rgba(139, 92, 246, 0.2)'}`,
+              borderRadius: '10px',
+              color: filterHealthStatus.length > 0 ? '#a78bfa' : '#94a3b8',
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              minWidth: '140px'
+            }}
+          >
+            {filterHealthStatus.length === 0 ? 'Health: Todos' : `Health: ${filterHealthStatus.length}`}
+            <ChevronDown style={{ width: '14px', height: '14px' }} />
+          </button>
 
-              {/* Dropdown */}
-              {showEscopoDropdown && (
-                <>
-                  {/* Overlay para fechar */}
-                  <div
-                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
-                    onClick={() => setShowEscopoDropdown(false)}
-                  />
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    marginTop: '8px',
-                    background: '#1e1b4b',
-                    border: '1px solid rgba(139, 92, 246, 0.3)',
-                    borderRadius: '12px',
-                    padding: '8px',
-                    minWidth: '220px',
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    zIndex: 100,
-                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
-                  }}>
-                    {/* Botão limpar */}
-                    {filterType.length > 0 && (
-                      <button
-                        onClick={() => setFilterType([])}
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          marginBottom: '8px',
-                          background: 'rgba(239, 68, 68, 0.1)',
-                          border: '1px solid rgba(239, 68, 68, 0.2)',
-                          borderRadius: '8px',
-                          color: '#ef4444',
-                          fontSize: '12px',
-                          cursor: 'pointer',
+          {showHealthDropdown && (
+            <>
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowHealthDropdown(false)} />
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: '8px',
+                background: '#1e1b4b',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '12px',
+                padding: '8px',
+                minWidth: '180px',
+                zIndex: 100,
+                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+              }}>
+                {filterHealthStatus.length > 0 && (
+                  <button
+                    onClick={() => setFilterHealthStatus([])}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      marginBottom: '8px',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                      borderRadius: '8px',
+                      color: '#ef4444',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <X style={{ width: '12px', height: '12px' }} />
+                    Limpar
+                  </button>
+                )}
+                {[
+                  { value: 'saudavel', label: 'Saudável', color: '#10b981' },
+                  { value: 'atencao', label: 'Atenção', color: '#f59e0b' },
+                  { value: 'risco', label: 'Risco', color: '#f97316' },
+                  { value: 'critico', label: 'Crítico', color: '#ef4444' }
+                ].map(opt => {
+                  const isSelected = filterHealthStatus.includes(opt.value);
+                  const count = clientes.filter(c => c.health_status === opt.value).length;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        if (isSelected) {
+                          setFilterHealthStatus(filterHealthStatus.filter(h => h !== opt.value));
+                        } else {
+                          setFilterHealthStatus([...filterHealthStatus, opt.value]);
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: isSelected ? `${opt.color}15` : 'transparent',
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: isSelected ? opt.color : '#94a3b8',
+                        fontSize: '13px',
+                        fontWeight: isSelected ? '500' : '400',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '4px',
+                          border: `2px solid ${isSelected ? opt.color : 'rgba(139, 92, 246, 0.3)'}`,
+                          background: isSelected ? opt.color : 'transparent',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <X style={{ width: '12px', height: '12px' }} />
-                        Limpar seleção
-                      </button>
-                    )}
+                          justifyContent: 'center'
+                        }}>
+                          {isSelected && <Check style={{ width: '12px', height: '12px', color: 'white' }} />}
+                        </div>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: opt.color }}></span>
+                          {opt.label}
+                        </span>
+                      </div>
+                      <span style={{ color: '#64748b', fontSize: '11px' }}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
 
-                    {/* Lista de tipos */}
-                    {teamTypes.map(type => {
-                      const isSelected = filterType.includes(type);
-                      const count = clientes.filter(c => c.team_type && c.team_type.includes(type)).length;
-                      return (
-                        <button
-                          key={type}
-                          onClick={() => {
-                            if (isSelected) {
-                              setFilterType(filterType.filter(t => t !== type));
-                            } else {
-                              setFilterType([...filterType, type]);
-                            }
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            background: isSelected ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
-                            border: 'none',
-                            borderRadius: '8px',
-                            color: isSelected ? '#a78bfa' : '#94a3b8',
-                            fontSize: '13px',
-                            fontWeight: isSelected ? '500' : '400',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            textAlign: 'left'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{
-                              width: '18px',
-                              height: '18px',
-                              borderRadius: '4px',
-                              border: `2px solid ${isSelected ? '#8b5cf6' : 'rgba(139, 92, 246, 0.3)'}`,
-                              background: isSelected ? '#8b5cf6' : 'transparent',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center'
-                            }}>
-                              {isSelected && <Check style={{ width: '12px', height: '12px', color: 'white' }} />}
-                            </div>
-                            {type}
-                          </div>
-                          <span style={{ color: '#64748b', fontSize: '11px' }}>
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Botão limpar filtros */}
-        {(searchTerm || filterHealthStatus !== 'todos' || filterType.length > 0 || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
-          <>
+        {/* Escopo Dropdown */}
+        {teamTypes.length > 0 && (
+          <div style={{ position: 'relative' }}>
             <button
-              onClick={() => {
-                setSearchTerm('');
-                setFilterHealthStatus('todos');
-                setFilterType([]);
-                setFilterClienteStatus(DEFAULT_VISIBLE_STATUS);
-                localStorage.removeItem(FILTERS_STORAGE_KEY);
-              }}
+              onClick={() => { setShowEscopoDropdown(!showEscopoDropdown); setShowHealthDropdown(false); setShowSortDropdown(false); }}
               style={{
-                padding: '6px 12px',
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                borderRadius: '16px',
-                color: '#ef4444',
-                fontSize: '12px',
+                padding: '10px 14px',
+                background: filterType.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
+                border: `1px solid ${filterType.length > 0 ? '#8b5cf6' : 'rgba(139, 92, 246, 0.2)'}`,
+                borderRadius: '10px',
+                color: filterType.length > 0 ? '#a78bfa' : '#94a3b8',
+                fontSize: '13px',
                 fontWeight: '500',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                marginLeft: '8px'
+                gap: '8px',
+                minWidth: '140px'
               }}
             >
-              <X style={{ width: '12px', height: '12px' }} />
-              Limpar filtros
+              {filterType.length === 0 ? 'Escopo: Todos' : `Escopo: ${filterType.length}`}
+              <ChevronDown style={{ width: '14px', height: '14px' }} />
             </button>
-            <span style={{ color: '#64748b', fontSize: '13px', marginLeft: '16px' }}>
-              {filteredClientes.length} de {clientes.length} clientes
-            </span>
-          </>
+
+            {showEscopoDropdown && (
+              <>
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowEscopoDropdown(false)} />
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: '8px',
+                  background: '#1e1b4b',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  borderRadius: '12px',
+                  padding: '8px',
+                  minWidth: '220px',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  zIndex: 100,
+                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+                }}>
+                  {filterType.length > 0 && (
+                    <button
+                      onClick={() => setFilterType([])}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        marginBottom: '8px',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        borderRadius: '8px',
+                        color: '#ef4444',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <X style={{ width: '12px', height: '12px' }} />
+                      Limpar
+                    </button>
+                  )}
+                  {teamTypes.map(type => {
+                    const isSelected = filterType.includes(type);
+                    const count = clientes.filter(c => c.team_type && c.team_type.includes(type)).length;
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => {
+                          if (isSelected) {
+                            setFilterType(filterType.filter(t => t !== type));
+                          } else {
+                            setFilterType([...filterType, type]);
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          background: isSelected ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: isSelected ? '#a78bfa' : '#94a3b8',
+                          fontSize: '13px',
+                          fontWeight: isSelected ? '500' : '400',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          textAlign: 'left'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '4px',
+                            border: `2px solid ${isSelected ? '#8b5cf6' : 'rgba(139, 92, 246, 0.3)'}`,
+                            background: isSelected ? '#8b5cf6' : 'transparent',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            {isSelected && <Check style={{ width: '12px', height: '12px', color: 'white' }} />}
+                          </div>
+                          {type}
+                        </div>
+                        <span style={{ color: '#64748b', fontSize: '11px' }}>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
         )}
+
+        {/* Ordenação Dropdown */}
+        <div style={{ position: 'relative', marginLeft: 'auto' }}>
+          <button
+            onClick={() => { setShowSortDropdown(!showSortDropdown); setShowHealthDropdown(false); setShowEscopoDropdown(false); }}
+            style={{
+              padding: '10px 14px',
+              background: 'rgba(30, 27, 75, 0.6)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
+              borderRadius: '10px',
+              color: '#94a3b8',
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <ArrowUpDown style={{ width: '14px', height: '14px' }} />
+            Ordenar
+            <ChevronDown style={{ width: '14px', height: '14px' }} />
+          </button>
+
+          {showSortDropdown && (
+            <>
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowSortDropdown(false)} />
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '8px',
+                background: '#1e1b4b',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '12px',
+                padding: '8px',
+                minWidth: '200px',
+                zIndex: 100,
+                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+              }}>
+                {[
+                  { value: 'name_asc', label: 'Nome (A-Z)', icon: ArrowUp },
+                  { value: 'name_desc', label: 'Nome (Z-A)', icon: ArrowDown },
+                  { value: 'score_asc', label: 'Score (Menor → Maior)', icon: ArrowUp },
+                  { value: 'score_desc', label: 'Score (Maior → Menor)', icon: ArrowDown }
+                ].map(opt => {
+                  const isSelected = sortOption === opt.value;
+                  const IconComponent = opt.icon;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setSortOption(opt.value); setShowSortDropdown(false); }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: isSelected ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: isSelected ? '#a78bfa' : '#94a3b8',
+                        fontSize: '13px',
+                        fontWeight: isSelected ? '500' : '400',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <IconComponent style={{ width: '14px', height: '14px' }} />
+                      {opt.label}
+                      {isSelected && <Check style={{ width: '14px', height: '14px', marginLeft: 'auto' }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Linha 2: Filtro de Status */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ color: '#94a3b8', fontSize: '13px', marginRight: '4px' }}>Status:</span>
+        {STATUS_OPTIONS.map(opt => {
+          const isSelected = filterClienteStatus.includes(opt.value);
+          return (
+            <button
+              key={opt.value}
+              onClick={() => {
+                if (isSelected) {
+                  setFilterClienteStatus(filterClienteStatus.filter(s => s !== opt.value));
+                } else {
+                  setFilterClienteStatus([...filterClienteStatus, opt.value]);
+                }
+              }}
+              style={{
+                padding: '6px 12px',
+                background: isSelected ? `${opt.color}20` : 'transparent',
+                border: `1px solid ${isSelected ? opt.color : 'rgba(139, 92, 246, 0.2)'}`,
+                borderRadius: '16px',
+                color: isSelected ? opt.color : '#64748b',
+                fontSize: '12px',
+                fontWeight: isSelected ? '500' : '400',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s'
+              }}
+            >
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: opt.color
+              }}></span>
+              {opt.label}
+              <span style={{ color: isSelected ? opt.color : '#64748b', opacity: 0.7 }}>
+                ({clientes.filter(c => (c.status || 'ativo') === opt.value).length})
+              </span>
+            </button>
+          );
+        })}
+
+        {/* Botão limpar todos os filtros */}
+        {(searchTerm || filterHealthStatus.length > 0 || filterType.length > 0 || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
+          <button
+            onClick={() => {
+              setSearchTerm('');
+              setFilterHealthStatus([]);
+              setFilterType([]);
+              setFilterClienteStatus(DEFAULT_VISIBLE_STATUS);
+              localStorage.removeItem(FILTERS_STORAGE_KEY);
+            }}
+            style={{
+              padding: '6px 12px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '16px',
+              color: '#ef4444',
+              fontSize: '12px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              marginLeft: '8px'
+            }}
+          >
+            <X style={{ width: '12px', height: '12px' }} />
+            Limpar filtros
+          </button>
+        )}
+
+        <span style={{ color: '#64748b', fontSize: '13px', marginLeft: 'auto' }}>
+          {filteredClientes.length} de {clientes.length} clientes
+        </span>
       </div>
 
       {/* Checkbox Selecionar Todos */}
@@ -803,32 +1013,33 @@ export default function Clientes() {
               opacity: isInativo ? 0.7 : 1,
               position: 'relative'
             }}>
-            {/* Checkbox de seleção */}
+            {/* Checkbox de seleção - discreto no canto */}
             <button
               onClick={(e) => { e.stopPropagation(); toggleSelectCliente(cliente.id); }}
               style={{
                 position: 'absolute',
-                top: '12px',
-                left: '12px',
-                width: '28px',
-                height: '28px',
-                background: isSelected ? 'rgba(139, 92, 246, 0.3)' : 'rgba(15, 10, 31, 0.6)',
-                border: isSelected ? '2px solid #8b5cf6' : '1px solid rgba(139, 92, 246, 0.3)',
-                borderRadius: '6px',
+                top: '8px',
+                right: '8px',
+                width: '20px',
+                height: '20px',
+                background: 'transparent',
+                border: 'none',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                zIndex: 5
+                zIndex: 5,
+                opacity: isSelected ? 1 : 0.5
               }}
+              title={isSelected ? 'Desmarcar' : 'Selecionar'}
             >
               {isSelected ? (
                 <CheckSquare style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
               ) : (
-                <Square style={{ width: '16px', height: '16px', color: '#64748b' }} />
+                <Square style={{ width: '14px', height: '14px', color: '#64748b' }} />
               )}
             </button>
-            <div onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ marginLeft: '32px' }}>
+            <div onClick={() => navigate(`/clientes/${cliente.id}`)}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
@@ -925,17 +1136,23 @@ export default function Clientes() {
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: isInativo ? '1px solid rgba(107, 114, 128, 0.1)' : '1px solid rgba(139, 92, 246, 0.1)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '28px', height: '28px', background: isInativo ? 'rgba(107, 114, 128, 0.2)' : 'rgba(139, 92, 246, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Users style={{ width: '14px', height: '14px', color: isInativo ? '#9ca3af' : '#a5b4fc' }} />
-                  </div>
-                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>{cliente.responsavel_nome || 'Sem responsável'}</span>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                {/* Responsáveis */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <div style={{ width: '24px', height: '24px', background: isInativo ? 'rgba(107, 114, 128, 0.2)' : 'rgba(6, 182, 212, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Link style={{ width: '12px', height: '12px', color: isInativo ? '#9ca3af' : '#22d3ee' }} />
-                  </div>
+                  <Users style={{ width: '14px', height: '14px', color: isInativo ? '#9ca3af' : '#a5b4fc', flexShrink: 0 }} />
+                  {(cliente.responsaveis && cliente.responsaveis.length > 0) ? (
+                    <span style={{ color: '#94a3b8', fontSize: '13px' }}>
+                      {cliente.responsaveis.map(r => r.nome?.split(' ')[0] || r.email?.split('@')[0]).join(', ')}
+                    </span>
+                  ) : cliente.responsavel_nome ? (
+                    <span style={{ color: '#94a3b8', fontSize: '13px' }}>{cliente.responsavel_nome.split(' ')[0]}</span>
+                  ) : (
+                    <span style={{ color: '#64748b', fontSize: '13px' }}>Sem responsável</span>
+                  )}
+                </div>
+                {/* Times */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Link style={{ width: '12px', height: '12px', color: isInativo ? '#9ca3af' : '#22d3ee' }} />
                   <span style={{ color: '#94a3b8', fontSize: '12px' }}>{(cliente.times || []).length} times</span>
                 </div>
               </div>
