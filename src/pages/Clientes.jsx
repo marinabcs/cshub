@@ -3,7 +3,7 @@ import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch } from 'fire
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, ChevronRight, ChevronDown, Clock, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 
@@ -1013,32 +1013,6 @@ export default function Clientes() {
               opacity: isInativo ? 0.7 : 1,
               position: 'relative'
             }}>
-            {/* Checkbox de seleção - discreto no canto */}
-            <button
-              onClick={(e) => { e.stopPropagation(); toggleSelectCliente(cliente.id); }}
-              style={{
-                position: 'absolute',
-                top: '8px',
-                right: '8px',
-                width: '20px',
-                height: '20px',
-                background: 'transparent',
-                border: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                zIndex: 5,
-                opacity: isSelected ? 1 : 0.5
-              }}
-              title={isSelected ? 'Desmarcar' : 'Selecionar'}
-            >
-              {isSelected ? (
-                <CheckSquare style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
-              ) : (
-                <Square style={{ width: '14px', height: '14px', color: '#64748b' }} />
-              )}
-            </button>
             <div onClick={() => navigate(`/clientes/${cliente.id}`)}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1079,11 +1053,27 @@ export default function Clientes() {
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: getStatusColor(cliente.status || 'ativo') }}></span>
                   {getStatusLabel(cliente.status || 'ativo')}
                 </span>
-                {!isInativo && (
-                  <span style={{ padding: '4px 10px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>
-                    {getHealthLabel(cliente.health_status)}
-                  </span>
-                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleSelectCliente(cliente.id); }}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    background: isSelected ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.1)',
+                    border: isSelected ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.2)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer'
+                  }}
+                  title={isSelected ? 'Desmarcar' : 'Selecionar'}
+                >
+                  {isSelected ? (
+                    <CheckSquare style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
+                  ) : (
+                    <Square style={{ width: '16px', height: '16px', color: '#64748b' }} />
+                  )}
+                </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${cliente.id}/editar`); }}
                   style={{
@@ -1156,11 +1146,7 @@ export default function Clientes() {
                   <span style={{ color: '#94a3b8', fontSize: '12px' }}>{(cliente.times || []).length} times</span>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '12px' }}>
-                <Clock style={{ width: '14px', height: '14px' }} />
-                {formatDate(cliente.ultima_interacao)}
-                <ChevronRight style={{ width: '16px', height: '16px', color: isInativo ? '#9ca3af' : '#8b5cf6' }} />
-              </div>
+              <ChevronRight style={{ width: '16px', height: '16px', color: isInativo ? '#9ca3af' : '#8b5cf6' }} />
             </div>
             </div>{/* fecha div do clickable area */}
           </div>
