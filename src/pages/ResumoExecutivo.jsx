@@ -804,8 +804,8 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                       {/* Health Score */}
                       {resumo.secoesAtivas.includes('health') && (
                         <div style={{ marginBottom: '32px' }}>
-                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Activity style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>
+                            <span style={{ marginRight: '8px' }}>📊</span>
                             Health Score
                           </h3>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
@@ -829,22 +829,19 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                                   {getHealthLabel(resumo.cliente.health_status)}
                                 </span>
                               </p>
-                              <p style={{ margin: 0, color: '#64748b', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                Tendência:
+                              <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+                                Tendência:{' '}
                                 {resumo.tendencia > 0 ? (
-                                  <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                    <TrendingUp style={{ width: '16px', height: '16px' }} />
-                                    +{resumo.tendencia} pts
+                                  <span style={{ color: '#10b981' }}>
+                                    ↑ +{resumo.tendencia} pts
                                   </span>
                                 ) : resumo.tendencia < 0 ? (
-                                  <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                    <TrendingDown style={{ width: '16px', height: '16px' }} />
-                                    {resumo.tendencia} pts
+                                  <span style={{ color: '#ef4444' }}>
+                                    ↓ {resumo.tendencia} pts
                                   </span>
                                 ) : (
-                                  <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                    <Minus style={{ width: '16px', height: '16px' }} />
-                                    Estável
+                                  <span style={{ color: '#64748b' }}>
+                                    → Estável
                                   </span>
                                 )}
                               </p>
@@ -856,34 +853,34 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                       {/* Métricas */}
                       {resumo.secoesAtivas.includes('metricas') && (
                         <div style={{ marginBottom: '32px' }}>
-                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Zap style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
+                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>
+                            <span style={{ marginRight: '8px' }}>⚡</span>
                             Métricas de Uso
                           </h3>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
                             <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
-                              <Users style={{ width: '24px', height: '24px', color: '#8b5cf6', margin: '0 auto 8px' }} />
+                              <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>👥</p>
                               <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
                                 {resumo.metricas.logins}
                               </p>
                               <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Logins</p>
                             </div>
                             <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
-                              <Image style={{ width: '24px', height: '24px', color: '#06b6d4', margin: '0 auto 8px' }} />
+                              <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>🎨</p>
                               <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
                                 {resumo.metricas.pecas_criadas}
                               </p>
                               <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Peças Criadas</p>
                             </div>
                             <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
-                              <Download style={{ width: '24px', height: '24px', color: '#10b981', margin: '0 auto 8px' }} />
+                              <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>📥</p>
                               <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
                                 {resumo.metricas.downloads}
                               </p>
                               <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Downloads</p>
                             </div>
                             <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
-                              <Sparkles style={{ width: '24px', height: '24px', color: '#f59e0b', margin: '0 auto 8px' }} />
+                              <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>✨</p>
                               <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
                                 {resumo.metricas.uso_ai_total}
                               </p>
@@ -896,8 +893,8 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                       {/* Resumo das Conversas */}
                       {resumo.secoesAtivas.includes('conversas') && resumo.resumoIA.resumo && (
                         <div style={{ marginBottom: '32px' }}>
-                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <FileText style={{ width: '20px', height: '20px', color: '#3b82f6' }} />
+                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>
+                            <span style={{ marginRight: '8px' }}>💬</span>
                             Resumo das Conversas
                           </h3>
                           <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', borderLeft: '4px solid #8b5cf6' }}>
@@ -914,8 +911,8 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                       {/* Pontos de Atenção */}
                       {resumo.secoesAtivas.includes('atencao') && resumo.resumoIA.atencao?.length > 0 && (
                         <div style={{ marginBottom: '32px' }}>
-                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <AlertTriangle style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
+                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>
+                            <span style={{ marginRight: '8px' }}>⚠️</span>
                             Pontos de Atenção
                           </h3>
                           <ul style={{ margin: 0, padding: '0 0 0 20px', color: '#334155', fontSize: '14px', lineHeight: '1.8' }}>
@@ -929,8 +926,8 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                       {/* Recomendações */}
                       {resumo.secoesAtivas.includes('recomendacoes') && resumo.resumoIA.recomendacoes?.length > 0 && (
                         <div>
-                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Sparkles style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+                          <h3 style={{ color: '#1e1b4b', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>
+                            <span style={{ marginRight: '8px' }}>💡</span>
                             Recomendações
                           </h3>
                           <ul style={{ margin: 0, padding: '0 0 0 20px', color: '#334155', fontSize: '14px', lineHeight: '1.8' }}>
