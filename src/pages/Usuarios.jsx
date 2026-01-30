@@ -211,8 +211,10 @@ export default function Usuarios() {
   const openCarteiraModal = (usuario) => {
     setCarteiraUser(usuario);
     // Find clients currently assigned to this user (check responsaveis array)
+    // Excluir inativos/cancelados
     const assignedClientes = clientes
       .filter(c => {
+        if (c.status === 'inativo' || c.status === 'cancelado') return false;
         // Check in responsaveis array first
         if (c.responsaveis && Array.isArray(c.responsaveis)) {
           return c.responsaveis.some(r => r.email === usuario.email);
@@ -456,6 +458,8 @@ export default function Usuarios() {
   };
 
   const filteredClientesForCarteira = clientes.filter(cliente => {
+    // Excluir inativos/cancelados
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') return false;
     const searchLower = carteiraSearch.toLowerCase();
     return !carteiraSearch ||
       (cliente.team_name || '').toLowerCase().includes(searchLower);
@@ -463,6 +467,8 @@ export default function Usuarios() {
 
   const getClientesCount = (usuario) => {
     return clientes.filter(c => {
+      // Excluir inativos/cancelados
+      if (c.status === 'inativo' || c.status === 'cancelado') return false;
       // Check in responsaveis array first
       if (c.responsaveis && Array.isArray(c.responsaveis)) {
         return c.responsaveis.some(r => r.email === usuario.email);
