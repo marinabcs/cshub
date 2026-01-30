@@ -185,7 +185,7 @@ export function useAtualizarAlerta() {
 }
 
 // Tipos válidos de alertas (novos)
-const TIPOS_VALIDOS = ['sem_uso_plataforma', 'sentimento_negativo', 'resposta_pendente', 'problema_reclamacao', 'creditos_baixos'];
+const TIPOS_VALIDOS = ['sem_uso_plataforma', 'sentimento_negativo', 'resposta_pendente', 'problema_reclamacao'];
 
 // Hook para verificar e gerar novos alertas
 export function useVerificarAlertas() {
@@ -293,6 +293,122 @@ export function useLimparAlertasAntigos() {
   };
 
   return { limparAlertasAntigos, limpando, resultado };
+}
+
+// Hook para limpar alertas inválidos (999 dias, dados incorretos)
+export function useLimparAlertasInvalidos() {
+  const [limpando, setLimpando] = useState(false);
+  const [resultado, setResultado] = useState(null);
+
+  const limparAlertasInvalidos = async () => {
+    setLimpando(true);
+    setResultado(null);
+
+    try {
+      const alertasSnap = await getDocs(collection(db, 'alertas'));
+
+      // Encontrar alertas de "sem_uso_plataforma" com 999 dias ou valores absurdos
+      const alertasInvalidos = alertasSnap.docs.filter(doc => {
+        const data = doc.data();
+        // Alertas pendentes de sem_uso com valores suspeitos
+        if (data.tipo === 'sem_uso_plataforma' &&
+            (data.status === 'pendente' || data.status === 'em_andamento')) {
+          // Verificar se o título contém números de dias
+          const match = data.titulo?.match(/(\d+)\s*dias/);
+          if (match) {
+            const dias = parseInt(match[1]);
+            // Considerar inválido se >= 100 dias (provavelmente sem dados reais)
+            return dias >= 100;
+          }
+          // Também capturar se a mensagem contém "999"
+          if (data.titulo?.includes('999') || data.mensagem?.includes('999')) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      let fechados = 0;
+      for (const alertaDoc of alertasInvalidos) {
+        await updateDoc(alertaDoc.ref, {
+          status: 'ignorado',
+          updated_at: Timestamp.now(),
+          resolved_at: Timestamp.now(),
+          motivo_fechamento: 'Dados de última interação inválidos ou ausentes'
+        });
+        fechados++;
+      }
+
+      setResultado({ success: true, fechados });
+      return { success: true, fechados };
+    } catch (e) {
+      console.error('Erro ao limpar alertas inválidos:', e);
+      setResultado({ success: false, error: e.message });
+      return { success: false, error: e.message };
+    } finally {
+      setLimpando(false);
+    }
+  };
+
+  return { limparAlertasInvalidos, limpando, resultado };
+}
+
+// Hook para fechar alertas de clientes inativos/cancelados automaticamente
+export function useLimparAlertasClientesInativos() {
+  const [limpando, setLimpando] = useState(false);
+  const [resultado, setResultado] = useState(null);
+
+  const limparAlertasClientesInativos = async () => {
+    setLimpando(true);
+    setResultado(null);
+
+    try {
+      // Buscar alertas e clientes em paralelo
+      const [alertasSnap, clientesSnap] = await Promise.all([
+        getDocs(collection(db, 'alertas')),
+        getDocs(collection(db, 'clientes'))
+      ]);
+
+      // Identificar clientes inativos/cancelados
+      const clientesInativos = new Set();
+      clientesSnap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.status === 'inativo' || data.status === 'cancelado') {
+          clientesInativos.add(doc.id);
+        }
+      });
+
+      // Encontrar alertas pendentes de clientes inativos
+      const alertasParaFechar = alertasSnap.docs.filter(doc => {
+        const data = doc.data();
+        return data.cliente_id &&
+               clientesInativos.has(data.cliente_id) &&
+               (data.status === 'pendente' || data.status === 'em_andamento');
+      });
+
+      let fechados = 0;
+      for (const alertaDoc of alertasParaFechar) {
+        await updateDoc(alertaDoc.ref, {
+          status: 'ignorado',
+          updated_at: Timestamp.now(),
+          resolved_at: Timestamp.now(),
+          motivo_fechamento: 'Cliente inativo/cancelado'
+        });
+        fechados++;
+      }
+
+      setResultado({ success: true, fechados, clientesInativos: clientesInativos.size });
+      return { success: true, fechados };
+    } catch (e) {
+      console.error('Erro ao limpar alertas de clientes inativos:', e);
+      setResultado({ success: false, error: e.message });
+      return { success: false, error: e.message };
+    } finally {
+      setLimpando(false);
+    }
+  };
+
+  return { limparAlertasClientesInativos, limpando, resultado };
 }
 
 // Hook para buscar alertas de um time específico

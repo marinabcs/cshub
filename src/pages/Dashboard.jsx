@@ -2,20 +2,10 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
-import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, Calendar, ChevronRight, Filter, Search, Circle, Bell, Frown, Zap } from 'lucide-react';
+import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, ChevronRight, Circle, Bell, Frown, Briefcase } from 'lucide-react';
 import { getHealthColor, getHealthLabel } from '../utils/healthScore';
-import { STATUS_OPTIONS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
-import { useAlertasCount, useAlertas } from '../hooks/useAlertas';
-import { getTipoInfo, getPrioridadeInfo, formatarTempoRelativo } from '../utils/alertas';
-
-// Função para normalizar texto (remove acentos)
-const normalizeText = (text) => {
-  if (!text) return '';
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-};
+import { STATUS_OPTIONS } from '../utils/clienteStatus';
+import { useAlertasCount } from '../hooks/useAlertas';
 
 // Mapeamento de ícones por tipo de alerta
 const ALERTA_ICONS = {
@@ -23,20 +13,15 @@ const ALERTA_ICONS = {
   sentimento_negativo: Frown,
   resposta_pendente: MessageSquare,
   problema_reclamacao: AlertTriangle,
-  creditos_baixos: Zap,
 };
 
 export default function Dashboard() {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterTeamType, setFilterTeamType] = useState('todos');
-  const [filterResponsavel, setFilterResponsavel] = useState('todos');
-  const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
   // Alertas
   const { counts: alertaCounts } = useAlertasCount();
-  const { alertas: alertasUrgentes } = useAlertas({ status: ['pendente', 'em_andamento'] });
 
   useEffect(() => {
     const fetchClientes = async () => {
@@ -56,40 +41,31 @@ export default function Dashboard() {
     fetchClientes();
   }, []);
 
-  // Get unique team types and responsáveis
-  const teamTypes = [...new Set(clientes.map(c => c.team_type).filter(Boolean))].sort();
-  const responsaveis = [...new Set(clientes.map(c => c.responsavel_nome).filter(Boolean))].sort();
+  // Filtrar apenas clientes ativos (excluir inativos e cancelados)
+  const clientesAtivos = clientes.filter(c =>
+    c.status !== 'inativo' && c.status !== 'cancelado'
+  );
 
-  // Filter clients
-  const filteredClientes = clientes.filter(cliente => {
-    const matchesTeamType = filterTeamType === 'todos' || cliente.team_type === filterTeamType;
-    const matchesResponsavel = filterResponsavel === 'todos' || cliente.responsavel_nome === filterResponsavel;
-    const searchNormalized = normalizeText(searchTerm);
-    const nameNormalized = normalizeText(cliente.team_name || '');
-    const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
-    const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
-    return matchesTeamType && matchesResponsavel && matchesSearch;
-  });
-
-  // Stats based on filtered clients
+  // Stats baseado em clientes ativos
   const stats = {
-    total: filteredClientes.length,
-    saudaveis: filteredClientes.filter(c => c.health_status === 'saudavel').length,
-    atencao: filteredClientes.filter(c => c.health_status === 'atencao').length,
-    risco: filteredClientes.filter(c => c.health_status === 'risco').length,
-    critico: filteredClientes.filter(c => c.health_status === 'critico').length
+    total: clientesAtivos.length,
+    saudaveis: clientesAtivos.filter(c => c.health_status === 'saudavel').length,
+    atencao: clientesAtivos.filter(c => c.health_status === 'atencao').length,
+    risco: clientesAtivos.filter(c => c.health_status === 'risco').length,
+    critico: clientesAtivos.filter(c => c.health_status === 'critico').length
   };
 
-  // Stats by client status (lifecycle)
+  // Stats por status do cliente (ciclo de vida) - inclui todos
   const statusStats = {
-    ativo: filteredClientes.filter(c => (c.status || 'ativo') === 'ativo').length,
-    onboarding: filteredClientes.filter(c => c.status === 'onboarding').length,
-    aviso_previo: filteredClientes.filter(c => c.status === 'aviso_previo').length,
-    inativo: filteredClientes.filter(c => c.status === 'inativo').length,
-    cancelado: filteredClientes.filter(c => c.status === 'cancelado').length
+    ativo: clientes.filter(c => (c.status || 'ativo') === 'ativo').length,
+    onboarding: clientes.filter(c => c.status === 'onboarding').length,
+    aviso_previo: clientes.filter(c => c.status === 'aviso_previo').length,
+    inativo: clientes.filter(c => c.status === 'inativo').length,
+    cancelado: clientes.filter(c => c.status === 'cancelado').length
   };
 
-  const clientesAtencao = filteredClientes
+  // Clientes que precisam de atenção (apenas ativos)
+  const clientesAtencao = clientesAtivos
     .filter(c => c.health_status !== 'saudavel')
     .sort((a, b) => (a.health_score || 0) - (b.health_score || 0))
     .slice(0, 5);
@@ -103,14 +79,6 @@ export default function Dashboard() {
     if (diff === 1) return 'Ontem';
     return `há ${diff} dias`;
   };
-
-  const clearFilters = () => {
-    setFilterTeamType('todos');
-    setFilterResponsavel('todos');
-    setSearchTerm('');
-  };
-
-  const hasActiveFilters = filterTeamType !== 'todos' || filterResponsavel !== 'todos' || searchTerm !== '';
 
   if (loading) {
     return (
@@ -140,129 +108,57 @@ export default function Dashboard() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: '24px'
+        marginBottom: '32px'
       }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>
             Dashboard
           </h1>
-          <p style={{ color: '#94a3b8', margin: 0 }}>Visão geral dos clientes</p>
+          <p style={{ color: '#94a3b8', margin: 0 }}>
+            Visão geral • {stats.total} clientes ativos
+          </p>
         </div>
-        <button
-          onClick={() => navigate('/clientes')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '12px 20px',
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-            border: 'none',
-            borderRadius: '12px',
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(139, 92, 246, 0.3)'
-          }}
-        >
-          <Users style={{ width: '18px', height: '18px' }} />
-          Ver Clientes
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div style={{
-        display: 'flex',
-        gap: '12px',
-        marginBottom: '24px',
-        flexWrap: 'wrap',
-        alignItems: 'center'
-      }}>
-        <div style={{ position: 'relative', minWidth: '220px' }}>
-          <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#64748b' }} />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar cliente..."
-            style={{
-              width: '100%',
-              padding: '10px 12px 10px 36px',
-              background: 'rgba(30, 27, 75, 0.4)',
-              border: '1px solid rgba(139, 92, 246, 0.2)',
-              borderRadius: '10px',
-              color: 'white',
-              fontSize: '13px',
-              outline: 'none',
-              boxSizing: 'border-box'
-            }}
-          />
-        </div>
-        <select
-          value={filterTeamType}
-          onChange={(e) => setFilterTeamType(e.target.value)}
-          style={{
-            padding: '10px 14px',
-            background: 'rgba(30, 27, 75, 0.4)',
-            border: '1px solid rgba(139, 92, 246, 0.2)',
-            borderRadius: '10px',
-            color: 'white',
-            fontSize: '13px',
-            outline: 'none',
-            cursor: 'pointer',
-            minWidth: '160px'
-          }}
-        >
-          <option value="todos" style={{ background: '#1e1b4b' }}>Todos os tipos</option>
-          {teamTypes.map(type => (
-            <option key={type} value={type} style={{ background: '#1e1b4b' }}>{type}</option>
-          ))}
-        </select>
-        <select
-          value={filterResponsavel}
-          onChange={(e) => setFilterResponsavel(e.target.value)}
-          style={{
-            padding: '10px 14px',
-            background: 'rgba(30, 27, 75, 0.4)',
-            border: '1px solid rgba(139, 92, 246, 0.2)',
-            borderRadius: '10px',
-            color: 'white',
-            fontSize: '13px',
-            outline: 'none',
-            cursor: 'pointer',
-            minWidth: '160px'
-          }}
-        >
-          <option value="todos" style={{ background: '#1e1b4b' }}>Todos responsáveis</option>
-          {responsaveis.map(resp => (
-            <option key={resp} value={resp} style={{ background: '#1e1b4b' }}>{resp}</option>
-          ))}
-        </select>
-        {hasActiveFilters && (
+        <div style={{ display: 'flex', gap: '12px' }}>
           <button
-            onClick={clearFilters}
+            onClick={() => navigate('/minha-carteira')}
             style={{
-              padding: '10px 14px',
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              borderRadius: '10px',
-              color: '#ef4444',
-              fontSize: '13px',
-              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px'
+              gap: '8px',
+              padding: '12px 20px',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 4px 20px rgba(139, 92, 246, 0.3)'
             }}
           >
-            <XCircle style={{ width: '14px', height: '14px' }} />
-            Limpar filtros
+            <Briefcase style={{ width: '18px', height: '18px' }} />
+            Minha Carteira
           </button>
-        )}
-        {hasActiveFilters && (
-          <span style={{ color: '#64748b', fontSize: '13px' }}>
-            {filteredClientes.length} de {clientes.length} clientes
-          </span>
-        )}
+          <button
+            onClick={() => navigate('/clientes')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: 'rgba(30, 27, 75, 0.6)',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer'
+            }}
+          >
+            <Users style={{ width: '18px', height: '18px' }} />
+            Ver Todos
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -388,7 +284,7 @@ export default function Dashboard() {
       {/* Card de Alertas Pendentes */}
       {alertaCounts.pendentes > 0 && (
         <div
-          onClick={() => navigate('/alertas')}
+          onClick={() => navigate('/minha-carteira')}
           style={{
             marginBottom: '32px',
             padding: '20px 24px',
@@ -432,7 +328,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: alertaCounts.urgentes > 0 ? '#ef4444' : '#f59e0b' }}>
-            <span style={{ fontSize: '14px', fontWeight: '500' }}>Ver alertas</span>
+            <span style={{ fontSize: '14px', fontWeight: '500' }}>Ver minha carteira</span>
             <ChevronRight style={{ width: '18px', height: '18px' }} />
           </div>
         </div>
@@ -565,9 +461,9 @@ export default function Dashboard() {
               <div style={{
                 padding: '32px',
                 textAlign: 'center',
-                color: '#64748b'
+                color: '#10b981'
               }}>
-                {hasActiveFilters ? 'Nenhum cliente encontrado com os filtros aplicados' : 'Todos os clientes estão saudáveis! 🎉'}
+                Todos os clientes estão saudáveis!
               </div>
             )}
           </div>

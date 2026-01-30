@@ -28,13 +28,7 @@ export const ALERTA_TIPOS = {
     icon: 'AlertTriangle',
     color: '#ef4444', // vermelho
   },
-  creditos_baixos: {
-    value: 'creditos_baixos',
-    label: 'Créditos AI Baixos',
-    description: 'Poucos créditos de AI restantes',
-    icon: 'Zap',
-    color: '#8b5cf6', // roxo
-  },
+  // creditos_baixos: desativado temporariamente (sem trigger implementado)
 };
 
 // Prioridades
@@ -135,6 +129,10 @@ export function gerarAlertasSemUso(clientes, metricas, alertasExistentes) {
     // Pular inativos/cancelados
     if (cliente.status === 'inativo' || cliente.status === 'cancelado') continue;
 
+    // Pular se não tem dados de última interação (não podemos determinar inatividade)
+    const ultimaInteracao = cliente.ultima_interacao;
+    if (!ultimaInteracao) continue;
+
     // Verificar se já existe alerta pendente
     const alertaExistente = alertasExistentes.find(
       a => a.tipo === 'sem_uso_plataforma' &&
@@ -143,11 +141,11 @@ export function gerarAlertasSemUso(clientes, metricas, alertasExistentes) {
     );
     if (alertaExistente) continue;
 
-    // Verificar último uso (baseado em métricas ou última interação)
-    const ultimaInteracao = cliente.ultima_interacao;
+    // Verificar último uso
     const dias = calcularDiasSemContato(ultimaInteracao);
 
-    if (dias >= DIAS_LIMITE) {
+    // Só gerar alerta se temos dados válidos (menos de 365 dias indica dado real)
+    if (dias >= DIAS_LIMITE && dias < 365) {
       alertas.push({
         tipo: 'sem_uso_plataforma',
         titulo: `${dias} dias sem uso da plataforma`,
@@ -324,7 +322,7 @@ export function verificarTodosAlertas(clientes, threads, alertasExistentes, metr
     ...gerarAlertasSentimentoNegativo(threads, alertasExistentes),
     ...gerarAlertasRespostaPendente(threads, alertasExistentes),
     ...gerarAlertasProblemaReclamacao(threads, alertasExistentes),
-    ...gerarAlertasCreditosBaixos(clientes, alertasExistentes),
+    // gerarAlertasCreditosBaixos desativado - trigger não implementado
   ];
 
   return novosAlertas;
