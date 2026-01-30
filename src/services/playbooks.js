@@ -14,6 +14,7 @@ import {
   Timestamp,
   serverTimestamp
 } from 'firebase/firestore';
+import { isClickUpConfigured, criarTarefaClickUp } from './clickup';
 
 // Status possíveis do playbook aplicado
 export const PLAYBOOK_STATUS = {
@@ -69,11 +70,23 @@ export async function buscarPlaybook(playbookId) {
 
 /**
  * Aplicar um playbook a um cliente
+ * @param {string} clienteId - ID do cliente
+ * @param {string} playbookId - ID do playbook template
+ * @param {Date} dataInicio - Data de início
+ * @param {Object} opcoes - Opções adicionais
+ * @param {boolean} opcoes.criarTarefasClickUp - Se deve criar tarefas no ClickUp (default: true)
  */
-export async function aplicarPlaybook(clienteId, playbookId, dataInicio = new Date()) {
+export async function aplicarPlaybook(clienteId, playbookId, dataInicio = new Date(), opcoes = {}) {
+  const { criarTarefasClickUp: deveCriarClickUp = true } = opcoes;
+
   try {
-    // Buscar o template do playbook
-    const playbook = await buscarPlaybook(playbookId);
+    // Buscar o template do playbook e dados do cliente
+    const [playbook, clienteDoc] = await Promise.all([
+      buscarPlaybook(playbookId),
+      getDoc(doc(db, 'clientes', clienteId))
+    ]);
+
+    const cliente = clienteDoc.exists() ? { id: clienteDoc.id, ...clienteDoc.data() } : { id: clienteId };
 
     // Calcular datas das etapas
     const etapasComDatas = playbook.etapas.map(etapa => {
@@ -86,13 +99,34 @@ export async function aplicarPlaybook(clienteId, playbookId, dataInicio = new Da
         status: 'pendente',
         concluida_em: null,
         concluida_por: null,
-        observacoes: ''
+        observacoes: '',
+        clickup_task_id: null,
+        clickup_task_url: null
       };
     });
 
     // Calcular data prevista de fim
     const dataPrevisaoFim = new Date(dataInicio);
     dataPrevisaoFim.setDate(dataPrevisaoFim.getDate() + playbook.duracao_estimada_dias);
+
+    // Criar tarefas no ClickUp se configurado
+    if (deveCriarClickUp && isClickUpConfigured()) {
+      const { criarTarefaPlaybook } = await import('./clickup');
+
+      for (let i = 0; i < etapasComDatas.length; i++) {
+        const etapa = etapasComDatas[i];
+        try {
+          const tarefaClickUp = await criarTarefaPlaybook(etapa, playbook, cliente);
+          if (tarefaClickUp) {
+            etapasComDatas[i].clickup_task_id = tarefaClickUp.id;
+            etapasComDatas[i].clickup_task_url = tarefaClickUp.url;
+          }
+        } catch (err) {
+          console.error(`Erro ao criar tarefa ClickUp para etapa ${etapa.ordem}:`, err);
+          // Continua mesmo se falhar
+        }
+      }
+    }
 
     // Criar o playbook aplicado
     const playbookAplicado = {
@@ -103,6 +137,7 @@ export async function aplicarPlaybook(clienteId, playbookId, dataInicio = new Da
       status: 'em_andamento',
       progresso: 0,
       etapas: etapasComDatas,
+      clickup_enabled: deveCriarClickUp && isClickUpConfigured(),
       created_at: serverTimestamp(),
       updated_at: serverTimestamp()
     };

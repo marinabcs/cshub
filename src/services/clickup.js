@@ -38,7 +38,9 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
     nome = `[CS Hub] ${alerta.titulo}`,
     descricao = montarDescricao(alerta),
     prioridade = PRIORIDADE_MAP[alerta.prioridade] || 3,
-    responsavelId = null
+    responsavelId = null,
+    dataVencimento = null,
+    listId = null
   } = opcoes;
 
   const body = {
@@ -52,7 +54,20 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
     body.assignees = [parseInt(responsavelId)];
   }
 
-  const response = await fetch(`${BASE_URL}/list/${CLICKUP_LIST_ID}/task`, {
+  // Adicionar data de vencimento se fornecida (ClickUp espera timestamp em ms)
+  if (dataVencimento) {
+    const dueDate = dataVencimento instanceof Date
+      ? dataVencimento
+      : dataVencimento.toDate
+        ? dataVencimento.toDate()
+        : new Date(dataVencimento);
+    body.due_date = dueDate.getTime();
+  }
+
+  // Usar list ID customizado ou padrão
+  const targetListId = listId || CLICKUP_LIST_ID;
+
+  const response = await fetch(`${BASE_URL}/list/${targetListId}/task`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -75,6 +90,46 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
     nome: tarefa.name,
     status: tarefa.status?.status
   };
+}
+
+/**
+ * Criar tarefa no ClickUp para etapa de playbook
+ */
+export async function criarTarefaPlaybook(etapa, playbook, cliente, opcoes = {}) {
+  if (!isClickUpConfigured()) {
+    console.warn('ClickUp não configurado - pulando criação de tarefa');
+    return null;
+  }
+
+  const nome = `[${playbook.nome}] ${etapa.titulo}`;
+  const descricao = `
+**Playbook:** ${playbook.nome}
+**Cliente:** ${cliente.team_name || cliente.nome || 'N/A'}
+**Etapa:** ${etapa.ordem}/${playbook.etapas?.length || '?'}
+
+**Descrição da Etapa:**
+${etapa.descricao || 'Sem descrição'}
+
+${etapa.obrigatoria ? '⚠️ **Etapa obrigatória**' : ''}
+
+---
+_Criado automaticamente pelo CS Hub - Playbooks_
+  `.trim();
+
+  try {
+    const result = await criarTarefaClickUp({}, {
+      nome,
+      descricao,
+      prioridade: etapa.obrigatoria ? 2 : 3, // Alta para obrigatórias, Normal para opcionais
+      dataVencimento: etapa.prazo_data,
+      ...opcoes
+    });
+
+    return result;
+  } catch (error) {
+    console.error(`Erro ao criar tarefa ClickUp para etapa ${etapa.ordem}:`, error);
+    return null;
+  }
 }
 
 /**
