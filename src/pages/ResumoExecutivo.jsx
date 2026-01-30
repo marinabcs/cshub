@@ -396,20 +396,25 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
               </div>
 
               {showClienteDropdown && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  marginTop: '4px',
-                  background: '#1a1033',
-                  border: '1px solid rgba(139, 92, 246, 0.3)',
-                  borderRadius: '12px',
-                  maxHeight: '300px',
-                  overflow: 'hidden',
-                  zIndex: 50,
-                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
-                }}>
+                <>
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+                    onClick={() => setShowClienteDropdown(false)}
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: '4px',
+                    background: '#1a1033',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    maxHeight: '300px',
+                    overflow: 'hidden',
+                    zIndex: 50,
+                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+                  }}>
                   <div style={{ padding: '12px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
                     <div style={{ position: 'relative' }}>
                       <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#64748b' }} />
@@ -476,6 +481,7 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                     })}
                   </div>
                 </div>
+                </>
               )}
             </div>
 
@@ -531,7 +537,9 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                     color: 'white',
                     fontSize: '13px',
                     outline: 'none',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    colorScheme: 'dark',
+                    WebkitAppearance: 'none'
                   }}
                 />
               </div>
@@ -549,7 +557,9 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                     color: 'white',
                     fontSize: '13px',
                     outline: 'none',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    colorScheme: 'dark',
+                    WebkitAppearance: 'none'
                   }}
                 />
               </div>
@@ -942,13 +952,6 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
         </div>
       </div>
 
-      {/* Click outside to close dropdown */}
-      {showClienteDropdown && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-          onClick={() => setShowClienteDropdown(false)}
-        />
-      )}
     </div>
   );
 }
