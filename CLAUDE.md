@@ -139,3 +139,91 @@ style={{
 3. **Classificação IA**: OpenAI GPT-4o-mini com fallback para classificação manual
 4. **Auditoria**: Append-only, nunca permite update/delete
 5. **Health Score**: Cálculo diário automático via job agendado
+
+---
+
+## 🔗 Integração ClickUp (Janeiro 2026)
+
+### Status: Implementado parcialmente ✅
+
+**O que está funcionando:**
+- ✅ Criação automática de tarefas no ClickUp ao criar alertas
+- ✅ Criação de tarefas para etapas de playbooks
+- ✅ Múltiplos responsáveis (assignees) nas tarefas
+- ✅ Nome do cliente no título das tarefas
+- ✅ Data de vencimento automática (3 dias)
+- ✅ Fechamento de tarefas ao cancelar playbook
+- ✅ Sincronização manual (botão em Configurações)
+- ✅ Mapeamento de status bidirecional
+
+**Mapeamento de Status CS Hub ↔ ClickUp:**
+```javascript
+const STATUS_CSHUB_TO_CLICKUP = {
+  'pendente': 'pendente',
+  'em_andamento': 'em andamento',
+  'concluida': 'resolvido',
+  'pulada': 'ignorado',
+  'bloqueado': 'bloqueado',
+  'resolvido': 'resolvido',
+  'ignorado': 'ignorado',
+  'cancelado': 'ignorado'
+};
+```
+
+**Variáveis de ambiente necessárias:**
+```
+VITE_CLICKUP_API_KEY=pk_xxxxxx
+VITE_CLICKUP_LIST_ID=xxxxxxx
+VITE_CLICKUP_TEAM_ID=xxxxxxx
+```
+
+---
+
+## 🐛 BUG PENDENTE - Alertas não encontram clientes (30/01/2026)
+
+### Problema:
+Os alertas de sentimento negativo não estão sendo criados porque o cliente não é encontrado no `clientesMap`.
+
+### Sintoma nos logs:
+```
+[Alerta Sentimento] Thread: clienteId=651b546c5d1c6eea66d8b1f1, cliente encontrado=false
+[Alerta Sentimento] Cliente não encontrado, pulando
+```
+
+### Causa provável:
+O `team_id` nas threads (ex: `651b546c5d1c6eea66d8b1f1` - formato MongoDB) não bate com o `id` dos clientes no Firestore (que é o doc.id do Firestore).
+
+### O que foi feito:
+1. Adicionado mapeamento múltiplo no `clientesMap` (id, team_id, _id, teamId, mongo_id)
+2. Adicionado logs detalhados em `/src/utils/alertas.js` para debug
+
+### Para resolver:
+1. Verificar nos logs do console qual campo do cliente contém o ID que bate com `thread.team_id`
+2. Ao rodar a verificação de alertas, os logs vão mostrar:
+   - Exemplo completo de um cliente (todos os campos)
+   - Exemplo de uma thread (campos relevantes)
+   - Se há match entre os IDs
+3. Provavelmente precisa verificar se o Firestore doc.id dos clientes É o ID MongoDB, ou se está em outro campo
+
+### Arquivos relevantes:
+- `/src/utils/alertas.js` - Função `verificarTodosAlertas` e `gerarAlertasSentimentoNegativo`
+- `/src/hooks/useAlertas.js` - Hook `useVerificarAlertas`
+
+---
+
+## 🔒 PENDÊNCIAS DE SEGURANÇA
+
+### A revisar:
+1. API keys expostas no frontend (VITE_* são visíveis)
+2. Validação de inputs do usuário
+3. Regras de segurança do Firebase
+4. Rate limiting nas APIs
+
+---
+
+## ⚡ PENDÊNCIAS DE PERFORMANCE
+
+### A otimizar:
+1. Queries que buscam todos os documentos (getDocs sem filtro)
+2. Verificação de alertas processa todas as threads
+3. Considerar paginação para listas grandes

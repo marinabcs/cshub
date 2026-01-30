@@ -14,7 +14,7 @@ import {
   Timestamp,
   serverTimestamp
 } from 'firebase/firestore';
-import { isClickUpConfigured, criarTarefaClickUp } from './clickup';
+import { isClickUpConfigured, criarTarefaClickUp, atualizarStatusTarefaClickUp, buscarTarefaClickUp, STATUS_CSHUB_TO_CLICKUP, STATUS_CLICKUP_TO_ETAPA } from './clickup';
 
 // Status possíveis do playbook aplicado
 export const PLAYBOOK_STATUS = {
@@ -196,13 +196,15 @@ export async function atualizarEtapa(clienteId, playbookAtivoId, ordemEtapa, nov
       throw new Error('Etapa não encontrada');
     }
 
+    const etapaAtual = etapas[etapaIndex];
+
     // Atualizar a etapa
     etapas[etapaIndex] = {
-      ...etapas[etapaIndex],
+      ...etapaAtual,
       status: novoStatus,
       concluida_em: novoStatus === 'concluida' ? Timestamp.now() : null,
       concluida_por: novoStatus === 'concluida' ? usuarioEmail : null,
-      observacoes: observacoes || etapas[etapaIndex].observacoes
+      observacoes: observacoes || etapaAtual.observacoes
     };
 
     // Calcular progresso
@@ -222,6 +224,19 @@ export async function atualizarEtapa(clienteId, playbookAtivoId, ordemEtapa, nov
       updated_at: serverTimestamp()
     });
 
+    // Sincronizar com ClickUp se a etapa tem task_id
+    if (etapaAtual.clickup_task_id && isClickUpConfigured()) {
+      try {
+        const statusClickUp = STATUS_CSHUB_TO_CLICKUP[novoStatus];
+        if (statusClickUp) {
+          await atualizarStatusTarefaClickUp(etapaAtual.clickup_task_id, statusClickUp);
+        }
+      } catch (clickupError) {
+        console.error('Erro ao sincronizar etapa com ClickUp:', clickupError);
+        // Não falha a operação se ClickUp der erro
+      }
+    }
+
     return {
       success: true,
       progresso,
@@ -239,13 +254,52 @@ export async function atualizarEtapa(clienteId, playbookAtivoId, ordemEtapa, nov
 export async function cancelarPlaybook(clienteId, playbookAtivoId) {
   try {
     const docRef = doc(db, 'clientes', clienteId, 'playbooks_ativos', playbookAtivoId);
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      throw new Error('Playbook não encontrado');
+    }
+
+    const playbook = docSnap.data();
 
     await updateDoc(docRef, {
       status: 'cancelado',
       updated_at: serverTimestamp()
     });
 
-    return { success: true };
+    // Fechar TODAS as tarefas no ClickUp (não só pendentes)
+    let tarefasFechadas = 0;
+    let tarefasErro = 0;
+    const detalhesErros = [];
+
+    if (isClickUpConfigured() && playbook.etapas) {
+      // Pegar todas as etapas que têm clickup_task_id, independente do status
+      const etapasComClickUp = playbook.etapas.filter(e => e.clickup_task_id);
+
+      console.log(`[Cancelar Playbook] Total etapas: ${playbook.etapas.length}, Com ClickUp ID: ${etapasComClickUp.length}`);
+      console.log(`[Cancelar Playbook] IDs das tarefas:`, etapasComClickUp.map(e => e.clickup_task_id));
+
+      for (const etapa of etapasComClickUp) {
+        try {
+          console.log(`[Cancelar Playbook] Fechando tarefa ${etapa.clickup_task_id}...`);
+          await atualizarStatusTarefaClickUp(etapa.clickup_task_id, 'ignorado');
+          tarefasFechadas++;
+          console.log(`[Cancelar Playbook] Tarefa ${etapa.clickup_task_id} fechada com sucesso`);
+          // Pequeno delay para evitar rate limit
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (clickupError) {
+          console.error(`[Cancelar Playbook] Erro ao fechar tarefa ${etapa.clickup_task_id}:`, clickupError.message);
+          tarefasErro++;
+          detalhesErros.push({ taskId: etapa.clickup_task_id, erro: clickupError.message });
+        }
+      }
+
+      console.log(`[Cancelar Playbook] Concluído: ${tarefasFechadas} fechadas, ${tarefasErro} erros`);
+    } else {
+      console.log(`[Cancelar Playbook] ClickUp não configurado ou sem etapas`);
+    }
+
+    return { success: true, tarefasFechadas, tarefasErro, detalhesErros };
   } catch (error) {
     console.error('Erro ao cancelar playbook:', error);
     throw error;
@@ -301,4 +355,117 @@ export function formatarPrazo(prazoData, status) {
   }
 
   return { texto: `Até ${formatarData(prazoData)}`, cor: '#94a3b8' };
+}
+
+/**
+ * Sincronizar status das etapas de playbooks com ClickUp
+ * Busca status atualizado do ClickUp e atualiza no CS Hub
+ */
+export async function sincronizarPlaybooksComClickUp() {
+  if (!isClickUpConfigured()) {
+    return { success: false, error: 'ClickUp não está configurado' };
+  }
+
+  try {
+    // Buscar todos os clientes
+    const clientesSnap = await getDocs(collection(db, 'clientes'));
+
+    let totalPlaybooks = 0;
+    let totalEtapas = 0;
+    let etapasAtualizadas = 0;
+    let erros = 0;
+    const detalhes = [];
+
+    // Para cada cliente, buscar playbooks ativos
+    for (const clienteDoc of clientesSnap.docs) {
+      const clienteId = clienteDoc.id;
+      const playbooksRef = collection(db, 'clientes', clienteId, 'playbooks_ativos');
+      const playbooksSnap = await getDocs(playbooksRef);
+
+      for (const playbookDoc of playbooksSnap.docs) {
+        const playbook = playbookDoc.data();
+
+        // Só sincronizar playbooks em andamento
+        if (playbook.status !== 'em_andamento') continue;
+
+        totalPlaybooks++;
+        const etapas = [...(playbook.etapas || [])];
+        let playbookAtualizado = false;
+
+        for (let i = 0; i < etapas.length; i++) {
+          const etapa = etapas[i];
+
+          // Só sincronizar etapas pendentes com task_id
+          if (!etapa.clickup_task_id || etapa.status !== 'pendente') continue;
+
+          totalEtapas++;
+
+          try {
+            // Buscar status atual no ClickUp
+            const tarefaClickUp = await buscarTarefaClickUp(etapa.clickup_task_id);
+            const statusClickUp = tarefaClickUp.status?.status?.toLowerCase() || '';
+            const novoStatus = STATUS_CLICKUP_TO_ETAPA[statusClickUp];
+
+            if (novoStatus && novoStatus !== etapa.status) {
+              etapas[i] = {
+                ...etapa,
+                status: novoStatus,
+                concluida_em: novoStatus === 'concluida' ? Timestamp.now() : null,
+                concluida_por: novoStatus === 'concluida' ? 'Sincronizado do ClickUp' : null
+              };
+              playbookAtualizado = true;
+              etapasAtualizadas++;
+              detalhes.push({
+                cliente: clienteDoc.data().team_name || clienteId,
+                playbook: playbook.playbook_nome,
+                etapa: etapa.nome || `Etapa ${etapa.ordem}`,
+                de: etapa.status,
+                para: novoStatus
+              });
+            }
+
+            // Pequeno delay para evitar rate limit
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (e) {
+            console.error(`Erro ao sincronizar etapa ${etapa.clickup_task_id}:`, e);
+            erros++;
+          }
+        }
+
+        // Se houve atualizações, salvar o playbook
+        if (playbookAtualizado) {
+          // Recalcular progresso
+          const etapasObrigatorias = etapas.filter(e => e.obrigatoria);
+          const etapasConcluidas = etapasObrigatorias.filter(e => e.status === 'concluida' || e.status === 'pulada');
+          const progresso = etapasObrigatorias.length > 0
+            ? Math.round((etapasConcluidas.length / etapasObrigatorias.length) * 100)
+            : 0;
+
+          // Verificar se todas as etapas obrigatórias foram concluídas
+          const todasConcluidas = etapasObrigatorias.every(e => e.status === 'concluida' || e.status === 'pulada');
+          const novoStatusPlaybook = todasConcluidas ? 'concluido' : 'em_andamento';
+
+          await updateDoc(doc(db, 'clientes', clienteId, 'playbooks_ativos', playbookDoc.id), {
+            etapas,
+            progresso,
+            status: novoStatusPlaybook,
+            updated_at: serverTimestamp(),
+            clickup_sync_at: serverTimestamp()
+          });
+        }
+      }
+    }
+
+    return {
+      success: true,
+      totalPlaybooks,
+      totalEtapas,
+      etapasAtualizadas,
+      erros,
+      detalhes
+    };
+  } catch (error) {
+    console.error('Erro ao sincronizar playbooks com ClickUp:', error);
+    return { success: false, error: error.message };
+  }
 }

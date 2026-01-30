@@ -7,20 +7,6 @@ export const ALERTA_TIPOS = {
     icon: 'Clock',
     color: '#f59e0b', // amarelo
   },
-  sentimento_negativo: {
-    value: 'sentimento_negativo',
-    label: 'Sentimento Negativo',
-    description: 'Conversa com sentimento negativo detectado',
-    icon: 'Frown',
-    color: '#f97316', // laranja
-  },
-  resposta_pendente: {
-    value: 'resposta_pendente',
-    label: 'Resposta Pendente',
-    description: 'Aguardando resposta do lado da Trakto',
-    icon: 'MessageCircle',
-    color: '#3b82f6', // azul
-  },
   problema_reclamacao: {
     value: 'problema_reclamacao',
     label: 'Problema/Reclamação',
@@ -28,7 +14,16 @@ export const ALERTA_TIPOS = {
     icon: 'AlertTriangle',
     color: '#ef4444', // vermelho
   },
-  // creditos_baixos: desativado temporariamente (sem trigger implementado)
+  sentimento_negativo: {
+    value: 'sentimento_negativo',
+    label: 'Sentimento Negativo',
+    description: 'Conversa detectada com sentimento negativo ou urgente',
+    icon: 'Frown',
+    color: '#dc2626', // vermelho escuro
+  },
+  // DESATIVADOS TEMPORARIAMENTE:
+  // resposta_pendente: aguardando resposta da equipe
+  // creditos_baixos: créditos AI baixos
 };
 
 // Prioridades
@@ -70,6 +65,11 @@ export const ALERTA_STATUS = {
     value: 'em_andamento',
     label: 'Em Andamento',
     color: '#3b82f6',
+  },
+  bloqueado: {
+    value: 'bloqueado',
+    label: 'Bloqueado',
+    color: '#ef4444',
   },
   resolvido: {
     value: 'resolvido',
@@ -121,17 +121,43 @@ export function formatarTempoRelativo(timestamp) {
 }
 
 // Gerar alertas de sem uso da plataforma (15 dias)
-export function gerarAlertasSemUso(clientes, metricas, alertasExistentes) {
+export function gerarAlertasSemUso(clientes, metricas, alertasExistentes, threadsMap = {}) {
   const alertas = [];
   const DIAS_LIMITE = 15;
 
+  // Debug: contar clientes por motivo de skip
+  let skipInativo = 0, skipSemData = 0, skipAlertaExiste = 0, skipDiasInsuficientes = 0;
+
   for (const cliente of clientes) {
     // Pular inativos/cancelados
-    if (cliente.status === 'inativo' || cliente.status === 'cancelado') continue;
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') {
+      skipInativo++;
+      continue;
+    }
 
-    // Pular se não tem dados de última interação (não podemos determinar inatividade)
-    const ultimaInteracao = cliente.ultima_interacao;
-    if (!ultimaInteracao) continue;
+    // Tentar múltiplos campos possíveis para última interação
+    // 1. Campos diretos do cliente
+    // 2. Última thread do cliente
+    let ultimaInteracao = cliente.ultima_interacao || cliente.last_activity_at || cliente.ultimo_acesso;
+
+    // Se não tem no cliente, buscar nas threads
+    if (!ultimaInteracao && threadsMap[cliente.id]) {
+      const threadsCliente = threadsMap[cliente.id];
+      if (threadsCliente.length > 0) {
+        // Pegar a thread mais recente
+        const ultimaThread = threadsCliente.sort((a, b) => {
+          const dateA = a.updated_at?.toDate?.() || new Date(a.updated_at) || new Date(0);
+          const dateB = b.updated_at?.toDate?.() || new Date(b.updated_at) || new Date(0);
+          return dateB - dateA;
+        })[0];
+        ultimaInteracao = ultimaThread.updated_at;
+      }
+    }
+
+    if (!ultimaInteracao) {
+      skipSemData++;
+      continue;
+    }
 
     // Verificar se já existe alerta pendente
     const alertaExistente = alertasExistentes.find(
@@ -139,7 +165,10 @@ export function gerarAlertasSemUso(clientes, metricas, alertasExistentes) {
            a.cliente_id === cliente.id &&
            (a.status === 'pendente' || a.status === 'em_andamento')
     );
-    if (alertaExistente) continue;
+    if (alertaExistente) {
+      skipAlertaExiste++;
+      continue;
+    }
 
     // Verificar último uso
     const dias = calcularDiasSemContato(ultimaInteracao);
@@ -153,25 +182,65 @@ export function gerarAlertasSemUso(clientes, metricas, alertasExistentes) {
         prioridade: dias >= 30 ? 'alta' : 'media',
         status: 'pendente',
         time_id: cliente.times?.[0] || null,
-        time_name: null,
+        time_name: cliente.team_name || cliente.nome,
         cliente_id: cliente.id,
         cliente_nome: cliente.team_name || cliente.nome,
         thread_id: null,
         responsavel_email: cliente.responsavel_email || null,
         responsavel_nome: cliente.responsavel_nome || null,
       });
+    } else {
+      skipDiasInsuficientes++;
     }
+  }
+
+  // Log de debug
+  console.log(`[Alertas Sem Uso] Total clientes: ${clientes.length}`);
+  console.log(`[Alertas Sem Uso] Skip - Inativos/Cancelados: ${skipInativo}`);
+  console.log(`[Alertas Sem Uso] Skip - Sem data última interação: ${skipSemData}`);
+  console.log(`[Alertas Sem Uso] Skip - Já tem alerta: ${skipAlertaExiste}`);
+  console.log(`[Alertas Sem Uso] Skip - Menos de 15 dias ou mais de 365: ${skipDiasInsuficientes}`);
+  console.log(`[Alertas Sem Uso] Alertas gerados: ${alertas.length}`);
+  console.log(`[Alertas Sem Uso] Total threads no mapa: ${Object.keys(threadsMap).length} clientes com threads`);
+
+  // Mostrar alguns clientes ativos sem data para debug
+  const clientesSemData = clientes.filter(c =>
+    c.status !== 'inativo' && c.status !== 'cancelado' &&
+    !c.ultima_interacao && !c.last_activity_at && !c.ultimo_acesso &&
+    !threadsMap[c.id]
+  ).slice(0, 5);
+  if (clientesSemData.length > 0) {
+    console.log(`[Alertas Sem Uso] Exemplo de clientes sem data:`, clientesSemData.map(c => ({ id: c.id, nome: c.team_name, status: c.status })));
   }
 
   return alertas;
 }
 
 // Gerar alertas de sentimento negativo
-export function gerarAlertasSentimentoNegativo(threads, alertasExistentes) {
+export function gerarAlertasSentimentoNegativo(threads, alertasExistentes, clientesMap = {}) {
   const alertas = [];
 
   for (const thread of threads) {
     if (thread.sentimento !== 'negativo' && thread.sentimento !== 'urgente') continue;
+
+    // Buscar dados do cliente
+    const clienteId = thread.cliente_id || thread.team_id;
+    const cliente = clienteId ? clientesMap[clienteId] : null;
+
+    // Debug: mostrar status do cliente
+    console.log(`[Alerta Sentimento] Thread: clienteId=${clienteId}, cliente encontrado=${!!cliente}, status=${cliente?.status}, nome=${cliente?.team_name}`);
+
+    // Pular se cliente não foi encontrado (pode ser de cliente excluído)
+    if (!cliente) {
+      console.log(`[Alerta Sentimento] Cliente não encontrado, pulando`);
+      continue;
+    }
+
+    // Pular clientes inativos/cancelados
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') {
+      console.log(`[Alerta Sentimento] Pulando cliente inativo: ${cliente.team_name}`);
+      continue;
+    }
 
     // Verificar se já existe alerta pendente para esta thread
     const alertaExistente = alertasExistentes.find(
@@ -181,6 +250,15 @@ export function gerarAlertasSentimentoNegativo(threads, alertasExistentes) {
     );
     if (alertaExistente) continue;
 
+    const clienteNome = cliente?.team_name || cliente?.nome || thread.team_name || null;
+
+    // Pegar todos os responsáveis (array com itens OU fallback para single)
+    const responsaveis = (cliente?.responsaveis && cliente.responsaveis.length > 0)
+      ? cliente.responsaveis
+      : (cliente?.responsavel_email ? [{ email: cliente.responsavel_email, nome: cliente.responsavel_nome }] : []);
+
+    console.log(`[Alerta Sentimento] Cliente: ${clienteNome}, ID: ${clienteId}, resp_email: ${cliente?.responsavel_email}, Responsáveis:`, responsaveis);
+
     alertas.push({
       tipo: 'sentimento_negativo',
       titulo: `Conversa com sentimento ${thread.sentimento}`,
@@ -188,12 +266,13 @@ export function gerarAlertasSentimentoNegativo(threads, alertasExistentes) {
       prioridade: thread.sentimento === 'urgente' ? 'urgente' : 'alta',
       status: 'pendente',
       time_id: thread.team_id || null,
-      time_name: null,
-      cliente_id: thread.cliente_id || null,
-      cliente_nome: null,
+      time_name: clienteNome,
+      cliente_id: clienteId || null,
+      cliente_nome: clienteNome,
       thread_id: thread.id,
-      responsavel_email: null,
-      responsavel_nome: null,
+      responsaveis: responsaveis,
+      responsavel_email: responsaveis[0]?.email || null,
+      responsavel_nome: responsaveis.map(r => r.nome).join(', ') || null,
     });
   }
 
@@ -238,7 +317,7 @@ export function gerarAlertasRespostaPendente(threads, alertasExistentes) {
 }
 
 // Gerar alertas de problema/reclamação
-export function gerarAlertasProblemaReclamacao(threads, alertasExistentes) {
+export function gerarAlertasProblemaReclamacao(threads, alertasExistentes, clientesMap = {}) {
   const alertas = [];
   const CATEGORIAS_PROBLEMA = ['erro_bug', 'reclamacao', 'problema', 'bug', 'erro'];
 
@@ -249,6 +328,16 @@ export function gerarAlertasProblemaReclamacao(threads, alertasExistentes) {
 
     if (!isProblem) continue;
 
+    // Buscar dados do cliente
+    const clienteId = thread.cliente_id || thread.team_id;
+    const cliente = clienteId ? clientesMap[clienteId] : null;
+
+    // Pular se cliente não foi encontrado
+    if (!cliente) continue;
+
+    // Pular clientes inativos/cancelados
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') continue;
+
     // Verificar se já existe alerta pendente para esta thread
     const alertaExistente = alertasExistentes.find(
       a => a.tipo === 'problema_reclamacao' &&
@@ -257,6 +346,13 @@ export function gerarAlertasProblemaReclamacao(threads, alertasExistentes) {
     );
     if (alertaExistente) continue;
 
+    const clienteNome = cliente?.team_name || cliente?.nome || thread.team_name || null;
+
+    // Pegar todos os responsáveis (array com itens OU fallback para single)
+    const responsaveis = (cliente?.responsaveis && cliente.responsaveis.length > 0)
+      ? cliente.responsaveis
+      : (cliente?.responsavel_email ? [{ email: cliente.responsavel_email, nome: cliente.responsavel_nome }] : []);
+
     alertas.push({
       tipo: 'problema_reclamacao',
       titulo: `Problema reportado: ${thread.assunto || 'Sem assunto'}`,
@@ -264,12 +360,13 @@ export function gerarAlertasProblemaReclamacao(threads, alertasExistentes) {
       prioridade: 'alta',
       status: 'pendente',
       time_id: thread.team_id || null,
-      time_name: null,
-      cliente_id: thread.cliente_id || null,
-      cliente_nome: null,
+      time_name: clienteNome,
+      cliente_id: clienteId || null,
+      cliente_nome: clienteNome,
       thread_id: thread.id,
-      responsavel_email: null,
-      responsavel_nome: null,
+      responsaveis: responsaveis,
+      responsavel_email: responsaveis[0]?.email || null,
+      responsavel_nome: responsaveis.map(r => r.nome).join(', ') || null,
     });
   }
 
@@ -317,12 +414,84 @@ export function gerarAlertasCreditosBaixos(clientes, alertasExistentes, limiteCr
 
 // Executar todas as verificações
 export function verificarTodosAlertas(clientes, threads, alertasExistentes, metricas = []) {
+  console.log(`[Alertas] ========== INICIO VERIFICACAO ==========`);
+  console.log(`[Alertas] Total clientes recebidos: ${clientes.length}`);
+  console.log(`[Alertas] Total threads recebidas: ${threads.length}`);
+
+  // Mostrar campos de um cliente para debug
+  if (clientes.length > 0) {
+    const exemploCliente = clientes[0];
+    console.log(`[Alertas] CLIENTE EXEMPLO - todos os campos:`, JSON.stringify(exemploCliente, null, 2));
+  }
+
+  // Mostrar campos de uma thread para debug
+  if (threads.length > 0) {
+    const exemploThread = threads[0];
+    console.log(`[Alertas] THREAD EXEMPLO - campos relevantes:`, {
+      id: exemploThread.id,
+      team_id: exemploThread.team_id,
+      cliente_id: exemploThread.cliente_id,
+      assunto: exemploThread.assunto,
+      sentimento: exemploThread.sentimento
+    });
+  }
+
+  // Criar mapa de clientes para lookup rápido
+  // Mapear por TODOS os campos que podem ser IDs
+  const clientesMap = {};
+  for (const cliente of clientes) {
+    // Mapear pelo ID do documento Firestore
+    if (cliente.id) {
+      clientesMap[cliente.id] = cliente;
+    }
+    // Mapear pelo team_id
+    if (cliente.team_id) {
+      clientesMap[cliente.team_id] = cliente;
+    }
+    // Mapear pelo _id (formato MongoDB)
+    if (cliente._id) {
+      clientesMap[cliente._id] = cliente;
+    }
+    // Mapear pelo teamId (camelCase)
+    if (cliente.teamId) {
+      clientesMap[cliente.teamId] = cliente;
+    }
+    // Mapear pelo mongo_id se existir
+    if (cliente.mongo_id) {
+      clientesMap[cliente.mongo_id] = cliente;
+    }
+  }
+
+  console.log(`[Alertas] ClientesMap tem ${Object.keys(clientesMap).length} entradas`);
+  console.log(`[Alertas] Primeiros 10 IDs no mapa:`, Object.keys(clientesMap).slice(0, 10));
+
+  // Mostrar IDs das threads para comparação
+  const threadIds = threads.slice(0, 10).map(t => t.cliente_id || t.team_id);
+  console.log(`[Alertas] Primeiros 10 IDs nas threads:`, threadIds);
+
+  // Verificar se algum ID de thread existe no mapa
+  const matchCount = threadIds.filter(id => clientesMap[id]).length;
+  console.log(`[Alertas] Matches encontrados nos primeiros 10: ${matchCount}`);
+
+  // Criar mapa de threads por cliente
+  const threadsMap = {};
+  for (const thread of threads) {
+    const clienteId = thread.cliente_id || thread.team_id;
+    if (clienteId) {
+      if (!threadsMap[clienteId]) {
+        threadsMap[clienteId] = [];
+      }
+      threadsMap[clienteId].push(thread);
+    }
+  }
+
   const novosAlertas = [
-    ...gerarAlertasSemUso(clientes, metricas, alertasExistentes),
-    ...gerarAlertasSentimentoNegativo(threads, alertasExistentes),
-    ...gerarAlertasRespostaPendente(threads, alertasExistentes),
-    ...gerarAlertasProblemaReclamacao(threads, alertasExistentes),
-    // gerarAlertasCreditosBaixos desativado - trigger não implementado
+    ...gerarAlertasSemUso(clientes, metricas, alertasExistentes, threadsMap),
+    ...gerarAlertasProblemaReclamacao(threads, alertasExistentes, clientesMap),
+    ...gerarAlertasSentimentoNegativo(threads, alertasExistentes, clientesMap),
+    // DESATIVADOS TEMPORARIAMENTE:
+    // ...gerarAlertasRespostaPendente(threads, alertasExistentes),
+    // ...gerarAlertasCreditosBaixos(clientes, alertasExistentes),
   ];
 
   return novosAlertas;

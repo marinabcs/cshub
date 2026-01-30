@@ -422,42 +422,29 @@ export const calcularHealthScores = onRequest({
 
 /**
  * Mapeamento de status do ClickUp para status do CS Hub
- * Ajuste conforme os nomes dos seus status no ClickUp
+ *
+ * Status configurados no ClickUp:
+ * - PENDENTE (Not started)
+ * - EM ANDAMENTO (Active)
+ * - BLOQUEADO (Active)
+ * - RESOLVIDO (Done)
+ * - IGNORADO (Done)
  */
 const CLICKUP_STATUS_MAP = {
-  // Status que marcam como RESOLVIDO
-  'complete': 'resolvido',
-  'completed': 'resolvido',
-  'concluído': 'resolvido',
-  'concluido': 'resolvido',
-  'done': 'resolvido',
-  'closed': 'resolvido',
-  'fechado': 'resolvido',
+  // PENDENTE (Not started)
+  'pendente': 'pendente',
+
+  // EM ANDAMENTO (Active)
+  'em andamento': 'em_andamento',
+
+  // BLOQUEADO (Active)
+  'bloqueado': 'bloqueado',
+
+  // RESOLVIDO (Done)
   'resolvido': 'resolvido',
 
-  // Status que marcam como IGNORADO
-  'ignored': 'ignorado',
-  'ignorado': 'ignorado',
-  'cancelled': 'ignorado',
-  'cancelado': 'ignorado',
-  'wont do': 'ignorado',
-  'não fazer': 'ignorado',
-
-  // Status que marcam como EM ANDAMENTO
-  'in progress': 'em_andamento',
-  'em andamento': 'em_andamento',
-  'em progresso': 'em_andamento',
-  'working': 'em_andamento',
-  'doing': 'em_andamento',
-  'fazendo': 'em_andamento',
-
-  // Status que marcam como PENDENTE
-  'to do': 'pendente',
-  'open': 'pendente',
-  'aberto': 'pendente',
-  'pending': 'pendente',
-  'pendente': 'pendente',
-  'backlog': 'pendente'
+  // IGNORADO (Done)
+  'ignorado': 'ignorado'
 };
 
 /**

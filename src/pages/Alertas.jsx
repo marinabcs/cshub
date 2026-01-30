@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Clock, AlertTriangle, RefreshCw, Check, ChevronRight, ChevronDown, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye, Frown, MessageSquare, Zap } from 'lucide-react';
-import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas, useLimparAlertasAntigos, useLimparAlertasClientesInativos, useLimparAlertasInvalidos } from '../hooks/useAlertas';
+import { Bell, Clock, AlertTriangle, RefreshCw, Check, ChevronRight, ChevronDown, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye, Zap, Ban } from 'lucide-react';
+import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas, useLimparAlertasAntigos, useLimparAlertasClientesInativos, useLimparAlertasInvalidos, useSincronizarClickUp } from '../hooks/useAlertas';
 import {
   ALERTA_TIPOS,
   ALERTA_PRIORIDADES,
@@ -12,14 +12,12 @@ import {
   formatarTempoRelativo
 } from '../utils/alertas';
 import { isClickUpConfigured, criarTarefaClickUp, buscarMembrosClickUp, PRIORIDADES_CLICKUP } from '../services/clickup';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, getDocs, deleteDoc, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 // Mapeamento de ícones por tipo
 const TIPO_ICONS = {
   sem_uso_plataforma: Clock,
-  sentimento_negativo: Frown,
-  resposta_pendente: MessageSquare,
   problema_reclamacao: AlertTriangle,
 };
 
@@ -57,6 +55,122 @@ export default function Alertas() {
   const [criandoTarefa, setCriandoTarefa] = useState(false);
   const [loadingMembros, setLoadingMembros] = useState(false);
 
+  // Estado para deletar todos os alertas (TEMPORÁRIO)
+  const [deletandoTodos, setDeletandoTodos] = useState(false);
+  const [progressoDelete, setProgressoDelete] = useState({ atual: 0, total: 0 });
+
+  // Estado para criar alerta de teste (TEMPORÁRIO)
+  const [criandoTeste, setCriandoTeste] = useState(false);
+
+  // Função para deletar todos os alertas em batches (TEMPORÁRIO)
+  const handleDeletarTodosAlertas = async () => {
+    if (!confirm('ATENÇÃO: Isso vai deletar TODOS os alertas. Tem certeza?')) return;
+    if (!confirm('Última chance! Realmente deseja deletar todos os alertas?')) return;
+
+    setDeletandoTodos(true);
+    setProgressoDelete({ atual: 0, total: 0 });
+
+    try {
+      const alertasRef = collection(db, 'alertas');
+      const snapshot = await getDocs(alertasRef);
+
+      setProgressoDelete({ atual: 0, total: snapshot.size });
+
+      if (snapshot.empty) {
+        alert('Nenhum alerta para deletar.');
+        setDeletandoTodos(false);
+        return;
+      }
+
+      // Deletar em batches pequenos com delay para evitar quota
+      let deletados = 0;
+      const batchSize = 10;
+      const docs = snapshot.docs;
+
+      for (let i = 0; i < docs.length; i += batchSize) {
+        const batch = docs.slice(i, i + batchSize);
+
+        await Promise.all(batch.map(docSnap => deleteDoc(docSnap.ref)));
+
+        deletados += batch.length;
+        setProgressoDelete({ atual: deletados, total: docs.length });
+
+        // Pequeno delay entre batches para evitar rate limit
+        if (i + batchSize < docs.length) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      alert(`${deletados} alertas deletados com sucesso!`);
+      refetch();
+    } catch (error) {
+      console.error('Erro ao deletar alertas:', error);
+      alert(`Erro ao deletar: ${error.message}`);
+    } finally {
+      setDeletandoTodos(false);
+      setProgressoDelete({ atual: 0, total: 0 });
+    }
+  };
+
+  // Função para criar alerta de teste (TEMPORÁRIO)
+  const handleCriarAlertaTeste = async () => {
+    setCriandoTeste(true);
+
+    try {
+      const alertaTeste = {
+        tipo: 'problema_reclamacao',
+        titulo: 'Teste de integração ClickUp',
+        mensagem: 'Este é um alerta de teste para verificar a integração com o ClickUp.',
+        prioridade: 'media',
+        status: 'pendente',
+        cliente_id: null,
+        cliente_nome: 'Cliente Teste',
+        thread_id: null,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+        resolved_at: null,
+        clickup_task_id: null,
+        clickup_task_url: null
+      };
+
+      // 1. Criar alerta no Firebase
+      const docRef = await addDoc(collection(db, 'alertas'), alertaTeste);
+
+      // 2. Criar tarefa no ClickUp
+      if (isClickUpConfigured()) {
+        try {
+          const clickupResult = await criarTarefaClickUp(
+            alertaTeste,
+            {
+              nome: `[CS Hub] ${alertaTeste.titulo}`,
+              descricao: `**Cliente:** ${alertaTeste.cliente_nome}\n\n**Tipo:** ${alertaTeste.tipo}\n\n**Mensagem:**\n${alertaTeste.mensagem}\n\n---\n_Alerta de teste criado pelo CS Hub_`
+            }
+          );
+
+          if (clickupResult && clickupResult.id) {
+            await updateDoc(doc(db, 'alertas', docRef.id), {
+              clickup_task_id: clickupResult.id,
+              clickup_task_url: clickupResult.url
+            });
+            alert(`Alerta criado com sucesso!\n\nTarefa ClickUp: ${clickupResult.url}`);
+          }
+        } catch (clickupError) {
+          console.error('Erro ao criar tarefa no ClickUp:', clickupError);
+          alert(`Alerta criado, mas erro no ClickUp: ${clickupError.message}`);
+        }
+      } else {
+        alert('Alerta criado! (ClickUp não configurado)');
+      }
+
+      refetch();
+    } catch (error) {
+      console.error('Erro ao criar alerta de teste:', error);
+      alert(`Erro: ${error.message}`);
+    } finally {
+      setCriandoTeste(false);
+    }
+  };
+
   // Hooks
   const { alertas, loading, refetch } = useAlertas({
     tipos: filtroTipos.length > 0 ? filtroTipos : undefined,
@@ -69,6 +183,15 @@ export default function Alertas() {
   const { limparAlertasAntigos, limpando, resultado: resultadoLimpeza } = useLimparAlertasAntigos();
   const { limparAlertasClientesInativos, limpando: limpandoInativos, resultado: resultadoInativos } = useLimparAlertasClientesInativos();
   const { limparAlertasInvalidos, limpando: limpandoInvalidos, resultado: resultadoInvalidos } = useLimparAlertasInvalidos();
+  const { sincronizarComClickUp, sincronizando, resultado: resultadoSync } = useSincronizarClickUp();
+
+  // Handler para sincronizar com ClickUp
+  const handleSincronizarClickUp = async () => {
+    const result = await sincronizarComClickUp();
+    if (result.success) {
+      refetch();
+    }
+  };
 
   // Responsáveis únicos e tipos de time
   const responsaveis = [...new Set(alertas.map(a => a.responsavel_nome).filter(Boolean))].sort();
@@ -351,6 +474,73 @@ export default function Alertas() {
             <RefreshCw style={{ width: '18px', height: '18px', animation: verificando ? 'spin 1s linear infinite' : 'none' }} />
             {verificando ? 'Verificando...' : 'Verificar Novos Alertas'}
           </button>
+
+          {/* Botão de sincronização com ClickUp */}
+          <button
+            onClick={handleSincronizarClickUp}
+            disabled={sincronizando}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: sincronizando ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.15)',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '12px',
+              color: '#a78bfa',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: sincronizando ? 'not-allowed' : 'pointer'
+            }}
+            title="Buscar atualizações de status no ClickUp"
+          >
+            <ExternalLink style={{ width: '18px', height: '18px', animation: sincronizando ? 'spin 1s linear infinite' : 'none' }} />
+            {sincronizando ? 'Sincronizando...' : 'Sincronizar ClickUp'}
+          </button>
+
+          {/* BOTÕES TEMPORÁRIOS - REMOVER DEPOIS */}
+          <button
+            onClick={handleCriarAlertaTeste}
+            disabled={criandoTeste}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: criandoTeste ? 'rgba(16, 185, 129, 0.5)' : '#10b981',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: criandoTeste ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <Zap style={{ width: '18px', height: '18px', animation: criandoTeste ? 'spin 1s linear infinite' : 'none' }} />
+            {criandoTeste ? 'Criando...' : 'CRIAR TESTE'}
+          </button>
+          <button
+            onClick={handleDeletarTodosAlertas}
+            disabled={deletandoTodos}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: deletandoTodos ? 'rgba(239, 68, 68, 0.5)' : '#ef4444',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: deletandoTodos ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <AlertTriangle style={{ width: '18px', height: '18px', animation: deletandoTodos ? 'spin 1s linear infinite' : 'none' }} />
+            {deletandoTodos
+              ? `Deletando... ${progressoDelete.atual}/${progressoDelete.total}`
+              : 'DELETAR TODOS'}
+          </button>
         </div>
       </div>
 
@@ -374,6 +564,31 @@ export default function Alertas() {
           </div>
           <span style={{ color: '#64748b', fontSize: '13px' }}>
             {resultados.verificados.threads} conversas • {resultados.verificados.clientes} clientes
+            {resultados.clickupCriados > 0 && ` • ${resultados.clickupCriados} tarefas ClickUp`}
+          </span>
+        </div>
+      )}
+
+      {/* Resultado da sincronização ClickUp */}
+      {resultadoSync && resultadoSync.success && (
+        <div style={{
+          padding: '16px 20px',
+          background: 'rgba(139, 92, 246, 0.1)',
+          border: '1px solid rgba(139, 92, 246, 0.3)',
+          borderRadius: '12px',
+          marginBottom: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <ExternalLink style={{ width: '20px', height: '20px', color: '#a78bfa' }} />
+            <span style={{ color: '#a78bfa', fontWeight: '500' }}>
+              Sincronização concluída! {resultadoSync.atualizados} alerta{resultadoSync.atualizados !== 1 ? 's' : ''} atualizado{resultadoSync.atualizados !== 1 ? 's' : ''}.
+            </span>
+          </div>
+          <span style={{ color: '#64748b', fontSize: '13px' }}>
+            {resultadoSync.total} alertas verificados {resultadoSync.erros > 0 && `• ${resultadoSync.erros} erros`}
           </span>
         </div>
       )}

@@ -4,9 +4,12 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import {
   Save, CheckCircle, AlertTriangle, Sliders, Activity, Clock,
-  Bell, Link2, Zap, RefreshCw, XCircle, Play, Heart
+  Bell, Link2, Zap, RefreshCw, XCircle, Play, Heart, CloudDownload
 } from 'lucide-react';
 import { calcularTodosHealthScores } from '../services/healthScoreJob';
+import { isClickUpConfigured } from '../services/clickup';
+import { useSincronizarClickUp } from '../hooks/useAlertas';
+import { sincronizarPlaybooksComClickUp } from '../services/playbooks';
 
 export default function Configuracoes() {
   const [loading, setLoading] = useState(true);
@@ -21,6 +24,11 @@ export default function Configuracoes() {
   const [calculandoHealth, setCalculandoHealth] = useState(false);
   const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0, cliente: '', status: '' });
   const [healthResults, setHealthResults] = useState(null);
+
+  // Estado para sincronização do ClickUp
+  const [sincronizandoClickUp, setSincronizandoClickUp] = useState(false);
+  const [clickUpSyncResults, setClickUpSyncResults] = useState(null);
+  const { sincronizarComClickUp } = useSincronizarClickUp();
 
   // Pesos do Health Score (5 componentes conforme documentação)
   const [pesos, setPesos] = useState({
@@ -170,6 +178,35 @@ export default function Configuracoes() {
       setHealthResults({ erro: error.message });
     } finally {
       setCalculandoHealth(false);
+    }
+  };
+
+  // Sincronização completa com ClickUp (alertas + playbooks)
+  const runClickUpSync = async () => {
+    setSincronizandoClickUp(true);
+    setClickUpSyncResults(null);
+
+    try {
+      // Sincronizar alertas e playbooks em paralelo
+      const [alertasResult, playbooksResult] = await Promise.all([
+        sincronizarComClickUp(),
+        sincronizarPlaybooksComClickUp()
+      ]);
+
+      setClickUpSyncResults({
+        alertas: alertasResult,
+        playbooks: playbooksResult
+      });
+
+      // Salvar timestamp da última sincronização
+      const agora = new Date();
+      const syncDocRef = doc(db, 'config', 'clickup_sync');
+      await setDoc(syncDocRef, { ultima_sincronizacao: agora }, { merge: true });
+    } catch (error) {
+      console.error('Erro ao sincronizar com ClickUp:', error);
+      setClickUpSyncResults({ erro: error.message });
+    } finally {
+      setSincronizandoClickUp(false);
     }
   };
 
@@ -403,6 +440,121 @@ export default function Configuracoes() {
           </div>
         )}
       </div>
+
+      {/* Sincronização com ClickUp */}
+      {isClickUpConfigured() && (
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '20px', padding: '24px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '44px',
+                height: '44px',
+                background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <CloudDownload style={{ width: '22px', height: '22px', color: 'white' }} />
+              </div>
+              <div>
+                <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 4px 0' }}>Sincronizar com ClickUp</h2>
+                <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
+                  Atualiza status de alertas e etapas de playbooks a partir do ClickUp
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={runClickUpSync}
+              disabled={sincronizandoClickUp}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 24px',
+                background: sincronizandoClickUp ? 'rgba(6, 182, 212, 0.3)' : 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                border: 'none',
+                borderRadius: '12px',
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: sincronizandoClickUp ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {sincronizandoClickUp ? (
+                <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
+              ) : (
+                <RefreshCw style={{ width: '18px', height: '18px' }} />
+              )}
+              {sincronizandoClickUp ? 'Sincronizando...' : 'Sincronizar Agora'}
+            </button>
+          </div>
+
+          {/* Results */}
+          {clickUpSyncResults && !clickUpSyncResults.erro && (
+            <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <CheckCircle style={{ width: '18px', height: '18px', color: '#06b6d4' }} />
+                <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>Sincronização concluída!</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+                {/* Alertas */}
+                <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+                  <p style={{ color: '#8b5cf6', fontSize: '12px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Alertas</p>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <div>
+                      <p style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{clickUpSyncResults.alertas?.atualizados || 0}</p>
+                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Atualizados</p>
+                    </div>
+                    <div>
+                      <p style={{ color: '#64748b', fontSize: '20px', fontWeight: '700', margin: 0 }}>{clickUpSyncResults.alertas?.total || 0}</p>
+                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Verificados</p>
+                    </div>
+                  </div>
+                </div>
+                {/* Playbooks */}
+                <div style={{ padding: '16px', background: 'rgba(6, 182, 212, 0.1)', borderRadius: '12px', border: '1px solid rgba(6, 182, 212, 0.2)' }}>
+                  <p style={{ color: '#06b6d4', fontSize: '12px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Playbooks</p>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <div>
+                      <p style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{clickUpSyncResults.playbooks?.etapasAtualizadas || 0}</p>
+                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Etapas Atualizadas</p>
+                    </div>
+                    <div>
+                      <p style={{ color: '#64748b', fontSize: '20px', fontWeight: '700', margin: 0 }}>{clickUpSyncResults.playbooks?.totalPlaybooks || 0}</p>
+                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Playbooks</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Detalhes das atualizações */}
+              {((clickUpSyncResults.alertas?.detalhes?.length > 0) || (clickUpSyncResults.playbooks?.detalhes?.length > 0)) && (
+                <div style={{ marginTop: '16px', maxHeight: '150px', overflowY: 'auto' }}>
+                  <p style={{ color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Alterações:</p>
+                  {clickUpSyncResults.alertas?.detalhes?.map((d, i) => (
+                    <div key={`alerta-${i}`} style={{ fontSize: '12px', color: '#94a3b8', padding: '4px 0', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                      <span style={{ color: '#8b5cf6' }}>[Alerta]</span> {d.titulo}: {d.de} → {d.para}
+                    </div>
+                  ))}
+                  {clickUpSyncResults.playbooks?.detalhes?.map((d, i) => (
+                    <div key={`playbook-${i}`} style={{ fontSize: '12px', color: '#94a3b8', padding: '4px 0', borderBottom: '1px solid rgba(6, 182, 212, 0.1)' }}>
+                      <span style={{ color: '#06b6d4' }}>[Playbook]</span> {d.cliente} - {d.etapa}: {d.de} → {d.para}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {clickUpSyncResults?.erro && (
+            <div style={{ marginTop: '16px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <XCircle style={{ width: '18px', height: '18px', color: '#ef4444' }} />
+              <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {clickUpSyncResults.erro}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         {/* COLUNA ESQUERDA */}
@@ -794,18 +946,18 @@ export default function Configuracoes() {
                   </div>
                   <div>
                     <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>ClickUp</p>
-                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Tarefas (em breve)</p>
+                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Alertas e Playbooks</p>
                   </div>
                 </div>
                 <span style={{
                   padding: '4px 10px',
-                  background: 'rgba(100, 116, 139, 0.2)',
-                  color: '#64748b',
+                  background: clickUpStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.2)',
+                  color: clickUpStatus?.configured ? '#10b981' : '#64748b',
                   borderRadius: '6px',
                   fontSize: '11px',
                   fontWeight: '500'
                 }}>
-                  V2
+                  {clickUpStatus?.configured ? 'Ativo' : 'Inativo'}
                 </span>
               </div>
             </div>

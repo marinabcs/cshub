@@ -34,11 +34,18 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
     throw new Error('ClickUp não está configurado. Verifique as variáveis de ambiente.');
   }
 
+  // Nome do cliente para incluir no título
+  const clienteNome = alerta.cliente_nome || alerta.time_name || '';
+  const tituloComCliente = clienteNome
+    ? `[CS Hub] ${clienteNome} - ${alerta.titulo}`
+    : `[CS Hub] ${alerta.titulo}`;
+
   const {
-    nome = `[CS Hub] ${alerta.titulo}`,
+    nome = tituloComCliente,
     descricao = montarDescricao(alerta),
     prioridade = PRIORIDADE_MAP[alerta.prioridade] || 3,
     responsavelId = null,
+    responsaveisIds = [], // Array de IDs para múltiplos responsáveis
     dataVencimento = null,
     listId = null
   } = opcoes;
@@ -49,8 +56,10 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
     priority: prioridade
   };
 
-  // Adicionar responsável se fornecido
-  if (responsavelId) {
+  // Adicionar responsáveis (múltiplos ou único)
+  if (responsaveisIds && responsaveisIds.length > 0) {
+    body.assignees = responsaveisIds.map(id => parseInt(id));
+  } else if (responsavelId) {
     body.assignees = [parseInt(responsavelId)];
   }
 
@@ -92,6 +101,59 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
   };
 }
 
+// Cache de membros do ClickUp para evitar múltiplas requisições
+let membrosCache = null;
+let membrosCacheTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
+/**
+ * Buscar ID do usuário no ClickUp pelo email
+ */
+async function buscarUsuarioClickUpPorEmail(email) {
+  if (!email) return null;
+
+  // Verificar cache
+  const agora = Date.now();
+  if (!membrosCache || agora - membrosCacheTime > CACHE_DURATION) {
+    membrosCache = await buscarMembrosClickUp();
+    membrosCacheTime = agora;
+  }
+
+  const membro = membrosCache.find(m =>
+    m.email?.toLowerCase() === email.toLowerCase()
+  );
+
+  return membro?.id || null;
+}
+
+/**
+ * Buscar IDs de múltiplos usuários no ClickUp pelos emails
+ * @param {Array} emails - Array de emails
+ * @returns {Array} Array de IDs do ClickUp
+ */
+export async function buscarUsuariosClickUpPorEmails(emails) {
+  if (!emails || emails.length === 0) return [];
+
+  // Verificar cache
+  const agora = Date.now();
+  if (!membrosCache || agora - membrosCacheTime > CACHE_DURATION) {
+    membrosCache = await buscarMembrosClickUp();
+    membrosCacheTime = agora;
+  }
+
+  const ids = [];
+  for (const email of emails) {
+    const membro = membrosCache.find(m =>
+      m.email?.toLowerCase() === email.toLowerCase()
+    );
+    if (membro?.id) {
+      ids.push(membro.id);
+    }
+  }
+
+  return ids;
+}
+
 /**
  * Criar tarefa no ClickUp para etapa de playbook
  */
@@ -101,10 +163,25 @@ export async function criarTarefaPlaybook(etapa, playbook, cliente, opcoes = {})
     return null;
   }
 
-  const nome = `[${playbook.nome}] ${etapa.titulo}`;
+  // Pegar o nome da etapa (pode ser 'titulo', 'nome' ou 'name')
+  const nomeEtapa = etapa.titulo || etapa.nome || etapa.name || `Etapa ${etapa.ordem}`;
+
+  // Pegar nome do cliente
+  const clienteNome = cliente.team_name || cliente.nome || 'N/A';
+
+  // Título inclui: [Playbook] Cliente - Etapa
+  const nome = `[${playbook.nome}] ${clienteNome} - ${nomeEtapa}`;
+
+  // Pegar todos os responsáveis do cliente (array ou fallback para single)
+  const responsaveisEmails = cliente.responsaveis?.map(r => r.email) ||
+                             (cliente.responsavel_email ? [cliente.responsavel_email] : []);
+  const responsaveisNomes = cliente.responsaveis?.map(r => r.nome).join(', ') ||
+                            cliente.responsavel_nome || 'N/A';
+
   const descricao = `
 **Playbook:** ${playbook.nome}
-**Cliente:** ${cliente.team_name || cliente.nome || 'N/A'}
+**Cliente:** ${clienteNome}
+**Responsáveis:** ${responsaveisNomes}
 **Etapa:** ${etapa.ordem}/${playbook.etapas?.length || '?'}
 
 **Descrição da Etapa:**
@@ -117,11 +194,18 @@ _Criado automaticamente pelo CS Hub - Playbooks_
   `.trim();
 
   try {
+    // Buscar IDs de TODOS os responsáveis no ClickUp pelos emails
+    let responsaveisIds = [];
+    if (responsaveisEmails.length > 0) {
+      responsaveisIds = await buscarUsuariosClickUpPorEmails(responsaveisEmails);
+    }
+
     const result = await criarTarefaClickUp({}, {
       nome,
       descricao,
       prioridade: etapa.obrigatoria ? 2 : 3, // Alta para obrigatórias, Normal para opcionais
       dataVencimento: etapa.prazo_data,
+      responsaveisIds,
       ...opcoes
     });
 
@@ -228,3 +312,53 @@ export async function buscarTarefaClickUp(taskId) {
 
   return await response.json();
 }
+
+/**
+ * Atualizar status de uma tarefa no ClickUp
+ * @param {string} taskId - ID da tarefa
+ * @param {string} status - Nome do status (PENDENTE, EM ANDAMENTO, RESOLVIDO, IGNORADO, BLOQUEADO)
+ */
+export async function atualizarStatusTarefaClickUp(taskId, status) {
+  if (!CLICKUP_API_KEY) {
+    throw new Error('ClickUp não está configurado.');
+  }
+
+  const response = await fetch(`${BASE_URL}/task/${taskId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': CLICKUP_API_KEY
+    },
+    body: JSON.stringify({
+      status: status.toLowerCase()
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.err || 'Erro ao atualizar tarefa no ClickUp');
+  }
+
+  return await response.json();
+}
+
+// Mapeamento de status CS Hub → ClickUp
+export const STATUS_CSHUB_TO_CLICKUP = {
+  'pendente': 'pendente',
+  'em_andamento': 'em andamento',
+  'concluida': 'resolvido',
+  'pulada': 'ignorado',
+  'bloqueado': 'bloqueado',
+  'resolvido': 'resolvido',
+  'ignorado': 'ignorado',
+  'cancelado': 'ignorado'
+};
+
+// Mapeamento de status ClickUp → CS Hub (etapas)
+export const STATUS_CLICKUP_TO_ETAPA = {
+  'pendente': 'pendente',
+  'em andamento': 'pendente', // etapa não tem "em andamento", fica pendente
+  'bloqueado': 'pendente',    // etapa não tem "bloqueado", fica pendente
+  'resolvido': 'concluida',
+  'ignorado': 'pulada'
+};
