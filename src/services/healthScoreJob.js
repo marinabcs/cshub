@@ -38,28 +38,22 @@ export async function calcularTodosHealthScores(onProgress = null) {
   try {
     // 1. Buscar todos os clientes
     const clientesSnap = await getDocs(collection(db, 'clientes'));
-    results.total = clientesSnap.size;
+
+    // Filtrar apenas clientes ativos para otimizar
+    const clientesAtivos = clientesSnap.docs.filter(doc => {
+      const status = doc.data().status;
+      return status !== 'inativo' && status !== 'cancelado';
+    });
+
+    results.total = clientesAtivos.length;
+    results.pulados = clientesSnap.size - clientesAtivos.length; // Contabilizar pulados
 
     let processados = 0;
 
-    for (const clienteDoc of clientesSnap.docs) {
+    for (const clienteDoc of clientesAtivos) {
       const clienteData = clienteDoc.data();
       const clienteId = clienteDoc.id;
       const clienteNome = clienteData.team_name || clienteData.nome || clienteId;
-
-      // Pular clientes inativos ou cancelados
-      if (clienteData.status === 'inativo' || clienteData.status === 'cancelado') {
-        results.pulados++;
-        results.detalhes.push({
-          id: clienteId,
-          nome: clienteNome,
-          status: clienteData.status,
-          pulado: true
-        });
-        processados++;
-        if (onProgress) onProgress(processados, results.total, clienteNome, 'pulado');
-        continue;
-      }
 
       try {
         // Determinar teamIds

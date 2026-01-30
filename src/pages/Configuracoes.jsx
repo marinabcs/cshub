@@ -1,23 +1,19 @@
 // Configurações do Sistema
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import {
-  Settings, Save, CheckCircle, AlertTriangle, Sliders, Activity, Clock,
-  Bell, Link2, Zap, Users, ExternalLink, RefreshCw, XCircle, Play, Heart
+  Save, CheckCircle, AlertTriangle, Sliders, Activity, Clock,
+  Bell, Link2, Zap, RefreshCw, XCircle, Play, Heart
 } from 'lucide-react';
 import { calcularTodosHealthScores } from '../services/healthScoreJob';
 
 export default function Configuracoes() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Estado para testes de integração
-  const [testingClickUp, setTestingClickUp] = useState(false);
-  const [testingOpenAI, setTestingOpenAI] = useState(false);
+  // Estado para status de integrações
   const [clickUpStatus, setClickUpStatus] = useState(null);
   const [openAIStatus, setOpenAIStatus] = useState(null);
 
@@ -26,15 +22,39 @@ export default function Configuracoes() {
   const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0, cliente: '', status: '' });
   const [healthResults, setHealthResults] = useState(null);
 
-  // Pesos do Health Score
+  // Pesos do Health Score (5 componentes conforme documentação)
   const [pesos, setPesos] = useState({
-    engajamento: 20,
-    sentimento: 20,
-    tickets: 15,
+    engajamento: 25,
+    sentimento: 25,
+    tickets: 20,
     tempo_contato: 15,
-    uso_escala: 15,
-    uso_ai: 15
+    uso_plataforma: 15
   });
+
+  // Valores padrão para restaurar
+  const PESOS_PADRAO = {
+    engajamento: 25,
+    sentimento: 25,
+    tickets: 20,
+    tempo_contato: 15,
+    uso_plataforma: 15
+  };
+
+  const THRESHOLDS_PADRAO = {
+    saudavel: 80,
+    atencao: 60,
+    risco: 40,
+    critico: 0
+  };
+
+  const PARAMETROS_PADRAO = {
+    dias_sem_contato_alerta: 7,
+    dias_sem_contato_critico: 14,
+    dias_periodo_analise: 30
+  };
+
+  // Última execução do Health Score
+  const [ultimaExecucao, setUltimaExecucao] = useState(null);
 
   // Thresholds de status
   const [thresholds, setThresholds] = useState({
@@ -51,9 +71,8 @@ export default function Configuracoes() {
     dias_periodo_analise: 30
   });
 
-  // Configurações de alertas
+  // Configurações de alertas (sem dias - unificado em parâmetros)
   const [alertaConfig, setAlertaConfig] = useState({
-    dias_sem_contato_para_alerta: 7,
     alerta_sentimento_negativo: true,
     alerta_erro_bug: true,
     alerta_urgente_automatico: true
@@ -67,9 +86,29 @@ export default function Configuracoes() {
         const healthDocSnap = await getDoc(healthDocRef);
         if (healthDocSnap.exists()) {
           const data = healthDocSnap.data();
-          if (data.pesos) setPesos(data.pesos);
+          if (data.pesos) {
+            // Migrar de 6 para 5 componentes se necessário
+            const pesosCarregados = data.pesos;
+            if (pesosCarregados.uso_escala !== undefined || pesosCarregados.uso_ai !== undefined) {
+              // Formato antigo - migrar para novo
+              setPesos({
+                engajamento: pesosCarregados.engajamento || 25,
+                sentimento: pesosCarregados.sentimento || 25,
+                tickets: pesosCarregados.tickets || 20,
+                tempo_contato: pesosCarregados.tempo_contato || 15,
+                uso_plataforma: (pesosCarregados.uso_escala || 0) + (pesosCarregados.uso_ai || 0) || 15
+              });
+            } else if (pesosCarregados.uso_plataforma !== undefined) {
+              // Formato novo
+              setPesos(pesosCarregados);
+            } else {
+              // Usar padrões
+              setPesos(PESOS_PADRAO);
+            }
+          }
           if (data.thresholds) setThresholds(data.thresholds);
           if (data.parametros) setParametros(data.parametros);
+          if (data.ultima_execucao) setUltimaExecucao(data.ultima_execucao.toDate ? data.ultima_execucao.toDate() : new Date(data.ultima_execucao));
         }
 
         // Fetch Alert config
@@ -110,48 +149,6 @@ export default function Configuracoes() {
     });
   };
 
-  const testClickUp = async () => {
-    setTestingClickUp(true);
-    try {
-      const response = await fetch('https://api.clickup.com/api/v2/team', {
-        headers: {
-          'Authorization': import.meta.env.VITE_CLICKUP_API_KEY || ''
-        }
-      });
-
-      if (response.ok) {
-        setClickUpStatus(prev => ({ ...prev, tested: true, testResult: 'success' }));
-      } else {
-        setClickUpStatus(prev => ({ ...prev, tested: true, testResult: 'error', error: `HTTP ${response.status}` }));
-      }
-    } catch (error) {
-      setClickUpStatus(prev => ({ ...prev, tested: true, testResult: 'error', error: error.message }));
-    } finally {
-      setTestingClickUp(false);
-    }
-  };
-
-  const testOpenAI = async () => {
-    setTestingOpenAI(true);
-    try {
-      const response = await fetch('https://api.openai.com/v1/models', {
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY || ''}`
-        }
-      });
-
-      if (response.ok) {
-        setOpenAIStatus(prev => ({ ...prev, tested: true, testResult: 'success' }));
-      } else {
-        setOpenAIStatus(prev => ({ ...prev, tested: true, testResult: 'error', error: `HTTP ${response.status}` }));
-      }
-    } catch (error) {
-      setOpenAIStatus(prev => ({ ...prev, tested: true, testResult: 'error', error: error.message }));
-    } finally {
-      setTestingOpenAI(false);
-    }
-  };
-
   const runHealthScoreCalculation = async () => {
     setCalculandoHealth(true);
     setHealthResults(null);
@@ -162,12 +159,25 @@ export default function Configuracoes() {
         setHealthProgress({ current, total, cliente, status });
       });
       setHealthResults(results);
+
+      // Salvar timestamp da última execução
+      const agora = new Date();
+      setUltimaExecucao(agora);
+      const healthDocRef = doc(db, 'config', 'health_score');
+      await setDoc(healthDocRef, { ultima_execucao: agora }, { merge: true });
     } catch (error) {
       console.error('Erro ao calcular health scores:', error);
       setHealthResults({ erro: error.message });
     } finally {
       setCalculandoHealth(false);
     }
+  };
+
+  // Restaurar valores padrão
+  const restaurarPadroes = () => {
+    setPesos(PESOS_PADRAO);
+    setThresholds(THRESHOLDS_PADRAO);
+    setParametros(PARAMETROS_PADRAO);
   };
 
   const handleSave = async () => {
@@ -235,51 +245,49 @@ export default function Configuracoes() {
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>Configurações</h1>
           <p style={{ color: '#94a3b8', margin: 0 }}>Configure os parâmetros do sistema</p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving || !pesosValidos}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '12px 24px',
-            background: pesosValidos ? 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)' : 'rgba(100, 116, 139, 0.3)',
-            border: 'none',
-            borderRadius: '12px',
-            color: 'white',
-            fontSize: '14px',
-            fontWeight: '600',
-            cursor: pesosValidos ? 'pointer' : 'not-allowed',
-            opacity: saving ? 0.7 : 1,
-            boxShadow: pesosValidos ? '0 4px 20px rgba(139, 92, 246, 0.3)' : 'none'
-          }}
-        >
-          {saveSuccess ? <CheckCircle style={{ width: '18px', height: '18px' }} /> : <Save style={{ width: '18px', height: '18px' }} />}
-          {saving ? 'Salvando...' : saveSuccess ? 'Salvo!' : 'Salvar Configurações'}
-        </button>
-      </div>
-
-      {/* Links rápidos */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
-        <button
-          onClick={() => navigate('/configuracoes/usuarios')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '12px 20px',
-            background: 'rgba(30, 27, 75, 0.4)',
-            border: '1px solid rgba(139, 92, 246, 0.15)',
-            borderRadius: '12px',
-            color: '#94a3b8',
-            fontSize: '14px',
-            cursor: 'pointer'
-          }}
-        >
-          <Users style={{ width: '18px', height: '18px' }} />
-          Gerenciar Usuários
-          <ExternalLink style={{ width: '14px', height: '14px' }} />
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={restaurarPadroes}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: 'rgba(100, 116, 139, 0.2)',
+              border: '1px solid rgba(100, 116, 139, 0.3)',
+              borderRadius: '12px',
+              color: '#94a3b8',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer'
+            }}
+          >
+            <RefreshCw style={{ width: '16px', height: '16px' }} />
+            Restaurar Padrões
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !pesosValidos}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 24px',
+              background: pesosValidos ? 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)' : 'rgba(100, 116, 139, 0.3)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: pesosValidos ? 'pointer' : 'not-allowed',
+              opacity: saving ? 0.7 : 1,
+              boxShadow: pesosValidos ? '0 4px 20px rgba(139, 92, 246, 0.3)' : 'none'
+            }}
+          >
+            {saveSuccess ? <CheckCircle style={{ width: '18px', height: '18px' }} /> : <Save style={{ width: '18px', height: '18px' }} />}
+            {saving ? 'Salvando...' : saveSuccess ? 'Salvo!' : 'Salvar Configurações'}
+          </button>
+        </div>
       </div>
 
       {/* Job de Health Score */}
@@ -301,6 +309,11 @@ export default function Configuracoes() {
               <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 4px 0' }}>Cálculo de Health Score</h2>
               <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
                 Executado automaticamente após sincronização (7h30 e 13h30)
+                {ultimaExecucao && (
+                  <span style={{ color: '#10b981', marginLeft: '8px' }}>
+                    • Última execução: {ultimaExecucao.toLocaleDateString('pt-BR')} às {ultimaExecucao.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -429,10 +442,9 @@ export default function Configuracoes() {
               {[
                 { key: 'engajamento', label: 'Engajamento', desc: 'Frequência de interações' },
                 { key: 'sentimento', label: 'Sentimento', desc: 'Tom das conversas' },
-                { key: 'tickets', label: 'Tickets', desc: 'Volume de problemas' },
-                { key: 'tempo_contato', label: 'Tempo de Contato', desc: 'Dias desde última interação' },
-                { key: 'uso_escala', label: 'Uso em Escala', desc: 'Adoção de features' },
-                { key: 'uso_ai', label: 'Uso de IA', desc: 'Utilização de recursos AI' }
+                { key: 'tickets', label: 'Tickets Abertos', desc: 'Volume de problemas' },
+                { key: 'tempo_contato', label: 'Tempo sem Contato', desc: 'Dias desde última interação' },
+                { key: 'uso_plataforma', label: 'Uso da Plataforma', desc: 'Adoção de features e recursos' }
               ].map(item => (
                 <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
                   <div>
@@ -472,9 +484,57 @@ export default function Configuracoes() {
               <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Thresholds de Status</h2>
             </div>
 
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '16px' }}>
               Defina os limites de pontuação para cada status
             </p>
+
+            {/* Preview Visual */}
+            <div style={{ marginBottom: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px' }}>
+              <div style={{ display: 'flex', height: '32px', borderRadius: '8px', overflow: 'hidden' }}>
+                <div style={{
+                  width: `${100 - thresholds.saudavel}%`,
+                  background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <span style={{ color: 'white', fontSize: '11px', fontWeight: '600' }}>{thresholds.saudavel}+</span>
+                </div>
+                <div style={{
+                  width: `${thresholds.saudavel - thresholds.atencao}%`,
+                  background: 'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <span style={{ color: 'white', fontSize: '11px', fontWeight: '600' }}>{thresholds.atencao}-{thresholds.saudavel - 1}</span>
+                </div>
+                <div style={{
+                  width: `${thresholds.atencao - thresholds.risco}%`,
+                  background: 'linear-gradient(90deg, #f97316 0%, #ea580c 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <span style={{ color: 'white', fontSize: '11px', fontWeight: '600' }}>{thresholds.risco}-{thresholds.atencao - 1}</span>
+                </div>
+                <div style={{
+                  width: `${thresholds.risco}%`,
+                  background: 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <span style={{ color: 'white', fontSize: '11px', fontWeight: '600' }}>0-{thresholds.risco - 1}</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                <span style={{ color: '#ef4444', fontSize: '10px' }}>Crítico</span>
+                <span style={{ color: '#f97316', fontSize: '10px' }}>Risco</span>
+                <span style={{ color: '#f59e0b', fontSize: '10px' }}>Atenção</span>
+                <span style={{ color: '#10b981', fontSize: '10px' }}>Saudável</span>
+              </div>
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {[
@@ -534,34 +594,6 @@ export default function Configuracoes() {
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Dias sem contato */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div>
-                  <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Dias sem contato para alerta</p>
-                  <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Gerar alerta quando cliente não interagir</p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="number"
-                    min="1"
-                    value={alertaConfig.dias_sem_contato_para_alerta}
-                    onChange={(e) => handleAlertaConfigChange('dias_sem_contato_para_alerta', Number(e.target.value))}
-                    style={{
-                      width: '70px',
-                      padding: '8px 12px',
-                      background: '#0f0a1f',
-                      border: '1px solid #3730a3',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '14px',
-                      textAlign: 'center',
-                      outline: 'none'
-                    }}
-                  />
-                  <span style={{ color: '#64748b', fontSize: '14px' }}>dias</span>
-                </div>
-              </div>
-
               {/* Alerta para sentimento negativo */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
                 <div>
@@ -707,175 +739,74 @@ export default function Configuracoes() {
             </div>
           </div>
 
-          {/* SEÇÃO 5: Integrações */}
+          {/* SEÇÃO 5: Integrações (simplificado) */}
           <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
               <Link2 style={{ width: '20px', height: '20px', color: '#06b6d4' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Integrações</h2>
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Status das Integrações</h2>
             </div>
 
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              Status das integrações com serviços externos
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* ClickUp */}
-              <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                      width: '40px',
-                      height: '40px',
-                      background: clickUpStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                      borderRadius: '10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      <Zap style={{ width: '20px', height: '20px', color: clickUpStatus?.configured ? '#10b981' : '#ef4444' }} />
-                    </div>
-                    <div>
-                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>ClickUp</p>
-                      <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Gerenciamento de tarefas</p>
-                    </div>
-                  </div>
-                  <span style={{
-                    padding: '4px 12px',
-                    background: clickUpStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                    color: clickUpStatus?.configured ? '#10b981' : '#ef4444',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: '500'
-                  }}>
-                    {clickUpStatus?.configured ? 'Conectado' : 'Desconectado'}
-                  </span>
-                </div>
-
-                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
-                  <p style={{ margin: '0 0 4px 0' }}>API Key: {clickUpStatus?.apiKey}</p>
-                  <p style={{ margin: 0 }}>Team ID: {clickUpStatus?.teamId}</p>
-                </div>
-
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* OpenAI */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <button
-                    onClick={testClickUp}
-                    disabled={testingClickUp || !clickUpStatus?.configured}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 16px',
-                      background: clickUpStatus?.configured ? 'rgba(6, 182, 212, 0.2)' : 'rgba(100, 116, 139, 0.2)',
-                      border: '1px solid rgba(6, 182, 212, 0.3)',
-                      borderRadius: '8px',
-                      color: clickUpStatus?.configured ? '#06b6d4' : '#64748b',
-                      fontSize: '12px',
-                      cursor: clickUpStatus?.configured ? 'pointer' : 'not-allowed'
-                    }}
-                  >
-                    {testingClickUp ? (
-                      <RefreshCw style={{ width: '14px', height: '14px', animation: 'spin 1s linear infinite' }} />
-                    ) : (
-                      <RefreshCw style={{ width: '14px', height: '14px' }} />
-                    )}
-                    Testar Conexão
-                  </button>
-
-                  {clickUpStatus?.tested && (
-                    <span style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: '12px',
-                      color: clickUpStatus.testResult === 'success' ? '#10b981' : '#ef4444'
-                    }}>
-                      {clickUpStatus.testResult === 'success' ? (
-                        <><CheckCircle style={{ width: '14px', height: '14px' }} /> Conexão OK</>
-                      ) : (
-                        <><XCircle style={{ width: '14px', height: '14px' }} /> {clickUpStatus.error}</>
-                      )}
-                    </span>
-                  )}
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    background: openAIStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <Zap style={{ width: '18px', height: '18px', color: openAIStatus?.configured ? '#10b981' : '#ef4444' }} />
+                  </div>
+                  <div>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>OpenAI</p>
+                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Classificação de threads</p>
+                  </div>
                 </div>
+                <span style={{
+                  padding: '4px 10px',
+                  background: openAIStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                  color: openAIStatus?.configured ? '#10b981' : '#ef4444',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: '500'
+                }}>
+                  {openAIStatus?.configured ? 'Ativo' : 'Inativo'}
+                </span>
               </div>
 
-              {/* OpenAI */}
-              <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                      width: '40px',
-                      height: '40px',
-                      background: openAIStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                      borderRadius: '10px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      <Zap style={{ width: '20px', height: '20px', color: openAIStatus?.configured ? '#10b981' : '#ef4444' }} />
-                    </div>
-                    <div>
-                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>OpenAI</p>
-                      <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Classificação de threads com IA</p>
-                    </div>
-                  </div>
-                  <span style={{
-                    padding: '4px 12px',
-                    background: openAIStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                    color: openAIStatus?.configured ? '#10b981' : '#ef4444',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: '500'
-                  }}>
-                    {openAIStatus?.configured ? 'Conectado' : 'Desconectado'}
-                  </span>
-                </div>
-
-                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
-                  <p style={{ margin: 0 }}>API Key: {openAIStatus?.apiKey}</p>
-                </div>
-
+              {/* ClickUp */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <button
-                    onClick={testOpenAI}
-                    disabled={testingOpenAI || !openAIStatus?.configured}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 16px',
-                      background: openAIStatus?.configured ? 'rgba(6, 182, 212, 0.2)' : 'rgba(100, 116, 139, 0.2)',
-                      border: '1px solid rgba(6, 182, 212, 0.3)',
-                      borderRadius: '8px',
-                      color: openAIStatus?.configured ? '#06b6d4' : '#64748b',
-                      fontSize: '12px',
-                      cursor: openAIStatus?.configured ? 'pointer' : 'not-allowed'
-                    }}
-                  >
-                    {testingOpenAI ? (
-                      <RefreshCw style={{ width: '14px', height: '14px', animation: 'spin 1s linear infinite' }} />
-                    ) : (
-                      <RefreshCw style={{ width: '14px', height: '14px' }} />
-                    )}
-                    Testar Conexão
-                  </button>
-
-                  {openAIStatus?.tested && (
-                    <span style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: '12px',
-                      color: openAIStatus.testResult === 'success' ? '#10b981' : '#ef4444'
-                    }}>
-                      {openAIStatus.testResult === 'success' ? (
-                        <><CheckCircle style={{ width: '14px', height: '14px' }} /> Conexão OK</>
-                      ) : (
-                        <><XCircle style={{ width: '14px', height: '14px' }} /> {openAIStatus.error}</>
-                      )}
-                    </span>
-                  )}
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    background: clickUpStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.2)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <Zap style={{ width: '18px', height: '18px', color: clickUpStatus?.configured ? '#10b981' : '#64748b' }} />
+                  </div>
+                  <div>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>ClickUp</p>
+                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Tarefas (em breve)</p>
+                  </div>
                 </div>
+                <span style={{
+                  padding: '4px 10px',
+                  background: 'rgba(100, 116, 139, 0.2)',
+                  color: '#64748b',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: '500'
+                }}>
+                  V2
+                </span>
               </div>
             </div>
           </div>
