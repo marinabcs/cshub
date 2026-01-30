@@ -808,45 +808,50 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                             <span style={{ marginRight: '8px' }}>📊</span>
                             Health Score
                           </h3>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                            <div style={{
-                              width: '80px',
-                              height: '80px',
-                              borderRadius: '50%',
-                              background: `${getHealthColor(resumo.cliente.health_status)}15`,
-                              border: `3px solid ${getHealthColor(resumo.cliente.health_status)}`,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center'
-                            }}>
-                              <span style={{ fontSize: '28px', fontWeight: '700', color: getHealthColor(resumo.cliente.health_status) }}>
-                                {resumo.cliente.health_score || 0}
-                              </span>
-                            </div>
-                            <div>
-                              <p style={{ margin: '0 0 4px 0', color: '#64748b', fontSize: '14px' }}>
-                                Status: <span style={{ color: getHealthColor(resumo.cliente.health_status), fontWeight: '600' }}>
-                                  {getHealthLabel(resumo.cliente.health_status)}
-                                </span>
-                              </p>
-                              <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
-                                Tendência:{' '}
-                                {resumo.tendencia > 0 ? (
-                                  <span style={{ color: '#10b981' }}>
-                                    ↑ +{resumo.tendencia} pts
-                                  </span>
-                                ) : resumo.tendencia < 0 ? (
-                                  <span style={{ color: '#ef4444' }}>
-                                    ↓ {resumo.tendencia} pts
-                                  </span>
-                                ) : (
-                                  <span style={{ color: '#64748b' }}>
-                                    → Estável
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-                          </div>
+                          <table style={{ borderCollapse: 'collapse' }}>
+                            <tbody>
+                              <tr>
+                                <td style={{ verticalAlign: 'middle', paddingRight: '24px' }}>
+                                  <div style={{
+                                    width: '80px',
+                                    height: '80px',
+                                    borderRadius: '12px',
+                                    background: `${getHealthColor(resumo.cliente.health_status)}15`,
+                                    border: `3px solid ${getHealthColor(resumo.cliente.health_status)}`,
+                                    textAlign: 'center',
+                                    lineHeight: '74px'
+                                  }}>
+                                    <span style={{ fontSize: '28px', fontWeight: '700', color: getHealthColor(resumo.cliente.health_status) }}>
+                                      {resumo.cliente.health_score || 0}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={{ verticalAlign: 'middle' }}>
+                                  <p style={{ margin: '0 0 4px 0', color: '#64748b', fontSize: '14px' }}>
+                                    Status: <span style={{ color: getHealthColor(resumo.cliente.health_status), fontWeight: '600' }}>
+                                      {getHealthLabel(resumo.cliente.health_status)}
+                                    </span>
+                                  </p>
+                                  <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+                                    Tendência:{' '}
+                                    {resumo.tendencia > 0 ? (
+                                      <span style={{ color: '#10b981' }}>
+                                        ↑ +{resumo.tendencia} pts
+                                      </span>
+                                    ) : resumo.tendencia < 0 ? (
+                                      <span style={{ color: '#ef4444' }}>
+                                        ↓ {resumo.tendencia} pts
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: '#64748b' }}>
+                                        → Estável
+                                      </span>
+                                    )}
+                                  </p>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
                       )}
 
@@ -857,36 +862,40 @@ Seja específico e acionável nas recomendações. Use português brasileiro pro
                             <span style={{ marginRight: '8px' }}>⚡</span>
                             Métricas de Uso
                           </h3>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-                            <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
-                              <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>👥</p>
-                              <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
-                                {resumo.metricas.logins}
-                              </p>
-                              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Logins</p>
-                            </div>
-                            <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
-                              <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>🎨</p>
-                              <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
-                                {resumo.metricas.pecas_criadas}
-                              </p>
-                              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Peças Criadas</p>
-                            </div>
-                            <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
-                              <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>📥</p>
-                              <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
-                                {resumo.metricas.downloads}
-                              </p>
-                              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Downloads</p>
-                            </div>
-                            <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
-                              <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>✨</p>
-                              <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
-                                {resumo.metricas.uso_ai_total}
-                              </p>
-                              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Uso de IA</p>
-                            </div>
-                          </div>
+                          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '12px 0' }}>
+                            <tbody>
+                              <tr>
+                                <td style={{ width: '25%', padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
+                                  <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>👥</p>
+                                  <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
+                                    {resumo.metricas.logins}
+                                  </p>
+                                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Logins</p>
+                                </td>
+                                <td style={{ width: '25%', padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
+                                  <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>🎨</p>
+                                  <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
+                                    {resumo.metricas.pecas_criadas}
+                                  </p>
+                                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Peças Criadas</p>
+                                </td>
+                                <td style={{ width: '25%', padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
+                                  <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>📥</p>
+                                  <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
+                                    {resumo.metricas.downloads}
+                                  </p>
+                                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Downloads</p>
+                                </td>
+                                <td style={{ width: '25%', padding: '16px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center' }}>
+                                  <p style={{ margin: '0 0 8px 0', fontSize: '24px' }}>✨</p>
+                                  <p style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: '700', color: '#1e1b4b' }}>
+                                    {resumo.metricas.uso_ai_total}
+                                  </p>
+                                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Uso de IA</p>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
                       )}
 
