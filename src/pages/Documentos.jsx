@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { ClipboardList } from 'lucide-react';
 import {
   FileText, Plus, Search, Folder, FolderPlus, ExternalLink, Pencil, Trash2, X,
   ChevronDown, ChevronRight, Link2, File, FileImage, FileVideo, FileSpreadsheet,
@@ -36,6 +37,7 @@ export default function Documentos() {
   const { user } = useAuth();
   const [secoes, setSecoes] = useState([]);
   const [documentos, setDocumentos] = useState([]);
+  const [playbooks, setPlaybooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedSections, setExpandedSections] = useState(new Set());
@@ -64,27 +66,105 @@ export default function Documentos() {
 
   const fetchData = async () => {
     try {
-      const [secoesSnap, docsSnap] = await Promise.all([
+      const [secoesSnap, docsSnap, playbooksSnap] = await Promise.all([
         getDocs(collection(db, 'documentos_secoes')),
-        getDocs(collection(db, 'documentos'))
+        getDocs(collection(db, 'documentos')),
+        getDocs(collection(db, 'playbooks'))
       ]);
 
       const secoesData = secoesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const docsData = docsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const playbooksData = playbooksSnap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(p => p.ativo !== false);
 
-      // Ordenar seções por ordem ou nome
-      secoesData.sort((a, b) => (a.ordem || 0) - (b.ordem || 0) || (a.nome || '').localeCompare(b.nome || ''));
+      // Ordenar seções por mais acessadas, depois alfabeticamente
+      secoesData.sort((a, b) => {
+        const clicksA = a.clicks || 0;
+        const clicksB = b.clicks || 0;
+        if (clicksB !== clicksA) return clicksB - clicksA; // Mais cliques primeiro
+        return (a.nome || '').localeCompare(b.nome || '', 'pt-BR'); // Empate: alfabético
+      });
 
       setSecoes(secoesData);
       setDocumentos(docsData);
+      setPlaybooks(playbooksData);
 
       // Expandir todas as seções por padrão
       setExpandedSections(new Set(secoesData.map(s => s.id)));
+
+      // Auto-sincronizar seções de playbooks (silencioso)
+      const needsRefresh = await autoSyncPlaybookSections(secoesData, playbooksData);
+      if (needsRefresh) {
+        // Recarregar dados se novas seções foram criadas
+        const newSecoesSnap = await getDocs(collection(db, 'documentos_secoes'));
+        const newSecoesData = newSecoesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        newSecoesData.sort((a, b) => {
+          const clicksA = a.clicks || 0;
+          const clicksB = b.clicks || 0;
+          if (clicksB !== clicksA) return clicksB - clicksA;
+          return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
+        });
+        setSecoes(newSecoesData);
+        setExpandedSections(new Set(newSecoesData.map(s => s.id)));
+      }
     } catch (error) {
       console.error('Erro ao buscar documentos:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Sincronizar seções com playbooks automaticamente (silencioso)
+  const autoSyncPlaybookSections = async (currentSecoes, currentPlaybooks) => {
+    try {
+      let needsRefresh = false;
+
+      // Criar seção principal para cada playbook (se não existir)
+      for (const playbook of currentPlaybooks) {
+        const secaoExistente = currentSecoes.find(s => s.playbook_id === playbook.id && !s.etapa_ordem);
+
+        if (!secaoExistente) {
+          await addDoc(collection(db, 'documentos_secoes'), {
+            nome: playbook.nome,
+            descricao: playbook.descricao || `Documentos do playbook ${playbook.nome}`,
+            cor: '#8b5cf6',
+            playbook_id: playbook.id,
+            ordem: 0,
+            created_at: Timestamp.now(),
+            created_by: user?.email
+          });
+          needsRefresh = true;
+        }
+      }
+
+      return needsRefresh;
+    } catch (error) {
+      console.error('Erro ao sincronizar playbooks:', error);
+      return false;
+    }
+  };
+
+  // Obter documentos dos playbooks (cadastrados nas etapas)
+  const getPlaybookDocs = (playbookId) => {
+    const playbook = playbooks.find(p => p.id === playbookId);
+    if (!playbook || !playbook.etapas) return [];
+
+    const docs = [];
+    playbook.etapas.forEach(etapa => {
+      if (etapa.documentos && etapa.documentos.length > 0) {
+        etapa.documentos.forEach(docItem => {
+          docs.push({
+            ...docItem,
+            id: `pb_${playbookId}_${etapa.ordem}_${docItem.nome}`,
+            etapa_nome: etapa.nome,
+            etapa_ordem: etapa.ordem,
+            isPlaybookDoc: true
+          });
+        });
+      }
+    });
+    return docs;
   };
 
   // Filtrar documentos
@@ -105,8 +185,10 @@ export default function Documentos() {
     docsBySecao[secaoId].push(doc);
   });
 
-  // Toggle seção expandida
-  const toggleSection = (secaoId) => {
+  // Toggle seção expandida e registrar clique
+  const toggleSection = async (secaoId) => {
+    const wasExpanded = expandedSections.has(secaoId);
+
     setExpandedSections(prev => {
       const newSet = new Set(prev);
       if (newSet.has(secaoId)) {
@@ -116,6 +198,24 @@ export default function Documentos() {
       }
       return newSet;
     });
+
+    // Incrementar contador de cliques ao expandir (não ao colapsar)
+    if (!wasExpanded && secaoId !== 'sem_secao') {
+      try {
+        const secao = secoes.find(s => s.id === secaoId);
+        if (secao) {
+          await updateDoc(doc(db, 'documentos_secoes', secaoId), {
+            clicks: (secao.clicks || 0) + 1
+          });
+          // Atualizar localmente
+          setSecoes(prev => prev.map(s =>
+            s.id === secaoId ? { ...s, clicks: (s.clicks || 0) + 1 } : s
+          ));
+        }
+      } catch (error) {
+        console.error('Erro ao registrar clique:', error);
+      }
+    }
   };
 
   // Salvar seção
@@ -148,7 +248,7 @@ export default function Documentos() {
       setSecaoForm({ nome: '', descricao: '', cor: '#8b5cf6' });
     } catch (error) {
       console.error('Erro ao salvar seção:', error);
-      alert('Erro ao salvar seção');
+      alert(`Erro ao salvar seção: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -185,7 +285,7 @@ export default function Documentos() {
       setDocForm({ titulo: '', descricao: '', url: '', secao_id: '' });
     } catch (error) {
       console.error('Erro ao salvar documento:', error);
-      alert('Erro ao salvar documento');
+      alert(`Erro ao salvar documento: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -367,6 +467,8 @@ export default function Documentos() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {secoes.map(secao => {
           const docsNaSecao = docsBySecao[secao.id] || [];
+          const playbookDocsCount = secao.playbook_id ? getPlaybookDocs(secao.playbook_id).length : 0;
+          const totalDocs = docsNaSecao.length + playbookDocsCount;
           const isExpanded = expandedSections.has(secao.id);
 
           return (
@@ -387,7 +489,7 @@ export default function Documentos() {
                   justifyContent: 'space-between',
                   padding: '16px 20px',
                   background: `${secao.cor || '#8b5cf6'}10`,
-                  borderBottom: isExpanded && docsNaSecao.length > 0 ? '1px solid rgba(139, 92, 246, 0.1)' : 'none',
+                  borderBottom: isExpanded && totalDocs > 0 ? '1px solid rgba(139, 92, 246, 0.1)' : 'none',
                   cursor: 'pointer'
                 }}
                 onClick={() => toggleSection(secao.id)}
@@ -414,9 +516,28 @@ export default function Documentos() {
                     )}
                   </div>
                   <div>
-                    <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>
-                      {secao.nome}
-                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>
+                        {secao.nome}
+                      </h3>
+                      {secao.playbook_id && (
+                        <span style={{
+                          padding: '2px 6px',
+                          background: 'rgba(139, 92, 246, 0.2)',
+                          borderRadius: '4px',
+                          fontSize: '9px',
+                          fontWeight: '600',
+                          color: '#a78bfa',
+                          textTransform: 'uppercase',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}>
+                          <ClipboardList style={{ width: '10px', height: '10px' }} />
+                          {secao.etapa_ordem ? 'Etapa' : 'Playbook'}
+                        </span>
+                      )}
+                    </div>
                     {secao.descricao && (
                       <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0 0' }}>
                         {secao.descricao}
@@ -431,7 +552,7 @@ export default function Documentos() {
                     fontSize: '11px',
                     fontWeight: '600'
                   }}>
-                    {docsNaSecao.length}
+                    {totalDocs}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
@@ -483,112 +604,140 @@ export default function Documentos() {
               </div>
 
               {/* Lista de Documentos */}
-              {isExpanded && docsNaSecao.length > 0 && (
-                <div style={{ padding: '12px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {docsNaSecao.map(documento => {
-                      const fileType = getFileType(documento.url);
-                      const IconComponent = FILE_ICONS[fileType] || FILE_ICONS.default;
+              {isExpanded && (() => {
+                // Combinar documentos da seção + documentos do playbook
+                const playbookDocs = secao.playbook_id ? getPlaybookDocs(secao.playbook_id) : [];
+                const allDocs = [...docsNaSecao, ...playbookDocs];
 
-                      return (
-                        <div
-                          key={documento.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            padding: '12px 16px',
-                            background: 'rgba(15, 10, 31, 0.6)',
-                            borderRadius: '10px',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          <div style={{
-                            width: '40px',
-                            height: '40px',
-                            background: 'rgba(139, 92, 246, 0.1)',
-                            borderRadius: '10px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0
-                          }}>
-                            <IconComponent style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-                          </div>
+                if (allDocs.length === 0) {
+                  return (
+                    <div style={{ padding: '24px', textAlign: 'center' }}>
+                      <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
+                        Nenhum documento nesta seção
+                      </p>
+                    </div>
+                  );
+                }
 
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {documento.titulo}
-                            </p>
-                            {documento.descricao && (
-                              <p style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {documento.descricao}
-                              </p>
-                            )}
-                          </div>
+                return (
+                  <div style={{ padding: '12px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {allDocs.map(documento => {
+                        const fileType = getFileType(documento.url);
+                        const IconComponent = FILE_ICONS[fileType] || FILE_ICONS.default;
+                        const isFromPlaybook = documento.isPlaybookDoc;
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                            <a
-                              href={documento.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                padding: '8px 12px',
-                                background: 'rgba(6, 182, 212, 0.1)',
-                                border: '1px solid rgba(6, 182, 212, 0.3)',
-                                borderRadius: '8px',
-                                color: '#06b6d4',
-                                fontSize: '12px',
-                                fontWeight: '500',
-                                textDecoration: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px'
-                              }}
-                            >
-                              <ExternalLink style={{ width: '14px', height: '14px' }} />
-                              Abrir
-                            </a>
-                            <button
-                              onClick={() => openEditDoc(documento)}
-                              style={{
-                                padding: '8px',
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#64748b',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <Pencil style={{ width: '16px', height: '16px' }} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteDoc(documento)}
-                              style={{
-                                padding: '8px',
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#64748b',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <Trash2 style={{ width: '16px', height: '16px' }} />
-                            </button>
+                        return (
+                          <div
+                            key={documento.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '12px 16px',
+                              background: isFromPlaybook ? 'rgba(6, 182, 212, 0.05)' : 'rgba(15, 10, 31, 0.6)',
+                              border: isFromPlaybook ? '1px solid rgba(6, 182, 212, 0.15)' : 'none',
+                              borderRadius: '10px',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            <div style={{
+                              width: '40px',
+                              height: '40px',
+                              background: isFromPlaybook ? 'rgba(6, 182, 212, 0.15)' : 'rgba(139, 92, 246, 0.1)',
+                              borderRadius: '10px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0
+                            }}>
+                              <IconComponent style={{ width: '20px', height: '20px', color: isFromPlaybook ? '#06b6d4' : '#8b5cf6' }} />
+                            </div>
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {documento.titulo || documento.nome}
+                                </p>
+                                {isFromPlaybook && documento.etapa_nome && (
+                                  <span style={{
+                                    padding: '2px 8px',
+                                    background: 'rgba(6, 182, 212, 0.2)',
+                                    borderRadius: '6px',
+                                    fontSize: '10px',
+                                    fontWeight: '500',
+                                    color: '#06b6d4',
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    Etapa {documento.etapa_ordem}: {documento.etapa_nome}
+                                  </span>
+                                )}
+                              </div>
+                              {documento.descricao && (
+                                <p style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {documento.descricao}
+                                </p>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                              <a
+                                href={documento.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  padding: '8px 12px',
+                                  background: 'rgba(6, 182, 212, 0.1)',
+                                  border: '1px solid rgba(6, 182, 212, 0.3)',
+                                  borderRadius: '8px',
+                                  color: '#06b6d4',
+                                  fontSize: '12px',
+                                  fontWeight: '500',
+                                  textDecoration: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px'
+                                }}
+                              >
+                                <ExternalLink style={{ width: '14px', height: '14px' }} />
+                                Abrir
+                              </a>
+                              {!isFromPlaybook && (
+                                <>
+                                  <button
+                                    onClick={() => openEditDoc(documento)}
+                                    style={{
+                                      padding: '8px',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: '#64748b',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <Pencil style={{ width: '16px', height: '16px' }} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteDoc(documento)}
+                                    style={{
+                                      padding: '8px',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: '#64748b',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <Trash2 style={{ width: '16px', height: '16px' }} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {/* Mensagem de seção vazia */}
-              {isExpanded && docsNaSecao.length === 0 && (
-                <div style={{ padding: '24px', textAlign: 'center' }}>
-                  <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
-                    Nenhum documento nesta seção
-                  </p>
-                </div>
-              )}
+                );
+              })()}
             </div>
           );
         })}
