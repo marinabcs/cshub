@@ -9,8 +9,8 @@ import {
   Clock, TrendingUp, TrendingDown, Activity, Bell, CheckCircle,
   XCircle, Calendar, ArrowUpRight, ChevronDown, Lock
 } from 'lucide-react';
-import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 import { STATUS_OPTIONS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
+import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
 
 export default function MinhaCarteira() {
   const navigate = useNavigate();
@@ -25,10 +25,10 @@ export default function MinhaCarteira() {
   const [allClientes, setAllClientes] = useState([]); // Todos os clientes sem filtro de status
   const [stats, setStats] = useState({
     total: 0,
-    saudaveis: 0,
-    atencao: 0,
-    risco: 0,
-    critico: 0,
+    grow: 0,
+    nurture: 0,
+    watch: 0,
+    rescue: 0,
     threadsPendentes: 0,
     alertasPendentes: 0
   });
@@ -72,14 +72,14 @@ export default function MinhaCarteira() {
 
     setClientes(filtered);
 
-    // Recalcular stats baseado nos clientes filtrados
+    // Recalcular stats baseado nos clientes filtrados por segmento
     setStats(prev => ({
       ...prev,
       total: filtered.length,
-      saudaveis: filtered.filter(c => c.health_status === 'saudavel').length,
-      atencao: filtered.filter(c => c.health_status === 'atencao').length,
-      risco: filtered.filter(c => c.health_status === 'risco').length,
-      critico: filtered.filter(c => c.health_status === 'critico').length
+      grow: filtered.filter(c => getClienteSegmento(c) === 'GROW').length,
+      nurture: filtered.filter(c => getClienteSegmento(c) === 'NURTURE').length,
+      watch: filtered.filter(c => getClienteSegmento(c) === 'WATCH').length,
+      rescue: filtered.filter(c => getClienteSegmento(c) === 'RESCUE').length
     }));
   }, [filterStatus, allClientes]);
 
@@ -128,8 +128,9 @@ export default function MinhaCarteira() {
         clientesData = Array.from(clientesMap.values());
       }
 
-      // Ordenar por health_score (menor primeiro = mais crítico)
-      clientesData.sort((a, b) => (a.health_score || 0) - (b.health_score || 0));
+      // Ordenar por prioridade do segmento (mais críticos primeiro)
+      const segmentoOrder = { RESCUE: 1, WATCH: 2, NURTURE: 3, GROW: 4 };
+      clientesData.sort((a, b) => (segmentoOrder[getClienteSegmento(a)] || 5) - (segmentoOrder[getClienteSegmento(b)] || 5));
       setAllClientes(clientesData);
 
       // Aplicar filtro de status inicial
@@ -139,13 +140,13 @@ export default function MinhaCarteira() {
       }
       setClientes(filtered);
 
-      // Calcular stats baseado nos clientes FILTRADOS
+      // Calcular stats baseado nos clientes FILTRADOS por segmento
       const statsCalc = {
         total: filtered.length,
-        saudaveis: filtered.filter(c => c.health_status === 'saudavel').length,
-        atencao: filtered.filter(c => c.health_status === 'atencao').length,
-        risco: filtered.filter(c => c.health_status === 'risco').length,
-        critico: filtered.filter(c => c.health_status === 'critico').length,
+        grow: filtered.filter(c => getClienteSegmento(c) === 'GROW').length,
+        nurture: filtered.filter(c => getClienteSegmento(c) === 'NURTURE').length,
+        watch: filtered.filter(c => getClienteSegmento(c) === 'WATCH').length,
+        rescue: filtered.filter(c => getClienteSegmento(c) === 'RESCUE').length,
         threadsPendentes: 0,
         alertasPendentes: 0
       };
@@ -375,51 +376,51 @@ export default function MinhaCarteira() {
         </div>
 
         <div style={{
-          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(30, 27, 75, 0.4) 100%)',
-          border: '1px solid rgba(16, 185, 129, 0.2)',
+          background: `linear-gradient(135deg, ${SEGMENTOS_CS.GROW.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
+          border: `1px solid ${SEGMENTOS_CS.GROW.borderColor}`,
           borderRadius: '16px',
           padding: '20px',
           textAlign: 'center'
         }}>
-          <CheckCircle style={{ width: '24px', height: '24px', color: '#10b981', margin: '0 auto 8px' }} />
-          <p style={{ color: '#10b981', fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.saudaveis}</p>
-          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Saudáveis</p>
+          <TrendingUp style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.GROW.color, margin: '0 auto 8px' }} />
+          <p style={{ color: SEGMENTOS_CS.GROW.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.grow}</p>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Grow</p>
         </div>
 
         <div style={{
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(30, 27, 75, 0.4) 100%)',
-          border: '1px solid rgba(245, 158, 11, 0.2)',
+          background: `linear-gradient(135deg, ${SEGMENTOS_CS.NURTURE.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
+          border: `1px solid ${SEGMENTOS_CS.NURTURE.borderColor}`,
           borderRadius: '16px',
           padding: '20px',
           textAlign: 'center'
         }}>
-          <AlertTriangle style={{ width: '24px', height: '24px', color: '#f59e0b', margin: '0 auto 8px' }} />
-          <p style={{ color: '#f59e0b', fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.atencao}</p>
-          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Atenção</p>
+          <CheckCircle style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.NURTURE.color, margin: '0 auto 8px' }} />
+          <p style={{ color: SEGMENTOS_CS.NURTURE.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.nurture}</p>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Nurture</p>
         </div>
 
         <div style={{
-          background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.1) 0%, rgba(30, 27, 75, 0.4) 100%)',
-          border: '1px solid rgba(249, 115, 22, 0.2)',
+          background: `linear-gradient(135deg, ${SEGMENTOS_CS.WATCH.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
+          border: `1px solid ${SEGMENTOS_CS.WATCH.borderColor}`,
           borderRadius: '16px',
           padding: '20px',
           textAlign: 'center'
         }}>
-          <TrendingDown style={{ width: '24px', height: '24px', color: '#f97316', margin: '0 auto 8px' }} />
-          <p style={{ color: '#f97316', fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.risco}</p>
-          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Risco</p>
+          <AlertTriangle style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.WATCH.color, margin: '0 auto 8px' }} />
+          <p style={{ color: SEGMENTOS_CS.WATCH.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.watch}</p>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Watch</p>
         </div>
 
         <div style={{
-          background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(30, 27, 75, 0.4) 100%)',
-          border: '1px solid rgba(239, 68, 68, 0.2)',
+          background: `linear-gradient(135deg, ${SEGMENTOS_CS.RESCUE.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
+          border: `1px solid ${SEGMENTOS_CS.RESCUE.borderColor}`,
           borderRadius: '16px',
           padding: '20px',
           textAlign: 'center'
         }}>
-          <XCircle style={{ width: '24px', height: '24px', color: '#ef4444', margin: '0 auto 8px' }} />
-          <p style={{ color: '#ef4444', fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.critico}</p>
-          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Crítico</p>
+          <XCircle style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.RESCUE.color, margin: '0 auto 8px' }} />
+          <p style={{ color: SEGMENTOS_CS.RESCUE.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.rescue}</p>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Rescue</p>
         </div>
       </div>
 
@@ -441,7 +442,10 @@ export default function MinhaCarteira() {
 
           {clientes.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {clientes.map((cliente) => (
+              {clientes.map((cliente) => {
+                const segmento = getClienteSegmento(cliente);
+                const segmentoColor = getSegmentoColor(segmento);
+                return (
                 <div
                   key={cliente.id}
                   onClick={() => navigate(`/clientes/${cliente.id}`)}
@@ -451,26 +455,26 @@ export default function MinhaCarteira() {
                     gap: '16px',
                     padding: '16px',
                     background: 'rgba(15, 10, 31, 0.6)',
-                    border: `1px solid ${getHealthColor(cliente.health_status)}30`,
+                    border: `1px solid ${segmentoColor}30`,
                     borderRadius: '12px',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease'
                   }}
                 >
-                  {/* Health Score Circle */}
+                  {/* Segmento Badge */}
                   <div style={{
                     width: '48px',
                     height: '48px',
-                    borderRadius: '50%',
-                    background: `${getHealthColor(cliente.health_status)}20`,
-                    border: `2px solid ${getHealthColor(cliente.health_status)}`,
+                    borderRadius: '12px',
+                    background: `${segmentoColor}20`,
+                    border: `2px solid ${segmentoColor}`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0
                   }}>
-                    <span style={{ color: getHealthColor(cliente.health_status), fontSize: '14px', fontWeight: '700' }}>
-                      {cliente.health_score || 0}
+                    <span style={{ color: segmentoColor, fontSize: '11px', fontWeight: '700' }}>
+                      {segmento}
                     </span>
                   </div>
 
@@ -482,13 +486,13 @@ export default function MinhaCarteira() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <span style={{
                         padding: '2px 8px',
-                        background: `${getHealthColor(cliente.health_status)}20`,
-                        color: getHealthColor(cliente.health_status),
+                        background: `${segmentoColor}20`,
+                        color: segmentoColor,
                         borderRadius: '4px',
                         fontSize: '11px',
                         fontWeight: '500'
                       }}>
-                        {getHealthLabel(cliente.health_status)}
+                        {getSegmentoLabel(segmento)}
                       </span>
                       {cliente.ultima_interacao && (
                         <span style={{ color: '#64748b', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -502,7 +506,7 @@ export default function MinhaCarteira() {
                   {/* Arrow */}
                   <ChevronRight style={{ width: '20px', height: '20px', color: '#64748b', flexShrink: 0 }} />
                 </div>
-              ))}
+              );})}
             </div>
           ) : (
             <div style={{ padding: '48px', textAlign: 'center' }}>

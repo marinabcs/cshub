@@ -3,8 +3,8 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
 import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, ChevronRight, Circle, Bell, Frown, Briefcase } from 'lucide-react';
-import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 import { STATUS_OPTIONS } from '../utils/clienteStatus';
+import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
 import { useAlertasCount } from '../hooks/useAlertas';
 
 // Mapeamento de ícones por tipo de alerta
@@ -46,13 +46,13 @@ export default function Dashboard() {
     c.status !== 'inativo' && c.status !== 'cancelado'
   );
 
-  // Stats baseado em clientes ativos
+  // Stats baseado em clientes ativos por segmento
   const stats = {
     total: clientesAtivos.length,
-    saudaveis: clientesAtivos.filter(c => c.health_status === 'saudavel').length,
-    atencao: clientesAtivos.filter(c => c.health_status === 'atencao').length,
-    risco: clientesAtivos.filter(c => c.health_status === 'risco').length,
-    critico: clientesAtivos.filter(c => c.health_status === 'critico').length
+    grow: clientesAtivos.filter(c => getClienteSegmento(c) === 'GROW').length,
+    nurture: clientesAtivos.filter(c => getClienteSegmento(c) === 'NURTURE').length,
+    watch: clientesAtivos.filter(c => getClienteSegmento(c) === 'WATCH').length,
+    rescue: clientesAtivos.filter(c => getClienteSegmento(c) === 'RESCUE').length
   };
 
   // Stats por status do cliente (ciclo de vida) - inclui todos
@@ -64,10 +64,11 @@ export default function Dashboard() {
     cancelado: clientes.filter(c => c.status === 'cancelado').length
   };
 
-  // Clientes que precisam de atenção (apenas ativos)
+  // Clientes que precisam de atenção (WATCH e RESCUE - mais críticos primeiro)
+  const segmentoOrder = { RESCUE: 1, WATCH: 2, NURTURE: 3, GROW: 4 };
   const clientesAtencao = clientesAtivos
-    .filter(c => c.health_status !== 'saudavel')
-    .sort((a, b) => (a.health_score || 0) - (b.health_score || 0))
+    .filter(c => ['WATCH', 'RESCUE'].includes(getClienteSegmento(c)))
+    .sort((a, b) => (segmentoOrder[getClienteSegmento(a)] || 5) - (segmentoOrder[getClienteSegmento(b)] || 5))
     .slice(0, 5);
 
   const formatDate = (timestamp) => {
@@ -220,7 +221,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Saudáveis</p>
-            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.saudaveis}</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.grow + stats.nurture}</p>
           </div>
         </div>
 
@@ -248,7 +249,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Precisam Atenção</p>
-            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.atencao + stats.risco}</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.watch}</p>
           </div>
         </div>
 
@@ -276,7 +277,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Em Estado Crítico</p>
-            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.critico}</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.rescue}</p>
           </div>
         </div>
       </div>
@@ -414,13 +415,13 @@ export default function Dashboard() {
                       <span style={{ color: 'white', fontWeight: '500' }}>{cliente.team_name}</span>
                       <span style={{
                         padding: '2px 8px',
-                        background: `${getHealthColor(cliente.health_status)}20`,
-                        color: getHealthColor(cliente.health_status),
+                        background: `${getSegmentoColor(getClienteSegmento(cliente))}20`,
+                        color: getSegmentoColor(getClienteSegmento(cliente)),
                         borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: '500'
                       }}>
-                        {getHealthLabel(cliente.health_status)}
+                        {getSegmentoLabel(getClienteSegmento(cliente))}
                       </span>
                     </div>
                     <span style={{ color: '#64748b', fontSize: '13px' }}>
@@ -431,30 +432,6 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    marginBottom: '4px'
-                  }}>
-                    <div style={{
-                      width: '80px',
-                      height: '6px',
-                      background: 'rgba(255,255,255,0.1)',
-                      borderRadius: '3px',
-                      overflow: 'hidden'
-                    }}>
-                      <div style={{
-                        width: `${cliente.health_score || 0}%`,
-                        height: '100%',
-                        background: getHealthColor(cliente.health_status),
-                        borderRadius: '3px'
-                      }}></div>
-                    </div>
-                    <span style={{ color: getHealthColor(cliente.health_status), fontSize: '14px', fontWeight: '600' }}>
-                      {cliente.health_score || 0}%
-                    </span>
-                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b', fontSize: '12px' }}>
                     <Clock style={{ width: '12px', height: '12px' }} />
                     {formatDate(cliente.ultima_interacao)}
@@ -467,13 +444,13 @@ export default function Dashboard() {
                 textAlign: 'center',
                 color: '#10b981'
               }}>
-                Todos os clientes estão saudáveis!
+                Nenhum cliente precisa de atenção no momento!
               </div>
             )}
           </div>
         </div>
 
-        {/* Distribuição por Health Score */}
+        {/* Distribuição por Segmento CS */}
         <div style={{
           background: 'rgba(30, 27, 75, 0.4)',
           border: '1px solid rgba(139, 92, 246, 0.15)',
@@ -488,16 +465,16 @@ export default function Dashboard() {
           }}>
             <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
             <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>
-              Distribuição por Health Score
+              Distribuição por Segmento
             </h2>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {[
-              { label: 'Saudáveis', value: stats.saudaveis, color: '#10b981' },
-              { label: 'Atenção', value: stats.atencao, color: '#f59e0b' },
-              { label: 'Risco', value: stats.risco, color: '#f97316' },
-              { label: 'Crítico', value: stats.critico, color: '#ef4444' }
+              { label: 'Grow', value: stats.grow, color: SEGMENTOS_CS.GROW.color },
+              { label: 'Nurture', value: stats.nurture, color: SEGMENTOS_CS.NURTURE.color },
+              { label: 'Watch', value: stats.watch, color: SEGMENTOS_CS.WATCH.color },
+              { label: 'Rescue', value: stats.rescue, color: SEGMENTOS_CS.RESCUE.color }
             ].map((item, index) => (
               <div key={index}>
                 <div style={{
@@ -544,9 +521,9 @@ export default function Dashboard() {
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <span style={{ color: '#94a3b8', fontSize: '14px' }}>Taxa de clientes saudáveis</span>
-              <span style={{ color: '#10b981', fontSize: '20px', fontWeight: 'bold' }}>
-                {stats.total > 0 ? Math.round((stats.saudaveis / stats.total) * 100) : 0}%
+              <span style={{ color: '#94a3b8', fontSize: '14px' }}>Clientes com potencial (Grow)</span>
+              <span style={{ color: SEGMENTOS_CS.GROW.color, fontSize: '20px', fontWeight: 'bold' }}>
+                {stats.total > 0 ? Math.round((stats.grow / stats.total) * 100) : 0}%
               </span>
             </div>
           </div>

@@ -1,58 +1,49 @@
 // Configurações do Sistema
 import { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Save, CheckCircle, AlertTriangle, Sliders, Activity, Clock,
-  Bell, Link2, Zap, RefreshCw, XCircle, Play, Heart, CloudDownload
+  Bell, Link2, Zap, RefreshCw, XCircle, Play, Heart, CloudDownload, Lock, Eye
 } from 'lucide-react';
-import { calcularTodosHealthScores } from '../services/healthScoreJob';
+import { SEGMENTOS_CS } from '../utils/segmentoCS';
 import { isClickUpConfigured } from '../services/clickup';
 import { useSincronizarClickUp } from '../hooks/useAlertas';
 import { sincronizarPlaybooksComClickUp } from '../services/playbooks';
 
 export default function Configuracoes() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingRole, setCheckingRole] = useState(true);
 
   // Estado para status de integrações
   const [clickUpStatus, setClickUpStatus] = useState(null);
   const [openAIStatus, setOpenAIStatus] = useState(null);
-
-  // Estado para cálculo de Health Score
-  const [calculandoHealth, setCalculandoHealth] = useState(false);
-  const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0, cliente: '', status: '' });
-  const [healthResults, setHealthResults] = useState(null);
 
   // Estado para sincronização do ClickUp
   const [sincronizandoClickUp, setSincronizandoClickUp] = useState(false);
   const [clickUpSyncResults, setClickUpSyncResults] = useState(null);
   const { sincronizarComClickUp } = useSincronizarClickUp();
 
-  // Pesos do Health Score (5 componentes conforme documentação)
-  const [pesos, setPesos] = useState({
-    engajamento: 25,
-    sentimento: 25,
-    tickets: 20,
-    tempo_contato: 15,
-    uso_plataforma: 15
-  });
-
-  // Valores padrão para restaurar
-  const PESOS_PADRAO = {
-    engajamento: 25,
-    sentimento: 25,
-    tickets: 20,
-    tempo_contato: 15,
-    uso_plataforma: 15
-  };
-
-  const THRESHOLDS_PADRAO = {
-    saudavel: 80,
-    atencao: 60,
-    risco: 40,
-    critico: 0
+  // Parâmetros de Segmentação CS
+  const PARAMETROS_SEGMENTO_PADRAO = {
+    // Thresholds de dias sem uso
+    dias_sem_uso_watch: 14,
+    dias_sem_uso_rescue: 30,
+    // Thresholds de reclamações
+    dias_reclamacao_grave: 7,
+    dias_reclamacoes_recentes: 30,
+    // Thresholds de frequência (dias ativos no mês)
+    dias_ativos_frequente: 20,
+    dias_ativos_regular: 8,
+    dias_ativos_irregular: 3,
+    // Thresholds de engajamento (score)
+    engajamento_alto: 50,
+    engajamento_medio: 15
   };
 
   const PARAMETROS_PADRAO = {
@@ -61,15 +52,17 @@ export default function Configuracoes() {
     dias_periodo_analise: 30
   };
 
-  // Última execução do Health Score
-  const [ultimaExecucao, setUltimaExecucao] = useState(null);
-
-  // Thresholds de status
-  const [thresholds, setThresholds] = useState({
-    saudavel: 80,
-    atencao: 60,
-    risco: 40,
-    critico: 0
+  // Parâmetros de segmentação editáveis
+  const [segmentoConfig, setSegmentoConfig] = useState({
+    dias_sem_uso_watch: 14,
+    dias_sem_uso_rescue: 30,
+    dias_reclamacao_grave: 7,
+    dias_reclamacoes_recentes: 30,
+    dias_ativos_frequente: 20,
+    dias_ativos_regular: 8,
+    dias_ativos_irregular: 3,
+    engajamento_alto: 50,
+    engajamento_medio: 15
   });
 
   // Parâmetros de análise
@@ -78,6 +71,39 @@ export default function Configuracoes() {
     dias_sem_contato_critico: 14,
     dias_periodo_analise: 30
   });
+
+  // Verificar se usuário é admin
+  useEffect(() => {
+    const checkAdminRole = async () => {
+      if (!user?.email) {
+        setIsAdmin(false);
+        setCheckingRole(false);
+        return;
+      }
+
+      try {
+        const q = query(
+          collection(db, 'usuarios_sistema'),
+          where('email', '==', user.email)
+        );
+        const snapshot = await getDocs(q);
+
+        if (!snapshot.empty) {
+          const userData = snapshot.docs[0].data();
+          setIsAdmin(userData.role === 'admin' || userData.role === 'super_admin' || userData.role === 'gestor');
+        } else {
+          setIsAdmin(false);
+        }
+      } catch (error) {
+        console.error('Erro ao verificar role:', error);
+        setIsAdmin(false);
+      } finally {
+        setCheckingRole(false);
+      }
+    };
+
+    checkAdminRole();
+  }, [user?.email]);
 
   // Configurações de alertas (sem dias - unificado em parâmetros)
   const [alertaConfig, setAlertaConfig] = useState({
@@ -89,34 +115,13 @@ export default function Configuracoes() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        // Fetch Health Score config
-        const healthDocRef = doc(db, 'config', 'health_score');
-        const healthDocSnap = await getDoc(healthDocRef);
-        if (healthDocSnap.exists()) {
-          const data = healthDocSnap.data();
-          if (data.pesos) {
-            // Migrar de 6 para 5 componentes se necessário
-            const pesosCarregados = data.pesos;
-            if (pesosCarregados.uso_escala !== undefined || pesosCarregados.uso_ai !== undefined) {
-              // Formato antigo - migrar para novo
-              setPesos({
-                engajamento: pesosCarregados.engajamento || 25,
-                sentimento: pesosCarregados.sentimento || 25,
-                tickets: pesosCarregados.tickets || 20,
-                tempo_contato: pesosCarregados.tempo_contato || 15,
-                uso_plataforma: (pesosCarregados.uso_escala || 0) + (pesosCarregados.uso_ai || 0) || 15
-              });
-            } else if (pesosCarregados.uso_plataforma !== undefined) {
-              // Formato novo
-              setPesos(pesosCarregados);
-            } else {
-              // Usar padrões
-              setPesos(PESOS_PADRAO);
-            }
-          }
-          if (data.thresholds) setThresholds(data.thresholds);
+        // Fetch config geral
+        const configDocRef = doc(db, 'config', 'geral');
+        const configDocSnap = await getDoc(configDocRef);
+        if (configDocSnap.exists()) {
+          const data = configDocSnap.data();
           if (data.parametros) setParametros(data.parametros);
-          if (data.ultima_execucao) setUltimaExecucao(data.ultima_execucao.toDate ? data.ultima_execucao.toDate() : new Date(data.ultima_execucao));
+          if (data.segmentoConfig) setSegmentoConfig(data.segmentoConfig);
         }
 
         // Fetch Alert config
@@ -157,30 +162,6 @@ export default function Configuracoes() {
     });
   };
 
-  const runHealthScoreCalculation = async () => {
-    setCalculandoHealth(true);
-    setHealthResults(null);
-    setHealthProgress({ current: 0, total: 0, cliente: '', status: '' });
-
-    try {
-      const results = await calcularTodosHealthScores((current, total, cliente, status) => {
-        setHealthProgress({ current, total, cliente, status });
-      });
-      setHealthResults(results);
-
-      // Salvar timestamp da última execução
-      const agora = new Date();
-      setUltimaExecucao(agora);
-      const healthDocRef = doc(db, 'config', 'health_score');
-      await setDoc(healthDocRef, { ultima_execucao: agora }, { merge: true });
-    } catch (error) {
-      console.error('Erro ao calcular health scores:', error);
-      setHealthResults({ erro: error.message });
-    } finally {
-      setCalculandoHealth(false);
-    }
-  };
-
   // Sincronização completa com ClickUp (alertas + playbooks)
   const runClickUpSync = async () => {
     setSincronizandoClickUp(true);
@@ -212,21 +193,21 @@ export default function Configuracoes() {
 
   // Restaurar valores padrão
   const restaurarPadroes = () => {
-    setPesos(PESOS_PADRAO);
-    setThresholds(THRESHOLDS_PADRAO);
     setParametros(PARAMETROS_PADRAO);
+    setSegmentoConfig(PARAMETROS_SEGMENTO_PADRAO);
   };
 
   const handleSave = async () => {
+    if (!isAdmin) return;
+
     setSaving(true);
     setSaveSuccess(false);
     try {
-      // Save Health Score config
-      const healthDocRef = doc(db, 'config', 'health_score');
-      await setDoc(healthDocRef, {
-        pesos,
-        thresholds,
+      // Save config geral (inclui segmentoConfig)
+      const configDocRef = doc(db, 'config', 'geral');
+      await setDoc(configDocRef, {
         parametros,
+        segmentoConfig,
         updated_at: new Date()
       });
 
@@ -247,26 +228,19 @@ export default function Configuracoes() {
     }
   };
 
-  const totalPesos = Object.values(pesos).reduce((sum, val) => sum + Number(val), 0);
-  const pesosValidos = totalPesos === 100;
-
-  const handlePesoChange = (field, value) => {
-    setPesos(prev => ({ ...prev, [field]: Number(value) || 0 }));
-  };
-
-  const handleThresholdChange = (field, value) => {
-    setThresholds(prev => ({ ...prev, [field]: Number(value) || 0 }));
-  };
-
   const handleParametroChange = (field, value) => {
     setParametros(prev => ({ ...prev, [field]: Number(value) || 0 }));
+  };
+
+  const handleSegmentoConfigChange = (field, value) => {
+    setSegmentoConfig(prev => ({ ...prev, [field]: Number(value) || 0 }));
   };
 
   const handleAlertaConfigChange = (field, value) => {
     setAlertaConfig(prev => ({ ...prev, [field]: value }));
   };
 
-  if (loading) {
+  if (loading || checkingRole) {
     return (
       <div style={{ minHeight: '100vh', background: '#0f0a1f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ width: '48px', height: '48px', border: '3px solid rgba(139, 92, 246, 0.2)', borderTopColor: '#8b5cf6', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
@@ -276,167 +250,75 @@ export default function Configuracoes() {
 
   return (
     <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
+      {/* Banner de somente visualização para não-admins */}
+      {!isAdmin && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '16px 20px',
+          background: 'rgba(245, 158, 11, 0.1)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          borderRadius: '12px',
+          marginBottom: '24px'
+        }}>
+          <Lock style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
+          <div>
+            <p style={{ color: '#f59e0b', fontSize: '14px', fontWeight: '600', margin: '0 0 2px 0' }}>Somente visualização</p>
+            <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>Apenas administradores podem editar as configurações do sistema</p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>Configurações</h1>
           <p style={{ color: '#94a3b8', margin: 0 }}>Configure os parâmetros do sistema</p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={restaurarPadroes}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 20px',
-              background: 'rgba(100, 116, 139, 0.2)',
-              border: '1px solid rgba(100, 116, 139, 0.3)',
-              borderRadius: '12px',
-              color: '#94a3b8',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer'
-            }}
-          >
-            <RefreshCw style={{ width: '16px', height: '16px' }} />
-            Restaurar Padrões
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !pesosValidos}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 24px',
-              background: pesosValidos ? 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)' : 'rgba(100, 116, 139, 0.3)',
-              border: 'none',
-              borderRadius: '12px',
-              color: 'white',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: pesosValidos ? 'pointer' : 'not-allowed',
-              opacity: saving ? 0.7 : 1,
-              boxShadow: pesosValidos ? '0 4px 20px rgba(139, 92, 246, 0.3)' : 'none'
-            }}
-          >
-            {saveSuccess ? <CheckCircle style={{ width: '18px', height: '18px' }} /> : <Save style={{ width: '18px', height: '18px' }} />}
-            {saving ? 'Salvando...' : saveSuccess ? 'Salvo!' : 'Salvar Configurações'}
-          </button>
-        </div>
-      </div>
-
-      {/* Job de Health Score */}
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '20px', padding: '24px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '44px',
-              height: '44px',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              borderRadius: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Heart style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 4px 0' }}>Cálculo de Health Score</h2>
-              <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
-                Executado automaticamente após sincronização (7h30 e 13h30)
-                {ultimaExecucao && (
-                  <span style={{ color: '#10b981', marginLeft: '8px' }}>
-                    • Última execução: {ultimaExecucao.toLocaleDateString('pt-BR')} às {ultimaExecucao.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={runHealthScoreCalculation}
-            disabled={calculandoHealth}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 24px',
-              background: calculandoHealth ? 'rgba(16, 185, 129, 0.3)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              border: 'none',
-              borderRadius: '12px',
-              color: 'white',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: calculandoHealth ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {calculandoHealth ? (
-              <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
-            ) : (
-              <Play style={{ width: '18px', height: '18px' }} />
-            )}
-            {calculandoHealth ? 'Calculando...' : 'Executar Agora'}
-          </button>
-        </div>
-
-        {/* Progress */}
-        {calculandoHealth && healthProgress.total > 0 && (
-          <div style={{ marginTop: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ color: '#94a3b8', fontSize: '13px' }}>
-                Processando: {healthProgress.cliente}
-              </span>
-              <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '600' }}>
-                {healthProgress.current} / {healthProgress.total}
-              </span>
-            </div>
-            <div style={{ width: '100%', height: '8px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '4px', overflow: 'hidden' }}>
-              <div
-                style={{
-                  width: `${(healthProgress.current / healthProgress.total) * 100}%`,
-                  height: '100%',
-                  background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                  borderRadius: '4px',
-                  transition: 'width 0.3s ease'
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Results */}
-        {healthResults && !healthResults.erro && (
-          <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <CheckCircle style={{ width: '18px', height: '18px', color: '#10b981' }} />
-              <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>Cálculo concluído!</span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-              <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '8px' }}>
-                <p style={{ color: '#8b5cf6', fontSize: '20px', fontWeight: '700', margin: '0 0 4px 0' }}>{healthResults.total}</p>
-                <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Total</p>
-              </div>
-              <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px' }}>
-                <p style={{ color: '#10b981', fontSize: '20px', fontWeight: '700', margin: '0 0 4px 0' }}>{healthResults.calculados}</p>
-                <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Calculados</p>
-              </div>
-              <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(100, 116, 139, 0.1)', borderRadius: '8px' }}>
-                <p style={{ color: '#64748b', fontSize: '20px', fontWeight: '700', margin: '0 0 4px 0' }}>{healthResults.pulados}</p>
-                <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Pulados</p>
-              </div>
-              <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px' }}>
-                <p style={{ color: '#ef4444', fontSize: '20px', fontWeight: '700', margin: '0 0 4px 0' }}>{healthResults.erros}</p>
-                <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Erros</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {healthResults?.erro && (
-          <div style={{ marginTop: '16px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <XCircle style={{ width: '18px', height: '18px', color: '#ef4444' }} />
-            <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {healthResults.erro}</span>
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={restaurarPadroes}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 20px',
+                background: 'rgba(100, 116, 139, 0.2)',
+                border: '1px solid rgba(100, 116, 139, 0.3)',
+                borderRadius: '12px',
+                color: '#94a3b8',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              <RefreshCw style={{ width: '16px', height: '16px' }} />
+              Restaurar Padrões
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 24px',
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                border: 'none',
+                borderRadius: '12px',
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                opacity: saving ? 0.7 : 1,
+                boxShadow: '0 4px 20px rgba(139, 92, 246, 0.3)'
+              }}
+            >
+              {saveSuccess ? <CheckCircle style={{ width: '18px', height: '18px' }} /> : <Save style={{ width: '18px', height: '18px' }} />}
+              {saving ? 'Salvando...' : saveSuccess ? 'Salvo!' : 'Salvar Configurações'}
+            </button>
           </div>
         )}
       </div>
@@ -559,172 +441,318 @@ export default function Configuracoes() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         {/* COLUNA ESQUERDA */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* SEÇÃO 1: Pesos do Health Score */}
-          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Sliders style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-                <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Pesos do Health Score</h2>
-              </div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '6px 12px',
-                background: pesosValidos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                border: `1px solid ${pesosValidos ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                borderRadius: '8px'
-              }}>
-                {pesosValidos ? (
-                  <CheckCircle style={{ width: '16px', height: '16px', color: '#10b981' }} />
-                ) : (
-                  <AlertTriangle style={{ width: '16px', height: '16px', color: '#ef4444' }} />
-                )}
-                <span style={{ color: pesosValidos ? '#10b981' : '#ef4444', fontSize: '13px', fontWeight: '600' }}>
-                  {totalPesos}%
-                </span>
-              </div>
-            </div>
-
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              Os pesos devem somar exatamente 100%
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {[
-                { key: 'engajamento', label: 'Engajamento', desc: 'Frequência de interações' },
-                { key: 'sentimento', label: 'Sentimento', desc: 'Tom das conversas' },
-                { key: 'tickets', label: 'Tickets Abertos', desc: 'Volume de problemas' },
-                { key: 'tempo_contato', label: 'Tempo sem Contato', desc: 'Dias desde última interação' },
-                { key: 'uso_plataforma', label: 'Uso da Plataforma', desc: 'Adoção de features e recursos' }
-              ].map(item => (
-                <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                  <div>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>{item.label}</p>
-                    <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>{item.desc}</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={pesos[item.key]}
-                      onChange={(e) => handlePesoChange(item.key, e.target.value)}
-                      style={{
-                        width: '70px',
-                        padding: '8px 12px',
-                        background: '#0f0a1f',
-                        border: '1px solid #3730a3',
-                        borderRadius: '8px',
-                        color: 'white',
-                        fontSize: '14px',
-                        textAlign: 'center',
-                        outline: 'none'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '14px' }}>%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* SEÇÃO 2: Thresholds de Status */}
+          {/* SEÇÃO 1: Segmentos CS */}
           <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
               <Activity style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Thresholds de Status</h2>
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Segmentos CS</h2>
             </div>
 
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '16px' }}>
-              Defina os limites de pontuação para cada status
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
+              Os clientes são classificados automaticamente em 4 segmentos baseado em dados de uso e engajamento
             </p>
 
-            {/* Preview Visual */}
-            <div style={{ marginBottom: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px' }}>
-              <div style={{ display: 'flex', height: '32px', borderRadius: '8px', overflow: 'hidden' }}>
-                <div style={{
-                  width: `${100 - thresholds.saudavel}%`,
-                  background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <span style={{ color: 'white', fontSize: '11px', fontWeight: '600' }}>{thresholds.saudavel}+</span>
-                </div>
-                <div style={{
-                  width: `${thresholds.saudavel - thresholds.atencao}%`,
-                  background: 'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <span style={{ color: 'white', fontSize: '11px', fontWeight: '600' }}>{thresholds.atencao}-{thresholds.saudavel - 1}</span>
-                </div>
-                <div style={{
-                  width: `${thresholds.atencao - thresholds.risco}%`,
-                  background: 'linear-gradient(90deg, #f97316 0%, #ea580c 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <span style={{ color: 'white', fontSize: '11px', fontWeight: '600' }}>{thresholds.risco}-{thresholds.atencao - 1}</span>
-                </div>
-                <div style={{
-                  width: `${thresholds.risco}%`,
-                  background: 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <span style={{ color: 'white', fontSize: '11px', fontWeight: '600' }}>0-{thresholds.risco - 1}</span>
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
-                <span style={{ color: '#ef4444', fontSize: '10px' }}>Crítico</span>
-                <span style={{ color: '#f97316', fontSize: '10px' }}>Risco</span>
-                <span style={{ color: '#f59e0b', fontSize: '10px' }}>Atenção</span>
-                <span style={{ color: '#10b981', fontSize: '10px' }}>Saudável</span>
-              </div>
-            </div>
+            {/* Parâmetros editáveis de segmentação */}
+            <div style={{ marginBottom: '24px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+              <p style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600', margin: '0 0 16px 0', textTransform: 'uppercase' }}>Parâmetros de Classificação</p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {[
-                { key: 'saudavel', label: 'Saudável', color: '#10b981', desc: 'Score mínimo' },
-                { key: 'atencao', label: 'Atenção', color: '#f59e0b', desc: 'Score mínimo' },
-                { key: 'risco', label: 'Risco', color: '#f97316', desc: 'Score mínimo' },
-                { key: 'critico', label: 'Crítico', color: '#ef4444', desc: 'Abaixo de Risco' }
-              ].map(item => (
-                <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '12px', height: '12px', background: item.color, borderRadius: '50%' }}></div>
-                    <div>
-                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>{item.label}</p>
-                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{item.desc}</p>
-                    </div>
+              {/* Seção: Dias sem uso */}
+              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dias sem Atividade</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                {/* Dias sem uso - WATCH */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                  <div>
+                    <p style={{ color: '#f59e0b', fontSize: '13px', fontWeight: '500', margin: 0 }}>Dias sem uso → WATCH</p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input
                       type="number"
-                      min="0"
-                      max="100"
-                      value={thresholds[item.key]}
-                      onChange={(e) => handleThresholdChange(item.key, e.target.value)}
-                      disabled={item.key === 'critico'}
+                      min="1"
+                      value={segmentoConfig.dias_sem_uso_watch}
+                      onChange={(e) => handleSegmentoConfigChange('dias_sem_uso_watch', e.target.value)}
+                      disabled={!isAdmin}
                       style={{
-                        width: '70px',
-                        padding: '8px 12px',
-                        background: item.key === 'critico' ? 'rgba(100, 116, 139, 0.2)' : '#0f0a1f',
-                        border: '1px solid #3730a3',
-                        borderRadius: '8px',
-                        color: item.key === 'critico' ? '#64748b' : 'white',
-                        fontSize: '14px',
+                        width: '60px',
+                        padding: '6px 10px',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                        border: '1px solid rgba(245, 158, 11, 0.3)',
+                        borderRadius: '6px',
+                        color: isAdmin ? 'white' : '#64748b',
+                        fontSize: '13px',
                         textAlign: 'center',
                         outline: 'none',
-                        cursor: item.key === 'critico' ? 'not-allowed' : 'text'
+                        cursor: isAdmin ? 'text' : 'not-allowed'
                       }}
                     />
-                    <span style={{ color: '#64748b', fontSize: '14px' }}>+</span>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
+                  </div>
+                </div>
+
+                {/* Dias sem uso - RESCUE */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                  <div>
+                    <p style={{ color: '#ef4444', fontSize: '13px', fontWeight: '500', margin: 0 }}>Dias sem uso → RESCUE</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={segmentoConfig.dias_sem_uso_rescue}
+                      onChange={(e) => handleSegmentoConfigChange('dias_sem_uso_rescue', e.target.value)}
+                      disabled={!isAdmin}
+                      style={{
+                        width: '60px',
+                        padding: '6px 10px',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '6px',
+                        color: isAdmin ? 'white' : '#64748b',
+                        fontSize: '13px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        cursor: isAdmin ? 'text' : 'not-allowed'
+                      }}
+                    />
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Seção: Reclamações */}
+              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Janela de Reclamações</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                {/* Reclamação grave */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                  <div>
+                    <p style={{ color: '#ef4444', fontSize: '13px', fontWeight: '500', margin: 0 }}>Reclamação grave (urgente)</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={segmentoConfig.dias_reclamacao_grave}
+                      onChange={(e) => handleSegmentoConfigChange('dias_reclamacao_grave', e.target.value)}
+                      disabled={!isAdmin}
+                      style={{
+                        width: '60px',
+                        padding: '6px 10px',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '6px',
+                        color: isAdmin ? 'white' : '#64748b',
+                        fontSize: '13px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        cursor: isAdmin ? 'text' : 'not-allowed'
+                      }}
+                    />
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
+                  </div>
+                </div>
+
+                {/* Reclamações recentes */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                  <div>
+                    <p style={{ color: '#f59e0b', fontSize: '13px', fontWeight: '500', margin: 0 }}>Reclamações recentes</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={segmentoConfig.dias_reclamacoes_recentes}
+                      onChange={(e) => handleSegmentoConfigChange('dias_reclamacoes_recentes', e.target.value)}
+                      disabled={!isAdmin}
+                      style={{
+                        width: '60px',
+                        padding: '6px 10px',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                        border: '1px solid rgba(245, 158, 11, 0.3)',
+                        borderRadius: '6px',
+                        color: isAdmin ? 'white' : '#64748b',
+                        fontSize: '13px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        cursor: isAdmin ? 'text' : 'not-allowed'
+                      }}
+                    />
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Seção: Frequência de Uso */}
+              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Frequência de Uso (dias ativos/mês)</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                {/* Frequente */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                  <div>
+                    <p style={{ color: '#10b981', fontSize: '13px', fontWeight: '500', margin: 0 }}>Uso Frequente (GROW)</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={segmentoConfig.dias_ativos_frequente}
+                      onChange={(e) => handleSegmentoConfigChange('dias_ativos_frequente', e.target.value)}
+                      disabled={!isAdmin}
+                      style={{
+                        width: '60px',
+                        padding: '6px 10px',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        borderRadius: '6px',
+                        color: isAdmin ? 'white' : '#64748b',
+                        fontSize: '13px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        cursor: isAdmin ? 'text' : 'not-allowed'
+                      }}
+                    />
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias+</span>
+                  </div>
+                </div>
+
+                {/* Regular */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                  <div>
+                    <p style={{ color: '#3b82f6', fontSize: '13px', fontWeight: '500', margin: 0 }}>Uso Regular (NURTURE)</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={segmentoConfig.dias_ativos_regular}
+                      onChange={(e) => handleSegmentoConfigChange('dias_ativos_regular', e.target.value)}
+                      disabled={!isAdmin}
+                      style={{
+                        width: '60px',
+                        padding: '6px 10px',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '6px',
+                        color: isAdmin ? 'white' : '#64748b',
+                        fontSize: '13px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        cursor: isAdmin ? 'text' : 'not-allowed'
+                      }}
+                    />
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias+</span>
+                  </div>
+                </div>
+
+                {/* Irregular */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                  <div>
+                    <p style={{ color: '#f59e0b', fontSize: '13px', fontWeight: '500', margin: 0 }}>Uso Irregular (WATCH)</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={segmentoConfig.dias_ativos_irregular}
+                      onChange={(e) => handleSegmentoConfigChange('dias_ativos_irregular', e.target.value)}
+                      disabled={!isAdmin}
+                      style={{
+                        width: '60px',
+                        padding: '6px 10px',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                        border: '1px solid rgba(245, 158, 11, 0.3)',
+                        borderRadius: '6px',
+                        color: isAdmin ? 'white' : '#64748b',
+                        fontSize: '13px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        cursor: isAdmin ? 'text' : 'not-allowed'
+                      }}
+                    />
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias+</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Seção: Engajamento */}
+              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Score de Engajamento</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* Engajamento Alto */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                  <div>
+                    <p style={{ color: '#10b981', fontSize: '13px', fontWeight: '500', margin: 0 }}>Engajamento Alto</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={segmentoConfig.engajamento_alto}
+                      onChange={(e) => handleSegmentoConfigChange('engajamento_alto', e.target.value)}
+                      disabled={!isAdmin}
+                      style={{
+                        width: '60px',
+                        padding: '6px 10px',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        borderRadius: '6px',
+                        color: isAdmin ? 'white' : '#64748b',
+                        fontSize: '13px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        cursor: isAdmin ? 'text' : 'not-allowed'
+                      }}
+                    />
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>pts+</span>
+                  </div>
+                </div>
+
+                {/* Engajamento Médio */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                  <div>
+                    <p style={{ color: '#3b82f6', fontSize: '13px', fontWeight: '500', margin: 0 }}>Engajamento Médio</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={segmentoConfig.engajamento_medio}
+                      onChange={(e) => handleSegmentoConfigChange('engajamento_medio', e.target.value)}
+                      disabled={!isAdmin}
+                      style={{
+                        width: '60px',
+                        padding: '6px 10px',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '6px',
+                        color: isAdmin ? 'white' : '#64748b',
+                        fontSize: '13px',
+                        textAlign: 'center',
+                        outline: 'none',
+                        cursor: isAdmin ? 'text' : 'not-allowed'
+                      }}
+                    />
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>pts+</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nota explicativa */}
+              <p style={{ color: '#64748b', fontSize: '11px', margin: '16px 0 0 0', fontStyle: 'italic' }}>
+                Score de engajamento = (peças criadas × 2) + (uso de IA × 1.5) + downloads
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {Object.values(SEGMENTOS_CS).map(segmento => (
+                <div key={segmento.value} style={{ padding: '16px', background: segmento.bgColor, borderRadius: '12px', border: `1px solid ${segmento.borderColor}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                    <div style={{ width: '12px', height: '12px', background: segmento.color, borderRadius: '50%' }}></div>
+                    <p style={{ color: segmento.color, fontSize: '15px', fontWeight: '600', margin: 0 }}>{segmento.label}</p>
+                  </div>
+                  <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>{segmento.description}</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {segmento.criterios.map((criterio, idx) => (
+                      <span key={idx} style={{ padding: '4px 8px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '6px', fontSize: '11px', color: '#64748b' }}>
+                        {criterio}
+                      </span>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -753,16 +781,18 @@ export default function Configuracoes() {
                   <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Criar alerta quando thread tiver sentimento negativo</p>
                 </div>
                 <button
-                  onClick={() => handleAlertaConfigChange('alerta_sentimento_negativo', !alertaConfig.alerta_sentimento_negativo)}
+                  onClick={() => isAdmin && handleAlertaConfigChange('alerta_sentimento_negativo', !alertaConfig.alerta_sentimento_negativo)}
+                  disabled={!isAdmin}
                   style={{
                     width: '48px',
                     height: '28px',
                     borderRadius: '14px',
                     background: alertaConfig.alerta_sentimento_negativo ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
                     border: 'none',
-                    cursor: 'pointer',
+                    cursor: isAdmin ? 'pointer' : 'not-allowed',
                     position: 'relative',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    opacity: isAdmin ? 1 : 0.6
                   }}
                 >
                   <div style={{
@@ -785,16 +815,18 @@ export default function Configuracoes() {
                   <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Criar alerta quando thread for categorizada como bug</p>
                 </div>
                 <button
-                  onClick={() => handleAlertaConfigChange('alerta_erro_bug', !alertaConfig.alerta_erro_bug)}
+                  onClick={() => isAdmin && handleAlertaConfigChange('alerta_erro_bug', !alertaConfig.alerta_erro_bug)}
+                  disabled={!isAdmin}
                   style={{
                     width: '48px',
                     height: '28px',
                     borderRadius: '14px',
                     background: alertaConfig.alerta_erro_bug ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
                     border: 'none',
-                    cursor: 'pointer',
+                    cursor: isAdmin ? 'pointer' : 'not-allowed',
                     position: 'relative',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    opacity: isAdmin ? 1 : 0.6
                   }}
                 >
                   <div style={{
@@ -817,16 +849,18 @@ export default function Configuracoes() {
                   <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Criar alerta urgente para sentimento "urgente"</p>
                 </div>
                 <button
-                  onClick={() => handleAlertaConfigChange('alerta_urgente_automatico', !alertaConfig.alerta_urgente_automatico)}
+                  onClick={() => isAdmin && handleAlertaConfigChange('alerta_urgente_automatico', !alertaConfig.alerta_urgente_automatico)}
+                  disabled={!isAdmin}
                   style={{
                     width: '48px',
                     height: '28px',
                     borderRadius: '14px',
                     background: alertaConfig.alerta_urgente_automatico ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
                     border: 'none',
-                    cursor: 'pointer',
+                    cursor: isAdmin ? 'pointer' : 'not-allowed',
                     position: 'relative',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    opacity: isAdmin ? 1 : 0.6
                   }}
                 >
                   <div style={{
@@ -872,16 +906,18 @@ export default function Configuracoes() {
                       min="1"
                       value={parametros[item.key]}
                       onChange={(e) => handleParametroChange(item.key, e.target.value)}
+                      disabled={!isAdmin}
                       style={{
                         width: '70px',
                         padding: '8px 12px',
-                        background: '#0f0a1f',
+                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
                         border: '1px solid #3730a3',
                         borderRadius: '8px',
-                        color: 'white',
+                        color: isAdmin ? 'white' : '#64748b',
                         fontSize: '14px',
                         textAlign: 'center',
-                        outline: 'none'
+                        outline: 'none',
+                        cursor: isAdmin ? 'text' : 'not-allowed'
                       }}
                     />
                     <span style={{ color: '#64748b', fontSize: '14px' }}>dias</span>

@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, TrendingUp, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, RefreshCw, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-import { useHealthScore } from '../hooks/useHealthScore';
-import { getHealthColor, getHealthLabel, getComponenteLabel } from '../utils/healthScore';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2 } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { SEGMENTOS_CS, getSegmentoInfo, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
+import { SegmentoBadge, SegmentoCard } from '../components/UI/SegmentoBadge';
 import { useClassificarThread } from '../hooks/useClassificarThread';
 import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../services/openai';
 import PlaybooksSection from '../components/Cliente/PlaybooksSection';
@@ -125,7 +125,6 @@ export default function ClienteDetalhe() {
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
   const [mensagens, setMensagens] = useState([]);
-  const [healthHistory, setHealthHistory] = useState([]);
   const [usageData, setUsageData] = useState({ logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
   const [usuarios, setUsuarios] = useState([]);
   const [showAllUsuarios, setShowAllUsuarios] = useState(false);
@@ -134,9 +133,6 @@ export default function ClienteDetalhe() {
 
   // Tab state
   const [activeTab, setActiveTab] = useState('resumo');
-
-  // Health Score hook
-  const { healthData, calculating, calcularESalvar } = useHealthScore(id);
 
   // User Activity Status hook
   const { getStatus: getUserActivityStatus } = useUserActivityStatus(teamIds, usuarios);
@@ -182,18 +178,11 @@ export default function ClienteDetalhe() {
           const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
           // OTIMIZAÇÃO: Executar TODAS as queries em PARALELO
-          const [threadsResult, healthResult, metricasResult, usuariosResult] = await Promise.all([
+          const [threadsResult, metricasResult, usuariosResult] = await Promise.all([
             // 1. Threads
             computedTeamIds.length > 0 ? getThreadsByTeam(computedTeamIds).catch(() => []) : Promise.resolve([]),
 
-            // 2. Health History
-            getDocs(query(
-              collection(db, 'clientes', id, 'health_history'),
-              orderBy('hist_date', 'desc'),
-              limit(30)
-            )).catch(() => ({ docs: [] })),
-
-            // 3. Métricas de uso (com chunks para computedTeamIds > 10)
+            // 2. Métricas de uso (com chunks para computedTeamIds > 10)
             computedTeamIds.length > 0 ? (async () => {
               const metricasRef = collection(db, 'metricas_diarias');
               const chunkSize = 10;
@@ -231,21 +220,6 @@ export default function ClienteDetalhe() {
             return dateB - dateA;
           });
           setThreads(sortedThreads);
-
-          // Processar health history
-          const healthData = healthResult.docs.map(doc => {
-            const data = doc.data();
-            const date = data.hist_date?.toDate?.() || new Date(data.hist_date);
-            return {
-              id: doc.id,
-              date: date,
-              dateFormatted: date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-              score: data.hist_score || 0,
-              status: data.hist_status,
-              componentes: data.hist_componentes
-            };
-          });
-          setHealthHistory(healthData.sort((a, b) => a.date - b.date));
 
           // Processar métricas de uso
           const aggregated = metricasResult.reduce((acc, d) => ({
@@ -587,11 +561,8 @@ export default function ClienteDetalhe() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {cliente.status !== 'inativo' ? (
-              <span style={{ padding: '8px 16px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '12px', fontSize: '14px', fontWeight: '600', border: `1px solid ${getHealthColor(cliente.health_status)}40` }}>
-                {getHealthLabel(cliente.health_status)}
-              </span>
-            ) : (
+            <SegmentoBadge segmento={getClienteSegmento(cliente)} size="md" />
+            {cliente.status === 'inativo' && (
               <span style={{ padding: '8px 16px', background: 'rgba(107, 114, 128, 0.2)', color: '#9ca3af', borderRadius: '12px', fontSize: '14px', fontWeight: '600', border: '1px solid rgba(107, 114, 128, 0.3)' }}>
                 Inativo
               </span>
@@ -711,76 +682,53 @@ export default function ClienteDetalhe() {
           <div>
             <h3 style={{ color: '#9ca3af', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>Cliente Inativo</h3>
             <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>
-              As métricas e o Health Score estão pausados enquanto o cliente permanece inativo. Os dados históricos foram preservados.
+              As métricas estão pausadas enquanto o cliente permanece inativo. Os dados históricos foram preservados.
             </p>
           </div>
         </div>
       )}
 
-      {/* Health Score Section - Somente para clientes ativos */}
+      {/* Segmento CS Card */}
       {cliente.status !== 'inativo' && (
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Activity style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Health Score</h2>
-          </div>
-          <button
-            onClick={calcularESalvar}
-            disabled={calculating}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
-              background: 'rgba(139, 92, 246, 0.1)',
-              border: '1px solid rgba(139, 92, 246, 0.3)',
-              borderRadius: '10px',
-              color: '#a78bfa',
-              fontSize: '13px',
-              fontWeight: '500',
-              cursor: calculating ? 'wait' : 'pointer',
-              opacity: calculating ? 0.7 : 1
-            }}
-          >
-            <RefreshCw style={{ width: '14px', height: '14px', animation: calculating ? 'spin 1s linear infinite' : 'none' }} />
-            {calculating ? 'Calculando...' : 'Recalcular'}
-          </button>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Segmento CS</h3>
+          <SegmentoBadge segmento={getClienteSegmento(cliente)} size="lg" />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px' }}>
-          {/* Score Principal */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', background: `linear-gradient(135deg, ${getHealthColor(cliente.health_status)}15 0%, rgba(30, 27, 75, 0.6) 100%)`, border: `1px solid ${getHealthColor(cliente.health_status)}30`, borderRadius: '16px' }}>
-            <span style={{ color: getHealthColor(cliente.health_status), fontSize: '56px', fontWeight: '700', lineHeight: 1 }}>{cliente.health_score || 0}</span>
-            <span style={{ color: '#94a3b8', fontSize: '14px', marginTop: '4px' }}>de 100</span>
-            <span style={{ padding: '6px 16px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '20px', fontSize: '13px', fontWeight: '600', marginTop: '12px' }}>
-              {getHealthLabel(cliente.health_status)}
-            </span>
-          </div>
+        {(() => {
+          const segmentoInfo = getSegmentoInfo(getClienteSegmento(cliente));
+          if (!segmentoInfo) return null;
+          return (
+            <>
+              <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 20px 0' }}>{segmentoInfo.description}</p>
 
-          {/* Componentes do Score */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            {healthData?.componentes ? (
-              <>
-                {Object.entries(healthData.componentes).filter(([key, value]) => value !== null).map(([key, value]) => (
-                  <div key={key} style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.1)', borderRadius: '12px' }}>
-                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 8px 0' }}>{getComponenteLabel(key)}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                        <div style={{ width: `${value}%`, height: '100%', background: value >= 70 ? '#10b981' : value >= 40 ? '#f59e0b' : '#ef4444', borderRadius: '3px', transition: 'width 0.3s ease' }}></div>
-                      </div>
-                      <span style={{ color: 'white', fontSize: '14px', fontWeight: '600', minWidth: '36px' }}>{value}%</span>
-                    </div>
-                  </div>
-                ))}
-              </>
-            ) : (
-              <div style={{ gridColumn: '1 / -1', padding: '32px', textAlign: 'center' }}>
-                <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Clique em "Recalcular" para ver os componentes do score</p>
+              {/* Criterios */}
+              <div style={{ marginBottom: '20px' }}>
+                <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase' }}>Criterios deste segmento</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {segmentoInfo.criterios.map((criterio, i) => (
+                    <span key={i} style={{ padding: '6px 12px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', color: '#94a3b8', fontSize: '13px' }}>
+                      {criterio}
+                    </span>
+                  ))}
+                </div>
               </div>
-            )}
-          </div>
-        </div>
+
+              {/* Acoes Recomendadas */}
+              <div>
+                <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase' }}>Acoes Recomendadas</p>
+                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                  {segmentoInfo.acoes.map((acao, i) => (
+                    <li key={i} style={{ color: segmentoInfo.color, fontSize: '14px', marginBottom: '8px' }}>
+                      {acao}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          );
+        })()}
       </div>
       )}
 
@@ -796,7 +744,7 @@ export default function ClienteDetalhe() {
           <span style={{ color: '#8b5cf6', fontSize: '32px', fontWeight: '700' }}>{threads.filter(t => t.status === 'ativo' || t.status === 'aguardando_cliente' || t.status === 'aguardando_equipe').length}</span>
         </div>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Última Interação</p>
+          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Ultima Interacao</p>
           <span style={{ color: 'white', fontSize: '20px', fontWeight: '600' }}>{formatRelativeDate(cliente.ultima_interacao)}</span>
         </div>
       </div>
@@ -1374,78 +1322,6 @@ export default function ClienteDetalhe() {
           ))}
         </div>
       </div>
-      )}
-
-      {/* Tab Content: Resumo - Evolução do Health Score - Somente para clientes ativos */}
-      {activeTab === 'resumo' && cliente.status !== 'inativo' && (
-      <>
-      {/* Evolução do Health Score */}
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-          <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Evolução do Health Score</h2>
-          <span style={{ color: '#64748b', fontSize: '13px', marginLeft: 'auto' }}>Últimos 30 dias</span>
-        </div>
-        {healthHistory.length > 0 ? (
-          <div style={{ height: '280px', width: '100%' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={healthHistory} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.1}/>
-                  </linearGradient>
-                  <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#8b5cf6"/>
-                    <stop offset="100%" stopColor="#06b6d4"/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" vertical={false} />
-                <XAxis
-                  dataKey="dateFormatted"
-                  stroke="#64748b"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={{ stroke: 'rgba(139, 92, 246, 0.2)' }}
-                />
-                <YAxis
-                  stroke="#64748b"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={{ stroke: 'rgba(139, 92, 246, 0.2)' }}
-                  domain={[0, 100]}
-                  ticks={[0, 25, 50, 75, 100]}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: 'rgba(15, 10, 31, 0.95)',
-                    border: '1px solid rgba(139, 92, 246, 0.3)',
-                    borderRadius: '12px',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                  }}
-                  labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-                  formatter={(value, name) => [`${value}%`, 'Health Score']}
-                  labelFormatter={(label) => `Data: ${label}`}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="score"
-                  stroke="url(#lineGradient)"
-                  strokeWidth={3}
-                  fill="url(#scoreGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <div style={{ padding: '48px', textAlign: 'center' }}>
-            <TrendingUp style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
-            <p style={{ color: '#94a3b8', fontSize: '16px', margin: '0 0 8px 0' }}>Nenhum histórico disponível</p>
-            <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>O histórico de Health Score será exibido aqui quando houver dados</p>
-          </div>
-        )}
-      </div>
-      </>
       )}
 
       {/* Tab Content: Conversas */}

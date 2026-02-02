@@ -4,8 +4,9 @@ import { db } from '../services/firebase';
 import { getUsuariosCountByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
+import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento } from '../utils/segmentoCS';
+import { SegmentoBadge } from '../components/UI/SegmentoBadge';
 
 // Chave para localStorage
 const FILTERS_STORAGE_KEY = 'cshub_clientes_filters';
@@ -52,14 +53,6 @@ export default function Clientes() {
     const saved = loadFiltersFromStorage();
     return saved?.searchTerm || '';
   });
-  const [filterHealthStatus, setFilterHealthStatus] = useState(() => {
-    const saved = loadFiltersFromStorage();
-    // Migrar de string para array se necessário
-    if (saved?.healthStatus && typeof saved.healthStatus === 'string' && saved.healthStatus !== 'todos') {
-      return [saved.healthStatus];
-    }
-    return saved?.healthStatus && Array.isArray(saved.healthStatus) ? saved.healthStatus : [];
-  });
   const [filterClienteStatus, setFilterClienteStatus] = useState(() => {
     const saved = loadFiltersFromStorage();
     return saved?.clienteStatus || DEFAULT_VISIBLE_STATUS;
@@ -71,6 +64,10 @@ export default function Clientes() {
       return [saved.type];
     }
     return saved?.type && Array.isArray(saved.type) ? saved.type : [];
+  });
+  const [filterSegmento, setFilterSegmento] = useState(() => {
+    const saved = loadFiltersFromStorage();
+    return saved?.segmento && Array.isArray(saved.segmento) ? saved.segmento : [];
   });
 
   const [showOrphanModal, setShowOrphanModal] = useState(false);
@@ -87,7 +84,7 @@ export default function Clientes() {
 
   // Estado para dropdowns de filtro
   const [showEscopoDropdown, setShowEscopoDropdown] = useState(false);
-  const [showHealthDropdown, setShowHealthDropdown] = useState(false);
+  const [showSegmentoDropdown, setShowSegmentoDropdown] = useState(false);
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [sortOption, setSortOption] = useState(() => {
     const saved = loadFiltersFromStorage();
@@ -109,12 +106,12 @@ export default function Clientes() {
   useEffect(() => {
     saveFiltersToStorage({
       searchTerm,
-      healthStatus: filterHealthStatus,
       clienteStatus: filterClienteStatus,
       type: filterType,
+      segmento: filterSegmento,
       sortOption
     });
-  }, [searchTerm, filterHealthStatus, filterClienteStatus, filterType, sortOption]);
+  }, [searchTerm, filterClienteStatus, filterType, filterSegmento, sortOption]);
 
   const fetchData = async () => {
     try {
@@ -259,49 +256,45 @@ export default function Clientes() {
     return [...allTypes].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [clientes]);
 
-  // Ordem de prioridade do health para ordenação
-  const healthOrder = { critical: 1, at_risk: 2, neutral: 3, healthy: 4 };
-
   const filteredClientes = clientes
     .filter(cliente => {
       const searchNormalized = normalizeText(searchTerm);
       const nameNormalized = normalizeText(cliente.team_name || '');
       const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
       const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
-      const matchesHealthStatus = filterHealthStatus.length === 0 || filterHealthStatus.includes(cliente.health_status);
       const matchesClienteStatus = filterClienteStatus.length === 0 || filterClienteStatus.includes(cliente.status || 'ativo');
       // Filtro de tipo: verifica se algum dos tipos selecionados está contido no team_type do cliente
       const matchesType = filterType.length === 0 || filterType.some(type => cliente.team_type && cliente.team_type.includes(type));
-      return matchesSearch && matchesHealthStatus && matchesClienteStatus && matchesType;
+      // Filtro de segmento CS
+      const matchesSegmento = filterSegmento.length === 0 || filterSegmento.includes(getClienteSegmento(cliente));
+      return matchesSearch && matchesClienteStatus && matchesType && matchesSegmento;
     })
     .sort((a, b) => {
+      // Ordem de prioridade dos segmentos: RESCUE > WATCH > NURTURE > GROW
+      const segmentoOrder = { RESCUE: 1, WATCH: 2, NURTURE: 3, GROW: 4 };
       switch (sortOption) {
         case 'name_asc':
           return (a.team_name || '').localeCompare(b.team_name || '', 'pt-BR');
         case 'name_desc':
           return (b.team_name || '').localeCompare(a.team_name || '', 'pt-BR');
-        case 'health_asc': // Pior para melhor
-          return (healthOrder[a.health_status] || 5) - (healthOrder[b.health_status] || 5);
-        case 'health_desc': // Melhor para pior
-          return (healthOrder[b.health_status] || 5) - (healthOrder[a.health_status] || 5);
-        case 'score_asc':
-          return (a.health_score || 0) - (b.health_score || 0);
-        case 'score_desc':
-          return (b.health_score || 0) - (a.health_score || 0);
+        case 'segmento_priority': // Mais critico primeiro (RESCUE -> WATCH -> NURTURE -> GROW)
+          return (segmentoOrder[getClienteSegmento(a)] || 5) - (segmentoOrder[getClienteSegmento(b)] || 5);
+        case 'segmento_reverse': // Melhores primeiro (GROW -> NURTURE -> WATCH -> RESCUE)
+          return (segmentoOrder[getClienteSegmento(b)] || 5) - (segmentoOrder[getClienteSegmento(a)] || 5);
         default:
           return (a.team_name || '').localeCompare(b.team_name || '', 'pt-BR');
       }
     });
 
   const exportToCSV = () => {
-    const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Health Score', 'Status', 'Qtd Times'];
+    const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Status', 'Segmento CS', 'Qtd Times'];
     const rows = filteredClientes.map(cliente => [
       cliente.team_name || cliente.nome || '',
       cliente.responsavel_nome || '',
       cliente.responsavel_email || '',
       (cliente.tags || []).join('; '),
-      cliente.health_score || 0,
-      getHealthLabel(cliente.health_status),
+      getStatusLabel(cliente.status || 'ativo'),
+      getSegmentoLabel(getClienteSegmento(cliente)),
       (cliente.times || []).length
     ]);
 
@@ -557,7 +550,7 @@ export default function Clientes() {
         </div>
       </div>
 
-      {/* Linha 1: Busca, Health e Escopo */}
+      {/* Linha 1: Busca, Segmento e Escopo */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
         {/* Busca */}
         <div style={{ position: 'relative', flex: '1', minWidth: '200px' }}>
@@ -566,32 +559,32 @@ export default function Clientes() {
             style={{ width: '100%', padding: '10px 14px 10px 42px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
         </div>
 
-        {/* Health Dropdown */}
+        {/* Segmento CS Dropdown */}
         <div style={{ position: 'relative' }}>
           <button
-            onClick={() => { setShowHealthDropdown(!showHealthDropdown); setShowEscopoDropdown(false); setShowSortDropdown(false); }}
+            onClick={() => { setShowSegmentoDropdown(!showSegmentoDropdown); setShowEscopoDropdown(false); setShowSortDropdown(false); }}
             style={{
               padding: '10px 14px',
-              background: filterHealthStatus.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
-              border: `1px solid ${filterHealthStatus.length > 0 ? '#8b5cf6' : 'rgba(139, 92, 246, 0.2)'}`,
+              background: filterSegmento.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
+              border: `1px solid ${filterSegmento.length > 0 ? '#8b5cf6' : 'rgba(139, 92, 246, 0.2)'}`,
               borderRadius: '10px',
-              color: filterHealthStatus.length > 0 ? '#a78bfa' : '#94a3b8',
+              color: filterSegmento.length > 0 ? '#a78bfa' : '#94a3b8',
               fontSize: '13px',
               fontWeight: '500',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              minWidth: '140px'
+              minWidth: '150px'
             }}
           >
-            {filterHealthStatus.length === 0 ? 'Health: Todos' : `Health: ${filterHealthStatus.length}`}
+            {filterSegmento.length === 0 ? 'Segmento: Todos' : `Segmento: ${filterSegmento.length}`}
             <ChevronDown style={{ width: '14px', height: '14px' }} />
           </button>
 
-          {showHealthDropdown && (
+          {showSegmentoDropdown && (
             <>
-              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowHealthDropdown(false)} />
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowSegmentoDropdown(false)} />
               <div style={{
                 position: 'absolute',
                 top: '100%',
@@ -601,13 +594,13 @@ export default function Clientes() {
                 border: '1px solid rgba(139, 92, 246, 0.3)',
                 borderRadius: '12px',
                 padding: '8px',
-                minWidth: '180px',
+                minWidth: '200px',
                 zIndex: 100,
                 boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
               }}>
-                {filterHealthStatus.length > 0 && (
+                {filterSegmento.length > 0 && (
                   <button
-                    onClick={() => setFilterHealthStatus([])}
+                    onClick={() => setFilterSegmento([])}
                     style={{
                       width: '100%',
                       padding: '8px 12px',
@@ -628,22 +621,17 @@ export default function Clientes() {
                     Limpar
                   </button>
                 )}
-                {[
-                  { value: 'saudavel', label: 'Saudável', color: '#10b981' },
-                  { value: 'atencao', label: 'Atenção', color: '#f59e0b' },
-                  { value: 'risco', label: 'Risco', color: '#f97316' },
-                  { value: 'critico', label: 'Crítico', color: '#ef4444' }
-                ].map(opt => {
-                  const isSelected = filterHealthStatus.includes(opt.value);
-                  const count = clientes.filter(c => c.health_status === opt.value).length;
+                {SEGMENTO_OPTIONS.map(opt => {
+                  const isSelected = filterSegmento.includes(opt.value);
+                  const count = clientes.filter(c => getClienteSegmento(c) === opt.value).length;
                   return (
                     <button
                       key={opt.value}
                       onClick={() => {
                         if (isSelected) {
-                          setFilterHealthStatus(filterHealthStatus.filter(h => h !== opt.value));
+                          setFilterSegmento(filterSegmento.filter(s => s !== opt.value));
                         } else {
-                          setFilterHealthStatus([...filterHealthStatus, opt.value]);
+                          setFilterSegmento([...filterSegmento, opt.value]);
                         }
                       }}
                       style={{
@@ -693,7 +681,7 @@ export default function Clientes() {
         {teamTypes.length > 0 && (
           <div style={{ position: 'relative' }}>
             <button
-              onClick={() => { setShowEscopoDropdown(!showEscopoDropdown); setShowHealthDropdown(false); setShowSortDropdown(false); }}
+              onClick={() => { setShowEscopoDropdown(!showEscopoDropdown); setShowSegmentoDropdown(false); setShowSortDropdown(false); }}
               style={{
                 padding: '10px 14px',
                 background: filterType.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
@@ -811,7 +799,7 @@ export default function Clientes() {
         {/* Ordenação Dropdown */}
         <div style={{ position: 'relative', marginLeft: 'auto' }}>
           <button
-            onClick={() => { setShowSortDropdown(!showSortDropdown); setShowHealthDropdown(false); setShowEscopoDropdown(false); }}
+            onClick={() => { setShowSortDropdown(!showSortDropdown); setShowSegmentoDropdown(false); setShowEscopoDropdown(false); }}
             style={{
               padding: '10px 14px',
               background: 'rgba(30, 27, 75, 0.6)',
@@ -850,8 +838,8 @@ export default function Clientes() {
                 {[
                   { value: 'name_asc', label: 'Nome (A-Z)', icon: ArrowUp },
                   { value: 'name_desc', label: 'Nome (Z-A)', icon: ArrowDown },
-                  { value: 'score_asc', label: 'Score (Menor → Maior)', icon: ArrowUp },
-                  { value: 'score_desc', label: 'Score (Maior → Menor)', icon: ArrowDown }
+                  { value: 'segmento_priority', label: 'Prioridade (Crítico primeiro)', icon: ArrowUp },
+                  { value: 'segmento_reverse', label: 'Prioridade (Melhores primeiro)', icon: ArrowDown }
                 ].map(opt => {
                   const isSelected = sortOption === opt.value;
                   const IconComponent = opt.icon;
@@ -932,11 +920,11 @@ export default function Clientes() {
         })}
 
         {/* Botão limpar todos os filtros */}
-        {(searchTerm || filterHealthStatus.length > 0 || filterType.length > 0 || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
+        {(searchTerm || filterSegmento.length > 0 || filterType.length > 0 || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
           <button
             onClick={() => {
               setSearchTerm('');
-              setFilterHealthStatus([]);
+              setFilterSegmento([]);
               setFilterType([]);
               setFilterClienteStatus(DEFAULT_VISIBLE_STATUS);
               localStorage.removeItem(FILTERS_STORAGE_KEY);
@@ -997,157 +985,120 @@ export default function Clientes() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
         {filteredClientes.length > 0 ? filteredClientes.map((cliente) => {
           const isInativo = cliente.status === 'inativo';
           const isSelected = selectedClientes.has(cliente.id);
+
+          // Cores do card baseadas no status
+          const getCardColors = () => {
+            if (isSelected) return { bg: 'rgba(139, 92, 246, 0.15)', border: '2px solid rgba(139, 92, 246, 0.6)' };
+            switch (cliente.status) {
+              case 'onboarding':
+                return { bg: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)' }; // azul
+              case 'aviso_previo':
+                return { bg: 'rgba(249, 115, 22, 0.15)', border: '1px solid rgba(249, 115, 22, 0.3)' }; // laranja
+              case 'cancelado':
+                return { bg: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)' }; // vermelho
+              case 'inativo':
+                return { bg: 'rgba(55, 65, 81, 0.3)', border: '1px solid rgba(107, 114, 128, 0.2)' }; // cinza
+              default: // ativo
+                return { bg: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)' }; // normal
+            }
+          };
+          const cardColors = getCardColors();
+
           return (
           <div key={cliente.id}
             style={{
-              background: isSelected ? 'rgba(139, 92, 246, 0.15)' : isInativo ? 'rgba(55, 65, 81, 0.3)' : 'rgba(30, 27, 75, 0.4)',
-              border: isSelected ? '2px solid rgba(139, 92, 246, 0.6)' : isInativo ? '1px solid rgba(107, 114, 128, 0.2)' : '1px solid rgba(139, 92, 246, 0.15)',
-              borderRadius: '16px',
-              padding: '20px',
+              background: cardColors.bg,
+              border: cardColors.border,
+              borderRadius: '12px',
+              padding: '16px',
               cursor: 'pointer',
               transition: 'all 0.2s',
               opacity: isInativo ? 0.7 : 1,
               position: 'relative'
             }}>
-            <div onClick={() => navigate(`/clientes/${cliente.id}`)}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                  width: '48px',
-                  height: '48px',
-                  background: isInativo ? 'rgba(107, 114, 128, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: isInativo ? '#9ca3af' : 'white',
-                  fontWeight: '600',
-                  fontSize: '18px'
-                }}>
-                  {cliente.team_name?.charAt(0) || 'C'}
-                </div>
-                <div>
-                  <h3 style={{ color: isInativo ? '#9ca3af' : 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>{cliente.team_name}</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Building2 style={{ width: '14px', height: '14px', color: '#64748b' }} />
-                    <span style={{ color: '#64748b', fontSize: '13px' }}>{cliente.team_type || 'Sem tipo'}</span>
+            <div onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              {/* Header: Nome + Segmento */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    width: '44px',
+                    height: '44px',
+                    background: isInativo ? 'rgba(107, 114, 128, 0.3)' : `linear-gradient(135deg, ${getSegmentoColor(getClienteSegmento(cliente))} 0%, ${getSegmentoColor(getClienteSegmento(cliente))}99 100%)`,
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '16px',
+                    flexShrink: 0
+                  }}>
+                    {cliente.team_name?.charAt(0) || 'C'}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <h3 style={{ color: isInativo ? '#9ca3af' : 'white', fontSize: '15px', fontWeight: '600', margin: '0 0 2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cliente.team_name}</h3>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>{cliente.team_type || 'Sem tipo'}</span>
                   </div>
                 </div>
+                <SegmentoBadge segmento={getClienteSegmento(cliente)} size="sm" />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{
-                  padding: '4px 10px',
-                  background: `${getStatusColor(cliente.status || 'ativo')}20`,
-                  color: getStatusColor(cliente.status || 'ativo'),
-                  borderRadius: '8px',
-                  fontSize: '11px',
-                  fontWeight: '500',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: getStatusColor(cliente.status || 'ativo') }}></span>
-                  {getStatusLabel(cliente.status || 'ativo')}
-                </span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); toggleSelectCliente(cliente.id); }}
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    background: isSelected ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.1)',
-                    border: isSelected ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.2)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer'
-                  }}
-                  title={isSelected ? 'Desmarcar' : 'Selecionar'}
-                >
-                  {isSelected ? (
-                    <CheckSquare style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
-                  ) : (
-                    <Square style={{ width: '16px', height: '16px', color: '#64748b' }} />
-                  )}
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${cliente.id}/editar`); }}
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    background: isInativo ? 'rgba(107, 114, 128, 0.2)' : 'rgba(139, 92, 246, 0.2)',
-                    border: isInativo ? '1px solid rgba(107, 114, 128, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer'
-                  }}
-                  title="Editar cliente"
-                >
-                  <Pencil style={{ width: '14px', height: '14px', color: isInativo ? '#9ca3af' : '#a78bfa' }} />
-                </button>
-                <button
-                  onClick={(e) => handleDeleteClick(e, cliente)}
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer'
-                  }}
-                  title="Excluir cliente"
-                >
-                  <Trash2 style={{ width: '14px', height: '14px', color: '#ef4444' }} />
-                </button>
-              </div>
-            </div>
-            {isInativo ? (
-              <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(107, 114, 128, 0.1)', borderRadius: '8px', textAlign: 'center' }}>
-                <span style={{ color: '#9ca3af', fontSize: '13px' }}>Health Score pausado - Cliente inativo</span>
-              </div>
-            ) : (
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>Health Score</span>
-                  <span style={{ color: getHealthColor(cliente.health_status), fontSize: '16px', fontWeight: '700' }}>{cliente.health_score || 0}%</span>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{ width: `${cliente.health_score || 0}%`, height: '100%', background: getHealthColor(cliente.health_status), borderRadius: '4px', transition: 'width 0.3s ease' }}></div>
-                </div>
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: isInativo ? '1px solid rgba(107, 114, 128, 0.1)' : '1px solid rgba(139, 92, 246, 0.1)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                {/* Responsáveis */}
+
+              {/* Footer: Responsavel + Acoes */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Users style={{ width: '14px', height: '14px', color: isInativo ? '#9ca3af' : '#a5b4fc', flexShrink: 0 }} />
-                  {(cliente.responsaveis && cliente.responsaveis.length > 0) ? (
-                    <span style={{ color: '#94a3b8', fontSize: '13px' }}>
-                      {cliente.responsaveis.map(r => r.nome?.split(' ')[0] || r.email?.split('@')[0]).join(', ')}
-                    </span>
-                  ) : cliente.responsavel_nome ? (
-                    <span style={{ color: '#94a3b8', fontSize: '13px' }}>{cliente.responsavel_nome.split(' ')[0]}</span>
-                  ) : (
-                    <span style={{ color: '#64748b', fontSize: '13px' }}>Sem responsável</span>
-                  )}
+                  <Users style={{ width: '14px', height: '14px', color: '#64748b', flexShrink: 0 }} />
+                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                    {(cliente.responsaveis && cliente.responsaveis.length > 0)
+                      ? cliente.responsaveis.map(r => r.nome?.split(' ')[0] || r.email?.split('@')[0]).join(', ')
+                      : cliente.responsavel_nome?.split(' ')[0] || 'Sem resp.'}
+                  </span>
                 </div>
-                {/* Times */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Link style={{ width: '12px', height: '12px', color: isInativo ? '#9ca3af' : '#22d3ee' }} />
-                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>{(cliente.times || []).length} times</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleSelectCliente(cliente.id); }}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      background: isSelected ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
+                      border: 'none',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer'
+                    }}
+                    title={isSelected ? 'Desmarcar' : 'Selecionar'}
+                  >
+                    {isSelected ? (
+                      <CheckSquare style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
+                    ) : (
+                      <Square style={{ width: '16px', height: '16px', color: '#64748b' }} />
+                    )}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${cliente.id}/editar`); }}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer'
+                    }}
+                    title="Editar"
+                  >
+                    <Pencil style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                  </button>
+                  <ChevronRight style={{ width: '16px', height: '16px', color: '#64748b' }} />
                 </div>
               </div>
-              <ChevronRight style={{ width: '16px', height: '16px', color: isInativo ? '#9ca3af' : '#8b5cf6' }} />
-            </div>
             </div>{/* fecha div do clickable area */}
           </div>
         )}) : (
