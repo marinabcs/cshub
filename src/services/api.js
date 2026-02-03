@@ -28,23 +28,9 @@ export async function getClienteById(teamId) {
   return null
 }
 
-export async function getClientesByStatus(status) {
-  const clientesRef = collection(db, 'clientes')
-  const q = query(clientesRef, where('health_status', '==', status))
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-}
-
 export async function getClientesByResponsavel(email) {
   const clientesRef = collection(db, 'clientes')
   const q = query(clientesRef, where('responsavel_email', '==', email))
-  const snapshot = await getDocs(q)
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-}
-
-export async function getClientesCriticos(limite = 5) {
-  const clientesRef = collection(db, 'clientes')
-  const q = query(clientesRef, orderBy('health_score'), limit(limite))
   const snapshot = await getDocs(q)
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
 }
@@ -174,14 +160,8 @@ export async function getMensagensThread(teamId, threadId) {
 // Dashboard Stats
 export async function getDashboardStats() {
   const clientes = await getClientes()
-
   const total = clientes.length
-  const saudaveis = clientes.filter(c => c.health_status === 'saudavel').length
-  const atencao = clientes.filter(c => c.health_status === 'atencao').length
-  const risco = clientes.filter(c => c.health_status === 'risco').length
-  const critico = clientes.filter(c => c.health_status === 'critico').length
-
-  return { total, saudaveis, atencao, risco, critico }
+  return { total }
 }
 
 // Heavy Users - ranking dos usuários mais ativos

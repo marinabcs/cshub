@@ -6,7 +6,7 @@
 
 **O que está pronto:**
 - ✅ Frontend React completo com todas as páginas
-- ✅ Sistema de Health Score (cálculo automático com 5 componentes)
+- ✅ Segmentacao CS (CRESCIMENTO, ESTAVEL, ALERTA, RESGATE) baseada em metricas diretas
 - ✅ Classificação de threads com IA (OpenAI GPT-4o-mini)
 - ✅ Sistema de auditoria (append-only log)
 - ✅ Política de retenção de dados
@@ -121,14 +121,16 @@ style={{
 - NUNCA fazer loops com `await` dentro (converter para Promise.all)
 - Chunks de queries `in` devem rodar em paralelo
 
-### Health Score (5 componentes):
-| Componente | Peso |
-|------------|------|
-| Engajamento | 25% |
-| Sentimento | 25% |
-| Tickets Abertos | 20% |
-| Tempo sem Contato | 15% |
-| Uso da Plataforma | 15% |
+### Segmentacao CS (4 segmentos):
+| Segmento | Descricao |
+|----------|-----------|
+| CRESCIMENTO | Melhores clientes - alto potencial de expansao |
+| ESTAVEL | Clientes estaveis - manter engajamento |
+| ALERTA | Atencao necessaria - sinais de risco |
+| RESGATE | Critico - risco iminente de churn |
+
+Calculo baseado em metricas diretas: dias sem uso, frequencia, reclamacoes, engajamento.
+Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) via LEGACY_SEGMENT_MAP.
 
 ---
 
@@ -138,7 +140,7 @@ style={{
 2. **CSS**: Inline styles ao invés de Tailwind para consistência
 3. **Classificação IA**: OpenAI GPT-4o-mini com fallback para classificação manual
 4. **Auditoria**: Append-only, nunca permite update/delete
-5. **Health Score**: Cálculo diário automático via job agendado
+5. **Segmentacao CS**: Classificacao direta por metricas (sem Health Score intermediario)
 
 ---
 

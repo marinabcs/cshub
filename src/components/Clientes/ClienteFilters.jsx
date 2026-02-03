@@ -1,4 +1,5 @@
 import { SearchInput, Select } from '../UI/Input'
+import { SEGMENTO_OPTIONS } from '../../utils/segmentoCS'
 
 const teamTypes = [
   { value: '', label: 'Todos os tipos' },
@@ -10,21 +11,13 @@ const teamTypes = [
   { value: 'CA LCS', label: 'CA LCS' }
 ]
 
-const healthStatuses = [
-  { value: '', label: 'Todos os status' },
-  { value: 'saudavel', label: 'Saudável' },
-  { value: 'atencao', label: 'Atenção' },
-  { value: 'risco', label: 'Risco' },
-  { value: 'critico', label: 'Crítico' }
-]
-
 export default function ClienteFilters({
   search,
   onSearchChange,
   teamType,
   onTeamTypeChange,
-  healthStatus,
-  onHealthStatusChange,
+  segmento,
+  onSegmentoChange,
   responsaveis = [],
   responsavel,
   onResponsavelChange
@@ -50,12 +43,13 @@ export default function ClienteFilters({
         </Select>
 
         <Select
-          value={healthStatus}
-          onChange={(e) => onHealthStatusChange(e.target.value)}
+          value={segmento || ''}
+          onChange={(e) => onSegmentoChange(e.target.value)}
         >
-          {healthStatuses.map((status) => (
-            <option key={status.value} value={status.value}>
-              {status.label}
+          <option value="">Todos os segmentos</option>
+          {SEGMENTO_OPTIONS.map((seg) => (
+            <option key={seg.value} value={seg.value}>
+              {seg.label}
             </option>
           ))}
         </Select>

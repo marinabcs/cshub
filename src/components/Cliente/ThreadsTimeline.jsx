@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { MessageSquare, Mail, ChevronRight, Search, SlidersHorizontal, X, ExternalLink, Bot, ListTodo, Clock, AlertTriangle, ArrowUpDown, Filter } from 'lucide-react';
+import { MessageSquare, Mail, ChevronRight, Search, SlidersHorizontal, X, ExternalLink, Bot, ListTodo, Clock, AlertTriangle, ArrowUpDown, Filter, EyeOff, Eye } from 'lucide-react';
 import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../../services/openai';
 import { isClickUpConfigured } from '../../services/clickup';
+import { applyFiltersToThreads, getFilterStats } from '../../utils/emailFilters';
 
 // Status das threads
 const THREAD_STATUS = {
@@ -60,6 +61,8 @@ export default function ThreadsTimeline({
   onThreadClick,
   onClassificarClick,
   onCriarTarefaClick,
+  onMarcarIrrelevante,
+  filterConfig,
   cliente
 }) {
   // Estados dos filtros
@@ -71,6 +74,10 @@ export default function ThreadsTimeline({
   const [busca, setBusca] = useState('');
   const [ordenacao, setOrdenacao] = useState('recentes');
   const [showFiltros, setShowFiltros] = useState(false);
+  const [mostrarFiltrados, setMostrarFiltrados] = useState(false);
+
+  // Estatísticas de filtragem de email
+  const filterStats = useMemo(() => getFilterStats(threads, filterConfig), [threads, filterConfig]);
 
   // Cores e labels
   const getStatusColor = (status) => THREAD_STATUS[status]?.color || '#64748b';
@@ -88,7 +95,13 @@ export default function ThreadsTimeline({
 
   // Filtrar e ordenar threads
   const filteredThreads = useMemo(() => {
-    let result = threads.filter(thread => {
+    // Aplicar filtros de email primeiro
+    const annotated = filterConfig ? applyFiltersToThreads(threads, filterConfig) : threads;
+
+    // Ocultar filtradas (a menos que toggle esteja ativo)
+    let result = mostrarFiltrados ? annotated : annotated.filter(t => !t._isFiltered);
+
+    result = result.filter(thread => {
       // Filtro por categoria
       if (filtroCategoria !== 'todos' && thread.categoria !== filtroCategoria) return false;
 
@@ -155,7 +168,7 @@ export default function ThreadsTimeline({
     });
 
     return result;
-  }, [threads, filtroCategoria, filtroSentimento, filtroStatus, dataInicio, dataFim, busca, ordenacao]);
+  }, [threads, filterConfig, mostrarFiltrados, filtroCategoria, filtroSentimento, filtroStatus, dataInicio, dataFim, busca, ordenacao]);
 
   // Verificar se há filtros ativos
   const hasActiveFilters = filtroCategoria !== 'todos' || filtroSentimento !== 'todos' ||
@@ -183,41 +196,67 @@ export default function ThreadsTimeline({
             {hasActiveFilters ? `${filteredThreads.length} de ${threads.length}` : `${threads.length} conversas`}
           </span>
         </div>
-        <button
-          onClick={() => setShowFiltros(!showFiltros)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '8px 14px',
-            background: showFiltros || hasActiveFilters ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
-            border: '1px solid rgba(139, 92, 246, 0.3)',
-            borderRadius: '10px',
-            color: showFiltros || hasActiveFilters ? '#a78bfa' : '#94a3b8',
-            fontSize: '13px',
-            fontWeight: '500',
-            cursor: 'pointer'
-          }}
-        >
-          <SlidersHorizontal style={{ width: '16px', height: '16px' }} />
-          Filtros
-          {hasActiveFilters && (
-            <span style={{
-              width: '18px',
-              height: '18px',
-              background: '#8b5cf6',
-              borderRadius: '50%',
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {filterStats.filtered > 0 && (
+            <button
+              onClick={() => setMostrarFiltrados(!mostrarFiltrados)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                background: mostrarFiltrados ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: '10px',
+                color: mostrarFiltrados ? '#f59e0b' : '#94a3b8',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              {mostrarFiltrados
+                ? <Eye style={{ width: '16px', height: '16px' }} />
+                : <EyeOff style={{ width: '16px', height: '16px' }} />
+              }
+              {filterStats.filtered} filtradas
+            </button>
+          )}
+          <button
+            onClick={() => setShowFiltros(!showFiltros)}
+            style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '10px',
-              color: 'white',
-              fontWeight: '600'
-            }}>
-              !
-            </span>
-          )}
-        </button>
+              gap: '6px',
+              padding: '8px 14px',
+              background: showFiltros || hasActiveFilters ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '10px',
+              color: showFiltros || hasActiveFilters ? '#a78bfa' : '#94a3b8',
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: 'pointer'
+            }}
+          >
+            <SlidersHorizontal style={{ width: '16px', height: '16px' }} />
+            Filtros
+            {hasActiveFilters && (
+              <span style={{
+                width: '18px',
+                height: '18px',
+                background: '#8b5cf6',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '10px',
+                color: 'white',
+                fontWeight: '600'
+              }}>
+                !
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Barra de busca */}
@@ -404,6 +443,8 @@ export default function ThreadsTimeline({
                 ? 'rgba(249, 115, 22, 0.3)'
                 : 'rgba(139, 92, 246, 0.1)';
 
+            const isFiltered = thread._isFiltered;
+
             return (
               <div
                 key={thread.id}
@@ -413,11 +454,12 @@ export default function ThreadsTimeline({
                   alignItems: 'flex-start',
                   justifyContent: 'space-between',
                   padding: '16px',
-                  background: bgColor,
-                  border: `1px solid ${borderColor}`,
+                  background: isFiltered ? 'rgba(100, 116, 139, 0.05)' : bgColor,
+                  border: `1px solid ${isFiltered ? 'rgba(100, 116, 139, 0.15)' : borderColor}`,
                   borderRadius: '12px',
                   cursor: 'pointer',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s',
+                  opacity: isFiltered ? 0.55 : 1
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', flex: 1 }}>
@@ -525,6 +567,24 @@ export default function ThreadsTimeline({
                           {getSentimentoInfo(thread.sentimento).emoji} {getSentimentoInfo(thread.sentimento).label}
                         </span>
                       )}
+
+                      {/* Badge Filtrada */}
+                      {isFiltered && (
+                        <span style={{
+                          padding: '2px 8px',
+                          background: 'rgba(245, 158, 11, 0.15)',
+                          color: '#f59e0b',
+                          borderRadius: '6px',
+                          fontSize: '10px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          <EyeOff style={{ width: '10px', height: '10px' }} />
+                          {thread._filterReason || 'Filtrada'}
+                        </span>
+                      )}
                     </div>
 
                     {/* Assunto */}
@@ -620,6 +680,35 @@ export default function ThreadsTimeline({
                         >
                           <ListTodo style={{ width: '12px', height: '12px' }} />
                           Tarefa
+                        </button>
+                      )}
+
+                      {/* Marcar como irrelevante/relevante */}
+                      {onMarcarIrrelevante && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMarcarIrrelevante(thread);
+                          }}
+                          style={{
+                            padding: '4px 10px',
+                            background: thread.filtrado_manual
+                              ? 'rgba(245, 158, 11, 0.15)'
+                              : 'rgba(100, 116, 139, 0.1)',
+                            border: `1px solid ${thread.filtrado_manual ? 'rgba(245, 158, 11, 0.3)' : 'rgba(100, 116, 139, 0.2)'}`,
+                            borderRadius: '6px',
+                            color: thread.filtrado_manual ? '#f59e0b' : '#94a3b8',
+                            fontSize: '11px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          {thread.filtrado_manual
+                            ? <><Eye style={{ width: '12px', height: '12px' }} /> Relevante</>
+                            : <><EyeOff style={{ width: '12px', height: '12px' }} /> Irrelevante</>
+                          }
                         </button>
                       )}
 

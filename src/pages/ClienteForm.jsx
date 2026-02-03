@@ -7,6 +7,7 @@ import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus,
 import { STATUS_OPTIONS, DEFAULT_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { logAction, calculateChanges } from '../utils/audit';
 import { useAuth } from '../contexts/AuthContext';
+import { AREAS_ATUACAO } from '../utils/areasAtuacao';
 
 const TAGS_CONTEXTO = [
   'Onboarding',
@@ -52,6 +53,7 @@ export default function ClienteForm() {
   const [stakeholders, setStakeholders] = useState([]);
   const [senhaPadrao, setSenhaPadrao] = useState('');
   const [showSenha, setShowSenha] = useState(false);
+  const [areaAtuacao, setAreaAtuacao] = useState('');
 
   // Filter state for teams
   const [searchTime, setSearchTime] = useState('');
@@ -105,6 +107,7 @@ export default function ClienteForm() {
             setTimesOriginais(data.times || []);
             setStakeholders(data.stakeholders || []);
             setSenhaPadrao(data.senha_padrao || '');
+            setAreaAtuacao(data.area_atuacao || '');
           }
         }
       } catch (error) {
@@ -268,6 +271,7 @@ export default function ClienteForm() {
         team_type: teamTypesArray.length === 1 ? teamTypesArray[0] : teamTypesArray.join(', '),
         stakeholders,
         senha_padrao: senhaPadrao,
+        area_atuacao: areaAtuacao || null,
         updated_at: new Date()
       };
 
@@ -300,8 +304,7 @@ export default function ClienteForm() {
         // Create new client
         const newClientRef = doc(collection(db, 'clientes'));
         clienteData.created_at = new Date();
-        clienteData.health_score = 100;
-        clienteData.health_status = 'saudavel';
+        clienteData.segmento_cs = 'ESTAVEL';
         await setDoc(newClientRef, clienteData);
 
         // Update times with new client ID
@@ -464,6 +467,35 @@ export default function ClienteForm() {
                       : '○ Não usa métricas da plataforma no Health Score'}
                   </p>
                 )}
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
+                  Área de Atuação
+                </label>
+                <select
+                  value={areaAtuacao}
+                  onChange={(e) => setAreaAtuacao(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#0f0a1f',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    color: areaAtuacao ? 'white' : '#64748b',
+                    fontSize: '14px',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <option value="" style={{ background: '#1e1b4b', color: '#64748b' }}>Selecione a área...</option>
+                  {AREAS_ATUACAO.map(area => (
+                    <option key={area.value} value={area.value} style={{ background: '#1e1b4b', color: 'white' }}>
+                      {area.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

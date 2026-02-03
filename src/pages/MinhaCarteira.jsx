@@ -25,10 +25,10 @@ export default function MinhaCarteira() {
   const [allClientes, setAllClientes] = useState([]); // Todos os clientes sem filtro de status
   const [stats, setStats] = useState({
     total: 0,
-    grow: 0,
-    nurture: 0,
-    watch: 0,
-    rescue: 0,
+    crescimento: 0,
+    estavel: 0,
+    alerta: 0,
+    resgate: 0,
     threadsPendentes: 0,
     alertasPendentes: 0
   });
@@ -76,10 +76,10 @@ export default function MinhaCarteira() {
     setStats(prev => ({
       ...prev,
       total: filtered.length,
-      grow: filtered.filter(c => getClienteSegmento(c) === 'GROW').length,
-      nurture: filtered.filter(c => getClienteSegmento(c) === 'NURTURE').length,
-      watch: filtered.filter(c => getClienteSegmento(c) === 'WATCH').length,
-      rescue: filtered.filter(c => getClienteSegmento(c) === 'RESCUE').length
+      crescimento: filtered.filter(c => getClienteSegmento(c) === 'CRESCIMENTO').length,
+      estavel: filtered.filter(c => getClienteSegmento(c) === 'ESTAVEL').length,
+      alerta: filtered.filter(c => getClienteSegmento(c) === 'ALERTA').length,
+      resgate: filtered.filter(c => getClienteSegmento(c) === 'RESGATE').length
     }));
   }, [filterStatus, allClientes]);
 
@@ -129,7 +129,7 @@ export default function MinhaCarteira() {
       }
 
       // Ordenar por prioridade do segmento (mais críticos primeiro)
-      const segmentoOrder = { RESCUE: 1, WATCH: 2, NURTURE: 3, GROW: 4 };
+      const segmentoOrder = { RESGATE: 1, ALERTA: 2, ESTAVEL: 3, CRESCIMENTO: 4 };
       clientesData.sort((a, b) => (segmentoOrder[getClienteSegmento(a)] || 5) - (segmentoOrder[getClienteSegmento(b)] || 5));
       setAllClientes(clientesData);
 
@@ -143,10 +143,10 @@ export default function MinhaCarteira() {
       // Calcular stats baseado nos clientes FILTRADOS por segmento
       const statsCalc = {
         total: filtered.length,
-        grow: filtered.filter(c => getClienteSegmento(c) === 'GROW').length,
-        nurture: filtered.filter(c => getClienteSegmento(c) === 'NURTURE').length,
-        watch: filtered.filter(c => getClienteSegmento(c) === 'WATCH').length,
-        rescue: filtered.filter(c => getClienteSegmento(c) === 'RESCUE').length,
+        crescimento: filtered.filter(c => getClienteSegmento(c) === 'CRESCIMENTO').length,
+        estavel: filtered.filter(c => getClienteSegmento(c) === 'ESTAVEL').length,
+        alerta: filtered.filter(c => getClienteSegmento(c) === 'ALERTA').length,
+        resgate: filtered.filter(c => getClienteSegmento(c) === 'RESGATE').length,
         threadsPendentes: 0,
         alertasPendentes: 0
       };
@@ -376,51 +376,51 @@ export default function MinhaCarteira() {
         </div>
 
         <div style={{
-          background: `linear-gradient(135deg, ${SEGMENTOS_CS.GROW.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
-          border: `1px solid ${SEGMENTOS_CS.GROW.borderColor}`,
+          background: `linear-gradient(135deg, ${SEGMENTOS_CS.CRESCIMENTO.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
+          border: `1px solid ${SEGMENTOS_CS.CRESCIMENTO.borderColor}`,
           borderRadius: '16px',
           padding: '20px',
           textAlign: 'center'
         }}>
-          <TrendingUp style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.GROW.color, margin: '0 auto 8px' }} />
-          <p style={{ color: SEGMENTOS_CS.GROW.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.grow}</p>
-          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Grow</p>
+          <TrendingUp style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.CRESCIMENTO.color, margin: '0 auto 8px' }} />
+          <p style={{ color: SEGMENTOS_CS.CRESCIMENTO.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.crescimento}</p>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Crescimento</p>
         </div>
 
         <div style={{
-          background: `linear-gradient(135deg, ${SEGMENTOS_CS.NURTURE.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
-          border: `1px solid ${SEGMENTOS_CS.NURTURE.borderColor}`,
+          background: `linear-gradient(135deg, ${SEGMENTOS_CS.ESTAVEL.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
+          border: `1px solid ${SEGMENTOS_CS.ESTAVEL.borderColor}`,
           borderRadius: '16px',
           padding: '20px',
           textAlign: 'center'
         }}>
-          <CheckCircle style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.NURTURE.color, margin: '0 auto 8px' }} />
-          <p style={{ color: SEGMENTOS_CS.NURTURE.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.nurture}</p>
-          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Nurture</p>
+          <CheckCircle style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.ESTAVEL.color, margin: '0 auto 8px' }} />
+          <p style={{ color: SEGMENTOS_CS.ESTAVEL.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.estavel}</p>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Estavel</p>
         </div>
 
         <div style={{
-          background: `linear-gradient(135deg, ${SEGMENTOS_CS.WATCH.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
-          border: `1px solid ${SEGMENTOS_CS.WATCH.borderColor}`,
+          background: `linear-gradient(135deg, ${SEGMENTOS_CS.ALERTA.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
+          border: `1px solid ${SEGMENTOS_CS.ALERTA.borderColor}`,
           borderRadius: '16px',
           padding: '20px',
           textAlign: 'center'
         }}>
-          <AlertTriangle style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.WATCH.color, margin: '0 auto 8px' }} />
-          <p style={{ color: SEGMENTOS_CS.WATCH.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.watch}</p>
-          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Watch</p>
+          <AlertTriangle style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.ALERTA.color, margin: '0 auto 8px' }} />
+          <p style={{ color: SEGMENTOS_CS.ALERTA.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.alerta}</p>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Alerta</p>
         </div>
 
         <div style={{
-          background: `linear-gradient(135deg, ${SEGMENTOS_CS.RESCUE.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
-          border: `1px solid ${SEGMENTOS_CS.RESCUE.borderColor}`,
+          background: `linear-gradient(135deg, ${SEGMENTOS_CS.RESGATE.bgColor} 0%, rgba(30, 27, 75, 0.4) 100%)`,
+          border: `1px solid ${SEGMENTOS_CS.RESGATE.borderColor}`,
           borderRadius: '16px',
           padding: '20px',
           textAlign: 'center'
         }}>
-          <XCircle style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.RESCUE.color, margin: '0 auto 8px' }} />
-          <p style={{ color: SEGMENTOS_CS.RESCUE.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.rescue}</p>
-          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Rescue</p>
+          <XCircle style={{ width: '24px', height: '24px', color: SEGMENTOS_CS.RESGATE.color, margin: '0 auto 8px' }} />
+          <p style={{ color: SEGMENTOS_CS.RESGATE.color, fontSize: '28px', fontWeight: '700', margin: '0 0 4px 0' }}>{stats.resgate}</p>
+          <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Resgate</p>
         </div>
       </div>
 

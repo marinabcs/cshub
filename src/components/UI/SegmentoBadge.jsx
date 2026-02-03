@@ -1,5 +1,18 @@
 import { TrendingUp, Heart, Eye, AlertTriangle } from 'lucide-react';
-import { SEGMENTOS_CS, getSegmentoInfo } from '../../utils/segmentoCS';
+import { getSegmentoInfo } from '../../utils/segmentoCS';
+
+const SEGMENTO_ICONS = {
+  CRESCIMENTO: TrendingUp,
+  ESTAVEL: Heart,
+  ALERTA: Eye,
+  RESGATE: AlertTriangle
+};
+
+function getIcon(segmento) {
+  const info = getSegmentoInfo(segmento);
+  const normalized = info?.value || segmento;
+  return SEGMENTO_ICONS[normalized] || null;
+}
 
 /**
  * Badge component for displaying customer segment
@@ -9,14 +22,7 @@ export function SegmentoBadge({ segmento, showLabel = true, showIcon = true, siz
   const info = getSegmentoInfo(segmento);
   if (!info) return null;
 
-  const icons = {
-    GROW: TrendingUp,
-    NURTURE: Heart,
-    WATCH: Eye,
-    RESCUE: AlertTriangle
-  };
-
-  const Icon = icons[segmento];
+  const Icon = getIcon(segmento);
 
   const sizes = {
     sm: {
@@ -75,14 +81,7 @@ export function SegmentoIcon({ segmento, size = 'md' }) {
   const info = getSegmentoInfo(segmento);
   if (!info) return null;
 
-  const icons = {
-    GROW: TrendingUp,
-    NURTURE: Heart,
-    WATCH: Eye,
-    RESCUE: AlertTriangle
-  };
-
-  const Icon = icons[segmento];
+  const Icon = getIcon(segmento);
 
   const sizes = {
     sm: { size: 16, padding: '4px' },
@@ -119,14 +118,7 @@ export function SegmentoCard({ segmento, showAcoes = true, onAcaoClick }) {
   const info = getSegmentoInfo(segmento);
   if (!info) return null;
 
-  const icons = {
-    GROW: TrendingUp,
-    NURTURE: Heart,
-    WATCH: Eye,
-    RESCUE: AlertTriangle
-  };
-
-  const Icon = icons[segmento];
+  const Icon = getIcon(segmento);
 
   return (
     <div

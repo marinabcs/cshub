@@ -49,10 +49,10 @@ export default function Dashboard() {
   // Stats baseado em clientes ativos por segmento
   const stats = {
     total: clientesAtivos.length,
-    grow: clientesAtivos.filter(c => getClienteSegmento(c) === 'GROW').length,
-    nurture: clientesAtivos.filter(c => getClienteSegmento(c) === 'NURTURE').length,
-    watch: clientesAtivos.filter(c => getClienteSegmento(c) === 'WATCH').length,
-    rescue: clientesAtivos.filter(c => getClienteSegmento(c) === 'RESCUE').length
+    crescimento: clientesAtivos.filter(c => getClienteSegmento(c) === 'CRESCIMENTO').length,
+    estavel: clientesAtivos.filter(c => getClienteSegmento(c) === 'ESTAVEL').length,
+    alerta: clientesAtivos.filter(c => getClienteSegmento(c) === 'ALERTA').length,
+    resgate: clientesAtivos.filter(c => getClienteSegmento(c) === 'RESGATE').length
   };
 
   // Stats por status do cliente (ciclo de vida) - inclui todos
@@ -65,9 +65,9 @@ export default function Dashboard() {
   };
 
   // Clientes que precisam de atenção (WATCH e RESCUE - mais críticos primeiro)
-  const segmentoOrder = { RESCUE: 1, WATCH: 2, NURTURE: 3, GROW: 4 };
+  const segmentoOrder = { RESGATE: 1, ALERTA: 2, ESTAVEL: 3, CRESCIMENTO: 4 };
   const clientesAtencao = clientesAtivos
-    .filter(c => ['WATCH', 'RESCUE'].includes(getClienteSegmento(c)))
+    .filter(c => ['ALERTA', 'RESGATE'].includes(getClienteSegmento(c)))
     .sort((a, b) => (segmentoOrder[getClienteSegmento(a)] || 5) - (segmentoOrder[getClienteSegmento(b)] || 5))
     .slice(0, 5);
 
@@ -221,7 +221,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Saudáveis</p>
-            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.grow + stats.nurture}</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.crescimento + stats.estavel}</p>
           </div>
         </div>
 
@@ -249,7 +249,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Precisam Atenção</p>
-            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.watch}</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.alerta}</p>
           </div>
         </div>
 
@@ -277,7 +277,7 @@ export default function Dashboard() {
           </div>
           <div>
             <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 4px 0' }}>Em Estado Crítico</p>
-            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.rescue}</p>
+            <p style={{ color: 'white', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>{stats.resgate}</p>
           </div>
         </div>
       </div>
@@ -471,10 +471,10 @@ export default function Dashboard() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {[
-              { label: 'Grow', value: stats.grow, color: SEGMENTOS_CS.GROW.color },
-              { label: 'Nurture', value: stats.nurture, color: SEGMENTOS_CS.NURTURE.color },
-              { label: 'Watch', value: stats.watch, color: SEGMENTOS_CS.WATCH.color },
-              { label: 'Rescue', value: stats.rescue, color: SEGMENTOS_CS.RESCUE.color }
+              { label: 'Crescimento', value: stats.crescimento, color: SEGMENTOS_CS.CRESCIMENTO.color },
+              { label: 'Estavel', value: stats.estavel, color: SEGMENTOS_CS.ESTAVEL.color },
+              { label: 'Alerta', value: stats.alerta, color: SEGMENTOS_CS.ALERTA.color },
+              { label: 'Resgate', value: stats.resgate, color: SEGMENTOS_CS.RESGATE.color }
             ].map((item, index) => (
               <div key={index}>
                 <div style={{
@@ -521,9 +521,9 @@ export default function Dashboard() {
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <span style={{ color: '#94a3b8', fontSize: '14px' }}>Clientes com potencial (Grow)</span>
-              <span style={{ color: SEGMENTOS_CS.GROW.color, fontSize: '20px', fontWeight: 'bold' }}>
-                {stats.total > 0 ? Math.round((stats.grow / stats.total) * 100) : 0}%
+              <span style={{ color: '#94a3b8', fontSize: '14px' }}>Clientes com potencial (Crescimento)</span>
+              <span style={{ color: SEGMENTOS_CS.CRESCIMENTO.color, fontSize: '20px', fontWeight: 'bold' }}>
+                {stats.total > 0 ? Math.round((stats.crescimento / stats.total) * 100) : 0}%
               </span>
             </div>
           </div>

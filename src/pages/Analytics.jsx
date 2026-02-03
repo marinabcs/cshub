@@ -16,13 +16,8 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line, Area, AreaChart
 } from 'recharts';
-
-const STATUS_COLORS = {
-  saudavel: '#10B981',
-  atencao: '#F59E0B',
-  risco: '#f97316',
-  critico: '#EF4444'
-};
+import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
+import { SegmentoBadge } from '../components/UI/SegmentoBadge';
 
 const CATEGORIA_COLORS = {
   'erro_bug': '#EF4444',
@@ -370,19 +365,20 @@ export default function Analytics() {
     const totalThreadsAnterior = threadsPeriodoAnterior.length;
     const alertasPendentes = alertasFiltrados.filter(a => a.status === 'pendente').length;
 
-    // Health Score médio apenas de clientes ativos (não inativos/cancelados)
-    const clientesComHealth = clientesFiltrados.filter(c =>
-      (c.status === 'ativo' || !c.status) && c.health_score !== undefined
-    );
-    const healthScoreTotal = clientesComHealth.reduce((sum, c) => sum + (c.health_score || 0), 0);
-    const healthScoreMedio = clientesComHealth.length > 0 ? Math.round(healthScoreTotal / clientesComHealth.length) : 0;
+    // Distribuição por segmento CS
+    const segmentoCounts = {
+      CRESCIMENTO: clientesFiltrados.filter(c => getClienteSegmento(c) === 'CRESCIMENTO').length,
+      ESTAVEL: clientesFiltrados.filter(c => getClienteSegmento(c) === 'ESTAVEL').length,
+      ALERTA: clientesFiltrados.filter(c => getClienteSegmento(c) === 'ALERTA').length,
+      RESGATE: clientesFiltrados.filter(c => getClienteSegmento(c) === 'RESGATE').length
+    };
 
     // Calcular variação percentual
     const variacaoThreads = totalThreadsAnterior > 0
       ? Math.round(((totalThreads - totalThreadsAnterior) / totalThreadsAnterior) * 100)
       : 0;
 
-    return { clientesAtivos, totalTimes, totalThreads, alertasPendentes, healthScoreMedio, variacaoThreads };
+    return { clientesAtivos, totalTimes, totalThreads, alertasPendentes, segmentoCounts, variacaoThreads };
   }, [clientesFiltrados, threadsFiltradas, threadsPeriodoAnterior, alertasFiltrados]);
 
   // ========== TOP 5 CLIENTES MAIS ENGAJADOS ==========
@@ -437,28 +433,34 @@ export default function Analytics() {
     ].filter(d => d.value > 0);
   }, [clientesFiltrados]);
 
-  // ========== SEÇÃO 3: DISTRIBUIÇÃO POR HEALTH SCORE ==========
-  const healthScoreData = useMemo(() => {
-    const faixas = {
-      saudavel: clientesFiltrados.filter(c => (c.health_score || 0) >= 80).length,
-      atencao: clientesFiltrados.filter(c => (c.health_score || 0) >= 60 && (c.health_score || 0) < 80).length,
-      risco: clientesFiltrados.filter(c => (c.health_score || 0) >= 40 && (c.health_score || 0) < 60).length,
-      critico: clientesFiltrados.filter(c => (c.health_score || 0) < 40).length
+  // ========== SEÇÃO 3: DISTRIBUIÇÃO POR SEGMENTO CS ==========
+  const segmentoDistribuicaoData = useMemo(() => {
+    const counts = {
+      CRESCIMENTO: clientesFiltrados.filter(c => getClienteSegmento(c) === 'CRESCIMENTO').length,
+      ESTAVEL: clientesFiltrados.filter(c => getClienteSegmento(c) === 'ESTAVEL').length,
+      ALERTA: clientesFiltrados.filter(c => getClienteSegmento(c) === 'ALERTA').length,
+      RESGATE: clientesFiltrados.filter(c => getClienteSegmento(c) === 'RESGATE').length
     };
 
     return [
-      { name: 'Saudável (80-100)', value: faixas.saudavel, color: STATUS_COLORS.saudavel },
-      { name: 'Atenção (60-79)', value: faixas.atencao, color: STATUS_COLORS.atencao },
-      { name: 'Risco (40-59)', value: faixas.risco, color: STATUS_COLORS.risco },
-      { name: 'Crítico (0-39)', value: faixas.critico, color: STATUS_COLORS.critico }
+      { name: SEGMENTOS_CS.CRESCIMENTO.label, value: counts.CRESCIMENTO, color: SEGMENTOS_CS.CRESCIMENTO.color },
+      { name: SEGMENTOS_CS.ESTAVEL.label, value: counts.ESTAVEL, color: SEGMENTOS_CS.ESTAVEL.color },
+      { name: SEGMENTOS_CS.ALERTA.label, value: counts.ALERTA, color: SEGMENTOS_CS.ALERTA.color },
+      { name: SEGMENTOS_CS.RESGATE.label, value: counts.RESGATE, color: SEGMENTOS_CS.RESGATE.color }
     ].filter(d => d.value > 0);
   }, [clientesFiltrados]);
 
   // ========== SEÇÃO 4: TIMES EM RISCO ==========
   const timesEmRisco = useMemo(() => {
     return clientesFiltrados
-      .filter(c => c.health_status === 'risco' || c.health_status === 'critico')
-      .sort((a, b) => (a.health_score || 0) - (b.health_score || 0))
+      .filter(c => ['ALERTA', 'RESGATE'].includes(getClienteSegmento(c)))
+      .sort((a, b) => {
+        const segA = getClienteSegmento(a);
+        const segB = getClienteSegmento(b);
+        const prioA = SEGMENTOS_CS[segA]?.priority || 99;
+        const prioB = SEGMENTOS_CS[segB]?.priority || 99;
+        return prioB - prioA; // RESGATE first (priority 4), then ALERTA (priority 3)
+      })
       .slice(0, 10);
   }, [clientesFiltrados]);
 
@@ -472,13 +474,16 @@ export default function Analytics() {
         responsaveisMap[resp] = {
           nome: resp,
           qtdClientes: 0,
-          healthScoreTotal: 0,
+          segmentos: { CRESCIMENTO: 0, ESTAVEL: 0, ALERTA: 0, RESGATE: 0 },
           alertasPendentes: 0,
           threadsAguardando: 0
         };
       }
       responsaveisMap[resp].qtdClientes++;
-      responsaveisMap[resp].healthScoreTotal += cliente.health_score || 0;
+      const seg = getClienteSegmento(cliente);
+      if (responsaveisMap[resp].segmentos[seg] !== undefined) {
+        responsaveisMap[resp].segmentos[seg]++;
+      }
     });
 
     // Contar alertas pendentes por responsável
@@ -499,10 +504,7 @@ export default function Analytics() {
       }
     });
 
-    return Object.values(responsaveisMap).map(r => ({
-      ...r,
-      healthScoreMedio: r.qtdClientes > 0 ? Math.round(r.healthScoreTotal / r.qtdClientes) : 0
-    })).sort((a, b) => b.qtdClientes - a.qtdClientes);
+    return Object.values(responsaveisMap).sort((a, b) => b.qtdClientes - a.qtdClientes);
   }, [clientesFiltrados, alertasFiltrados, threadsFiltradas, clientes]);
 
   // ========== SEÇÃO 7: THREADS POR CATEGORIA ==========
@@ -691,7 +693,7 @@ export default function Analytics() {
 
   // ========== ABA VENDAS: Oportunidades de Upsell ==========
   const vendasData = useMemo(() => {
-    // Clientes engajados (health score alto + uso alto) = oportunidades de upsell
+    // Clientes engajados (segmento CRESCIMENTO + uso alto) = oportunidades de upsell
     const clientesComUso = clientesFiltrados.map(c => {
       const teamIds = c.times || [c.id];
       const metricasCliente = metricasDiarias.filter(m => teamIds.includes(m.team_id));
@@ -701,27 +703,28 @@ export default function Analytics() {
       return {
         ...c,
         totalUso,
-        potencialUpsell: (c.health_score || 0) >= 70 && totalUso > 50
+        segmento: getClienteSegmento(c),
+        potencialUpsell: getClienteSegmento(c) === 'CRESCIMENTO'
       };
     });
 
-    // Oportunidades de upsell (alto health score + alto engajamento)
+    // Oportunidades de upsell (segmento CRESCIMENTO)
     const oportunidadesUpsell = clientesComUso
       .filter(c => c.potencialUpsell)
-      .sort((a, b) => (b.health_score || 0) - (a.health_score || 0))
-      .slice(0, 10);
-
-    // Clientes com crescimento de uso
-    const clientesEmCrescimento = clientesComUso
-      .filter(c => (c.health_score || 0) >= 60 && c.totalUso > 30)
       .sort((a, b) => b.totalUso - a.totalUso)
       .slice(0, 10);
 
-    // Valor potencial por tier
+    // Clientes com crescimento de uso (CRESCIMENTO ou ESTAVEL com bom uso)
+    const clientesEmCrescimento = clientesComUso
+      .filter(c => ['CRESCIMENTO', 'ESTAVEL'].includes(c.segmento) && c.totalUso > 30)
+      .sort((a, b) => b.totalUso - a.totalUso)
+      .slice(0, 10);
+
+    // Valor potencial por tier (segmento CRESCIMENTO)
     const porTier = {
-      'Enterprise': clientesFiltrados.filter(c => c.team_type === 'enterprise' && (c.health_score || 0) >= 70).length,
-      'Business': clientesFiltrados.filter(c => c.team_type === 'business' && (c.health_score || 0) >= 70).length,
-      'Starter': clientesFiltrados.filter(c => c.team_type === 'starter' && (c.health_score || 0) >= 70).length
+      'Enterprise': clientesFiltrados.filter(c => c.team_type === 'enterprise' && getClienteSegmento(c) === 'CRESCIMENTO').length,
+      'Business': clientesFiltrados.filter(c => c.team_type === 'business' && getClienteSegmento(c) === 'CRESCIMENTO').length,
+      'Starter': clientesFiltrados.filter(c => c.team_type === 'starter' && getClienteSegmento(c) === 'CRESCIMENTO').length
     };
 
     return { oportunidadesUpsell, clientesEmCrescimento, porTier, totalOportunidades: oportunidadesUpsell.length };
@@ -731,16 +734,21 @@ export default function Analytics() {
   const churnData = useMemo(() => {
     const hoje = new Date();
 
-    // Clientes em risco de churn (health score baixo)
+    // Clientes em risco de churn (segmentos ALERTA e RESGATE)
     const clientesEmRisco = clientesFiltrados
-      .filter(c => (c.health_score || 0) < 50)
-      .sort((a, b) => (a.health_score || 0) - (b.health_score || 0));
+      .filter(c => ['ALERTA', 'RESGATE'].includes(getClienteSegmento(c)))
+      .sort((a, b) => {
+        const segA = getClienteSegmento(a);
+        const segB = getClienteSegmento(b);
+        const prioA = SEGMENTOS_CS[segA]?.priority || 99;
+        const prioB = SEGMENTOS_CS[segB]?.priority || 99;
+        return prioB - prioA; // RESGATE first
+      });
 
-    // Clientes com queda no health score
-    const clientesComQueda = clientesFiltrados.filter(c => {
-      const tendencia = c.health_score_trend || 0;
-      return tendencia < -10;
-    }).sort((a, b) => (a.health_score_trend || 0) - (b.health_score_trend || 0));
+    // Clientes em estado critico (RESGATE)
+    const clientesCriticos = clientesFiltrados.filter(c =>
+      getClienteSegmento(c) === 'RESGATE'
+    );
 
     // Clientes sem contato recente (mais de 30 dias)
     const clientesSemContato = clientesFiltrados.filter(c => {
@@ -755,12 +763,12 @@ export default function Analytics() {
       a.tipo === 'churn_risk' || a.tipo === 'inatividade' || a.tipo === 'sentimento_negativo'
     );
 
-    // Distribuição por status de risco
+    // Distribuição por segmento CS
     const distribuicaoRisco = {
-      'Crítico (0-30)': clientesFiltrados.filter(c => (c.health_score || 0) < 30).length,
-      'Alto Risco (30-50)': clientesFiltrados.filter(c => (c.health_score || 0) >= 30 && (c.health_score || 0) < 50).length,
-      'Atenção (50-70)': clientesFiltrados.filter(c => (c.health_score || 0) >= 50 && (c.health_score || 0) < 70).length,
-      'Saudável (70+)': clientesFiltrados.filter(c => (c.health_score || 0) >= 70).length
+      [SEGMENTOS_CS.RESGATE.label]: clientesFiltrados.filter(c => getClienteSegmento(c) === 'RESGATE').length,
+      [SEGMENTOS_CS.ALERTA.label]: clientesFiltrados.filter(c => getClienteSegmento(c) === 'ALERTA').length,
+      [SEGMENTOS_CS.ESTAVEL.label]: clientesFiltrados.filter(c => getClienteSegmento(c) === 'ESTAVEL').length,
+      [SEGMENTOS_CS.CRESCIMENTO.label]: clientesFiltrados.filter(c => getClienteSegmento(c) === 'CRESCIMENTO').length
     };
 
     // Sinais de alerta - threads negativas/urgentes
@@ -770,7 +778,7 @@ export default function Analytics() {
 
     return {
       clientesEmRisco: clientesEmRisco.slice(0, 10),
-      clientesComQueda: clientesComQueda.slice(0, 10),
+      clientesCriticos: clientesCriticos.slice(0, 10),
       clientesSemContato: clientesSemContato.slice(0, 10),
       totalEmRisco: clientesEmRisco.length,
       totalSemContato: clientesSemContato.length,
@@ -797,7 +805,10 @@ export default function Analytics() {
       'Total Times': visaoGeral.totalTimes,
       'Threads (período)': visaoGeral.totalThreads,
       'Alertas Pendentes': visaoGeral.alertasPendentes,
-      'Health Score Médio': visaoGeral.healthScoreMedio
+      'Seg. Crescimento': visaoGeral.segmentoCounts.CRESCIMENTO,
+      'Seg. Estável': visaoGeral.segmentoCounts.ESTAVEL,
+      'Seg. Alerta': visaoGeral.segmentoCounts.ALERTA,
+      'Seg. Resgate': visaoGeral.segmentoCounts.RESGATE
     }];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumoData), 'Resumo');
 
@@ -807,16 +818,14 @@ export default function Analytics() {
       'Tipo': c.team_type || '-',
       'Status': c.status || 'ativo',
       'Responsável': c.responsavel_nome || '-',
-      'Health Score': c.health_score || 0,
-      'Health Status': c.health_status || '-'
+      'Segmento': getSegmentoLabel(getClienteSegmento(c))
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clientesExport), 'Clientes');
 
     // Aba Times em Risco
     const riscoExport = timesEmRisco.map(c => ({
       'Nome': c.team_name,
-      'Health Score': c.health_score || 0,
-      'Health Status': c.health_status,
+      'Segmento': getSegmentoLabel(getClienteSegmento(c)),
       'Responsável': c.responsavel_nome || '-'
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(riscoExport), 'Times em Risco');
@@ -846,19 +855,16 @@ export default function Analytics() {
     const perfExport = performancePorResponsavel.map(p => ({
       'Responsável': p.nome,
       'Qtd Clientes': p.qtdClientes,
-      'Health Score Médio': p.healthScoreMedio,
+      'Seg. Crescimento': p.segmentos.CRESCIMENTO,
+      'Seg. Estável': p.segmentos.ESTAVEL,
+      'Seg. Alerta': p.segmentos.ALERTA,
+      'Seg. Resgate': p.segmentos.RESGATE,
       'Alertas Pendentes': p.alertasPendentes,
       'Threads Aguardando': p.threadsAguardando
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(perfExport), 'Performance');
 
     XLSX.writeFile(wb, `relatorio_completo_${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
-
-  const getHealthColor = (status) => STATUS_COLORS[status] || '#64748b';
-  const getHealthLabel = (status) => {
-    const labels = { saudavel: 'Saudável', atencao: 'Atenção', risco: 'Risco', critico: 'Crítico' };
-    return labels[status] || status;
   };
 
   const clearFilters = () => {
@@ -1558,8 +1564,8 @@ export default function Analytics() {
               <DollarSign style={{ width: '22px', height: '22px', color: 'white' }} />
             </div>
             <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Clientes Saudáveis</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{clientesFiltrados.filter(c => (c.health_score || 0) >= 70).length}</p>
+              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Seg. Crescimento</p>
+              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{clientesFiltrados.filter(c => getClienteSegmento(c) === 'CRESCIMENTO').length}</p>
             </div>
           </div>
         </div>
@@ -1572,7 +1578,7 @@ export default function Analytics() {
             <Target style={{ width: '20px', height: '20px', color: '#10b981' }} />
             <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Oportunidades de Upsell</h3>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes com alto engajamento e health score (prontos para expansão)</p>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes no segmento Crescimento (prontos para expansao)</p>
           <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
             {vendasData.oportunidadesUpsell.map((cliente, index) => (
               <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
@@ -1582,8 +1588,8 @@ export default function Analytics() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ textAlign: 'right' }}>
-                    <p style={{ color: '#10b981', fontSize: '12px', fontWeight: '600', margin: 0 }}>Health: {cliente.health_score}%</p>
-                    <p style={{ color: '#8b5cf6', fontSize: '11px', margin: 0 }}>Uso: {Math.round(cliente.totalUso)}</p>
+                    <SegmentoBadge segmento={getClienteSegmento(cliente)} size="sm" />
+                    <p style={{ color: '#8b5cf6', fontSize: '11px', margin: '4px 0 0 0' }}>Uso: {Math.round(cliente.totalUso)}</p>
                   </div>
                   <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
                 </div>
@@ -1600,7 +1606,7 @@ export default function Analytics() {
             <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
             <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Clientes em Crescimento</h3>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes com bom health score e uso crescente</p>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes nos segmentos Crescimento ou Estavel com uso crescente</p>
           <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
             {vendasData.clientesEmCrescimento.map((cliente, index) => (
               <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
@@ -1623,19 +1629,19 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Distribuição por Health Score e Status */}
+      {/* Distribuição por Segmento CS e Status */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Health Score</h3>
-          {healthScoreData.length > 0 ? (
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuicao por Segmento CS</h3>
+          {segmentoDistribuicaoData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={healthScoreData} layout="vertical" margin={{ left: 20, right: 20 }}>
+              <BarChart data={segmentoDistribuicaoData} layout="vertical" margin={{ left: 20, right: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
                 <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
                 <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={100} />
                 <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
                 <Bar dataKey="value" name="Clientes" radius={[0, 4, 4, 0]}>
-                  {healthScoreData.map((entry, index) => (
+                  {segmentoDistribuicaoData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Bar>
@@ -1721,18 +1727,21 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Distribuição de risco */}
+      {/* Distribuição por segmento */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px', marginBottom: '24px' }}>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Risco</h3>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuicao por Segmento</h3>
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
               <Pie
-                data={Object.entries(churnData.distribuicaoRisco).map(([name, value]) => ({
-                  name,
-                  value,
-                  color: name.includes('Crítico') ? '#ef4444' : name.includes('Alto') ? '#f97316' : name.includes('Atenção') ? '#f59e0b' : '#10b981'
-                }))}
+                data={Object.entries(churnData.distribuicaoRisco).map(([name, value]) => {
+                  const segKey = Object.keys(SEGMENTOS_CS).find(k => SEGMENTOS_CS[k].label === name);
+                  return {
+                    name,
+                    value,
+                    color: segKey ? SEGMENTOS_CS[segKey].color : '#6b7280'
+                  };
+                })}
                 cx="50%"
                 cy="50%"
                 innerRadius={50}
@@ -1740,9 +1749,10 @@ export default function Analytics() {
                 paddingAngle={3}
                 dataKey="value"
               >
-                {Object.entries(churnData.distribuicaoRisco).map(([name], index) => (
-                  <Cell key={`cell-${index}`} fill={name.includes('Crítico') ? '#ef4444' : name.includes('Alto') ? '#f97316' : name.includes('Atenção') ? '#f59e0b' : '#10b981'} />
-                ))}
+                {Object.entries(churnData.distribuicaoRisco).map(([name], index) => {
+                  const segKey = Object.keys(SEGMENTOS_CS).find(k => SEGMENTOS_CS[k].label === name);
+                  return <Cell key={`cell-${index}`} fill={segKey ? SEGMENTOS_CS[segKey].color : '#6b7280'} />;
+                })}
               </Pie>
               <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
               <Legend verticalAlign="bottom" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '11px' }}>{value}</span>} />
@@ -1757,29 +1767,29 @@ export default function Analytics() {
             <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Top 10 Clientes em Risco</h3>
           </div>
           <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
-            {churnData.clientesEmRisco.map((cliente) => (
-              <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+            {churnData.clientesEmRisco.map((cliente) => {
+              const seg = getClienteSegmento(cliente);
+              const segColor = getSegmentoColor(seg);
+              return (
+              <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', border: `1px solid ${segColor}33` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '36px', height: '36px', background: `${getHealthColor(cliente.health_status)}20`, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ color: getHealthColor(cliente.health_status), fontSize: '14px', fontWeight: '700' }}>{cliente.health_score || 0}</span>
-                  </div>
+                  <SegmentoBadge segmento={seg} size="sm" showLabel={false} />
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
                     <p style={{ color: '#64748b', fontSize: '11px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {cliente.responsaveis?.length > 0
                         ? cliente.responsaveis.join(', ')
-                        : (cliente.responsavel_nome || 'Sem responsável')}
+                        : (cliente.responsavel_nome || 'Sem responsavel')}
                     </p>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ padding: '4px 8px', background: `${getHealthColor(cliente.health_status)}20`, color: getHealthColor(cliente.health_status), borderRadius: '6px', fontSize: '10px', fontWeight: '600' }}>
-                    {getHealthLabel(cliente.health_status)}
-                  </span>
+                  <SegmentoBadge segmento={seg} size="sm" showIcon={false} />
                   <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
                 </div>
               </div>
-            ))}
+              );
+            })}
             {churnData.clientesEmRisco.length === 0 && (
               <div style={{ padding: '32px', textAlign: 'center', color: '#10b981' }}>
                 <TrendingUp style={{ width: '32px', height: '32px', margin: '0 auto 8px' }} />

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2 } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SEGMENTOS_CS, getSegmentoInfo, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge, SegmentoCard } from '../components/UI/SegmentoBadge';
@@ -12,6 +12,7 @@ import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoI
 import PlaybooksSection from '../components/Cliente/PlaybooksSection';
 import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
 import HeavyUsersCard from '../components/Cliente/HeavyUsersCard';
+import { useEmailFilters } from '../hooks/useEmailFilters';
 import { useUserActivityStatus } from '../hooks/useUserActivityStatus';
 import { UserActivityDot } from '../components/UserActivityBadge';
 
@@ -139,6 +140,7 @@ export default function ClienteDetalhe() {
 
   // Classificação de threads
   const { classificar, classificarManual, classificando, erro: erroClassificacao } = useClassificarThread();
+  const { filterConfig } = useEmailFilters();
   const [showManualClassification, setShowManualClassification] = useState(false);
   const [showSenhaPadrao, setShowSenhaPadrao] = useState(false);
   const [manualCategoria, setManualCategoria] = useState('');
@@ -152,6 +154,14 @@ export default function ClienteDetalhe() {
   const [docForm, setDocForm] = useState({ titulo: '', descricao: '', url: '' });
   const [savingDoc, setSavingDoc] = useState(false);
   const [editingDoc, setEditingDoc] = useState(null);
+
+  // Observações do CS
+  const [observacoes, setObservacoes] = useState([]);
+  const [loadingObs, setLoadingObs] = useState(false);
+  const [showObsForm, setShowObsForm] = useState(false);
+  const [obsTexto, setObsTexto] = useState('');
+  const [savingObs, setSavingObs] = useState(false);
+  const [mostrarResolvidas, setMostrarResolvidas] = useState(false);
 
   useEffect(() => {
     const fetchCliente = async () => {
@@ -268,6 +278,26 @@ export default function ClienteDetalhe() {
     fetchMensagens(thread);
   };
 
+  // Marcar/desmarcar thread como irrelevante
+  const handleMarcarIrrelevante = async (thread) => {
+    try {
+      const threadRef = doc(db, 'threads', thread.id);
+      const novoValor = !thread.filtrado_manual;
+      await updateDoc(threadRef, {
+        filtrado_manual: novoValor,
+        filtrado_manual_em: novoValor ? Timestamp.now() : null,
+        filtrado_manual_por: novoValor ? 'manual' : null
+      });
+      setThreads(prev => prev.map(t =>
+        t.id === thread.id
+          ? { ...t, filtrado_manual: novoValor }
+          : t
+      ));
+    } catch (error) {
+      // Silently handle error
+    }
+  };
+
   // Fetch documentos do cliente
   const fetchDocumentos = async () => {
     setLoadingDocs(true);
@@ -336,10 +366,93 @@ export default function ClienteDetalhe() {
     }
   };
 
+  // Fetch observações do CS
+  const fetchObservacoes = async () => {
+    setLoadingObs(true);
+    try {
+      const obsSnap = await getDocs(query(
+        collection(db, 'observacoes_cs'),
+        where('cliente_id', '==', id)
+      ));
+      const obsData = obsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const dateA = a.criado_em?.toDate?.() || new Date(0);
+          const dateB = b.criado_em?.toDate?.() || new Date(0);
+          return dateB - dateA;
+        });
+      setObservacoes(obsData);
+    } catch (error) {
+      console.error('Erro ao buscar observações:', error);
+    } finally {
+      setLoadingObs(false);
+    }
+  };
+
+  // Salvar nova observação
+  const handleSaveObs = async () => {
+    if (!obsTexto.trim()) return;
+    setSavingObs(true);
+    try {
+      await addDoc(collection(db, 'observacoes_cs'), {
+        cliente_id: id,
+        texto: obsTexto.trim(),
+        status: 'ativa',
+        criado_por: 'CS',
+        criado_em: Timestamp.now(),
+        resolvido_em: null,
+        updated_at: Timestamp.now()
+      });
+      setObsTexto('');
+      setShowObsForm(false);
+      fetchObservacoes();
+    } catch (error) {
+      console.error('Erro ao salvar observação:', error);
+      alert('Erro ao salvar observação');
+    } finally {
+      setSavingObs(false);
+    }
+  };
+
+  // Toggle status da observação (ativa ↔ resolvida)
+  const handleToggleObsStatus = async (obs) => {
+    const novoStatus = obs.status === 'ativa' ? 'resolvida' : 'ativa';
+    try {
+      await updateDoc(doc(db, 'observacoes_cs', obs.id), {
+        status: novoStatus,
+        resolvido_em: novoStatus === 'resolvida' ? Timestamp.now() : null,
+        updated_at: Timestamp.now()
+      });
+      setObservacoes(prev => prev.map(o =>
+        o.id === obs.id ? { ...o, status: novoStatus } : o
+      ));
+    } catch (error) {
+      console.error('Erro ao atualizar observação:', error);
+    }
+  };
+
+  // Excluir observação
+  const handleDeleteObs = async (obs) => {
+    if (!confirm('Excluir esta observação?')) return;
+    try {
+      await deleteDoc(doc(db, 'observacoes_cs', obs.id));
+      setObservacoes(prev => prev.filter(o => o.id !== obs.id));
+    } catch (error) {
+      console.error('Erro ao excluir observação:', error);
+    }
+  };
+
   // Carregar documentos quando a aba for selecionada
   useEffect(() => {
     if (activeTab === 'documentos' && documentos.length === 0) {
       fetchDocumentos();
+    }
+  }, [activeTab]);
+
+  // Carregar observações quando a aba for selecionada ou conversas (para card no painel)
+  useEffect(() => {
+    if ((activeTab === 'observacoes' || activeTab === 'conversas') && observacoes.length === 0) {
+      fetchObservacoes();
     }
   }, [activeTab]);
 
@@ -388,11 +501,15 @@ export default function ClienteDetalhe() {
     const threadId = selectedThread.thread_id || selectedThread.id;
     const teamId = selectedThread.team_id || selectedThread._teamId;
 
+    // Filtrar observações ativas para enviar à IA
+    const obsAtivas = observacoes.filter(o => o.status === 'ativa');
+
     const result = await classificar(
       teamId,
       threadId,
       conversaTexto,
-      threadData
+      threadData,
+      obsAtivas
     );
 
     if (result.success) {
@@ -605,6 +722,7 @@ export default function ClienteDetalhe() {
           { id: 'conversas', label: 'Conversas', icon: MessageSquare, count: threads.length },
           { id: 'playbook', label: 'Playbooks', icon: FileText },
           { id: 'documentos', label: 'Documentos', icon: FolderOpen },
+          { id: 'observacoes', label: 'Observações', icon: ClipboardList },
           { id: 'pessoas', label: 'Pessoas', icon: Users, count: usuarios.length }
         ].map(tab => {
           const TabIcon = tab.icon;
@@ -1124,6 +1242,218 @@ export default function ClienteDetalhe() {
         </div>
       )}
 
+      {/* Tab Content: Observações */}
+      {activeTab === 'observacoes' && (
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <ClipboardList style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Observações do CS</h2>
+              <span style={{ padding: '4px 12px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
+                {observacoes.filter(o => o.status === 'ativa').length} {observacoes.filter(o => o.status === 'ativa').length === 1 ? 'ativa' : 'ativas'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => setMostrarResolvidas(!mostrarResolvidas)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  background: mostrarResolvidas ? 'rgba(100, 116, 139, 0.3)' : 'rgba(100, 116, 139, 0.1)',
+                  border: '1px solid rgba(100, 116, 139, 0.3)',
+                  borderRadius: '10px',
+                  color: '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                {mostrarResolvidas ? <EyeOff style={{ width: '14px', height: '14px' }} /> : <Eye style={{ width: '14px', height: '14px' }} />}
+                {mostrarResolvidas ? 'Ocultar resolvidas' : 'Mostrar resolvidas'}
+              </button>
+              <button
+                onClick={() => { setShowObsForm(true); setObsTexto(''); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 16px',
+                  background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: 'white',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                <Plus style={{ width: '16px', height: '16px' }} />
+                Nova Observação
+              </button>
+            </div>
+          </div>
+
+          <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
+            Notas e contexto qualitativo do CS. Observações ativas são incluídas na classificação da IA.
+          </p>
+
+          {/* Formulário de nova observação */}
+          {showObsForm && (
+            <div style={{ padding: '20px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)', marginBottom: '20px' }}>
+              <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: '0 0 12px 0' }}>Nova Observação</h3>
+              <textarea
+                value={obsTexto}
+                onChange={(e) => setObsTexto(e.target.value)}
+                placeholder="Ex: Cliente mencionou na call que está avaliando concorrentes. Insatisfeito com o tempo de resposta do suporte."
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  background: '#0f0a1f',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '14px',
+                  outline: 'none',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                  lineHeight: 1.5,
+                  marginBottom: '12px'
+                }}
+              />
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={handleSaveObs}
+                  disabled={!obsTexto.trim() || savingObs}
+                  style={{
+                    padding: '10px 20px',
+                    background: !obsTexto.trim() ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: 'white',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: !obsTexto.trim() ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {savingObs ? 'Salvando...' : 'Adicionar'}
+                </button>
+                <button
+                  onClick={() => { setShowObsForm(false); setObsTexto(''); }}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'rgba(100, 116, 139, 0.2)',
+                    border: '1px solid rgba(100, 116, 139, 0.3)',
+                    borderRadius: '8px',
+                    color: '#94a3b8',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Lista de observações */}
+          {loadingObs ? (
+            <div style={{ padding: '48px', textAlign: 'center' }}>
+              <div style={{ width: '32px', height: '32px', border: '3px solid rgba(139, 92, 246, 0.2)', borderTopColor: '#8b5cf6', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }}></div>
+            </div>
+          ) : observacoes.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {observacoes
+                .filter(obs => mostrarResolvidas || obs.status === 'ativa')
+                .map(obs => (
+                  <div
+                    key={obs.id}
+                    style={{
+                      padding: '16px',
+                      background: 'rgba(15, 10, 31, 0.6)',
+                      border: `1px solid ${obs.status === 'ativa' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.15)'}`,
+                      borderRadius: '12px',
+                      opacity: obs.status === 'resolvida' ? 0.5 : 1
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          <span style={{
+                            padding: '3px 10px',
+                            background: obs.status === 'ativa' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.2)',
+                            color: obs.status === 'ativa' ? '#10b981' : '#64748b',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '600'
+                          }}>
+                            {obs.status === 'ativa' ? 'Ativa' : 'Resolvida'}
+                          </span>
+                          <span style={{ color: '#64748b', fontSize: '12px' }}>
+                            {obs.criado_em?.toDate ? obs.criado_em.toDate().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                          </span>
+                          <span style={{ color: '#4a4568', fontSize: '11px' }}>por {obs.criado_por || 'CS'}</span>
+                        </div>
+                        <p style={{ color: '#e2e8f0', fontSize: '14px', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                          {obs.texto}
+                        </p>
+                        {obs.status === 'resolvida' && obs.resolvido_em && (
+                          <p style={{ color: '#64748b', fontSize: '11px', margin: '8px 0 0 0' }}>
+                            Resolvida em {obs.resolvido_em?.toDate ? obs.resolvido_em.toDate().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}
+                          </p>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        <button
+                          onClick={() => handleToggleObsStatus(obs)}
+                          title={obs.status === 'ativa' ? 'Marcar como resolvida' : 'Reativar'}
+                          style={{
+                            padding: '8px',
+                            background: obs.status === 'ativa' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(139, 92, 246, 0.1)',
+                            border: `1px solid ${obs.status === 'ativa' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
+                            borderRadius: '8px',
+                            color: obs.status === 'ativa' ? '#10b981' : '#8b5cf6',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          {obs.status === 'ativa'
+                            ? <CheckCircle2 style={{ width: '16px', height: '16px' }} />
+                            : <RotateCcw style={{ width: '16px', height: '16px' }} />
+                          }
+                        </button>
+                        <button
+                          onClick={() => handleDeleteObs(obs)}
+                          style={{
+                            padding: '8px',
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#64748b',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Trash2 style={{ width: '16px', height: '16px' }} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div style={{ padding: '48px', textAlign: 'center' }}>
+              <ClipboardList style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
+              <p style={{ color: '#94a3b8', fontSize: '16px', margin: '0 0 8px 0' }}>Nenhuma observação</p>
+              <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Adicione notas e contexto após calls ou reuniões com o cliente</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tab Content: Pessoas */}
       {activeTab === 'pessoas' && (
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
@@ -1329,6 +1659,8 @@ export default function ClienteDetalhe() {
       <ThreadsTimeline
         threads={threads}
         onThreadClick={handleThreadClick}
+        onMarcarIrrelevante={handleMarcarIrrelevante}
+        filterConfig={filterConfig}
         cliente={cliente}
       />
       )}
@@ -1490,6 +1822,53 @@ export default function ClienteDetalhe() {
                 </div>
               )}
             </div>
+
+            {/* Card de Observações ativas do CS */}
+            {observacoes.filter(o => o.status === 'ativa').length > 0 && (
+              <div style={{ padding: '12px 24px', background: 'rgba(16, 185, 129, 0.05)', borderBottom: '1px solid rgba(16, 185, 129, 0.1)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ClipboardList style={{ width: '14px', height: '14px', color: '#10b981' }} />
+                    <span style={{ color: '#10b981', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Observações do CS</span>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedThread(null); setShowManualClassification(false); setActiveTab('observacoes'); }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#10b981',
+                      fontSize: '11px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                      padding: 0
+                    }}
+                  >
+                    Ver todas →
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {observacoes.filter(o => o.status === 'ativa').slice(0, 3).map(obs => (
+                    <div key={obs.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                      <span style={{ color: '#64748b', fontSize: '11px', flexShrink: 0, marginTop: '2px' }}>
+                        {obs.criado_em?.toDate ? obs.criado_em.toDate().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '-'}
+                      </span>
+                      <p style={{
+                        color: '#cbd5e1',
+                        fontSize: '12px',
+                        margin: 0,
+                        lineHeight: 1.4,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: '600px'
+                      }}>
+                        {obs.texto}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
               {mensagens.length > 0 ? (

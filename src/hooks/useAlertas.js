@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, doc, addDoc, updateDoc, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { verificarTodosAlertas, ordenarAlertas } from '../utils/alertas';
 import { isClickUpConfigured, criarTarefaClickUp, buscarTarefaClickUp, buscarUsuariosClickUpPorEmails } from '../services/clickup';
@@ -209,21 +209,23 @@ export function useVerificarAlertas() {
     setResultados(null);
 
     try {
-      // Buscar dados necessários (incluindo métricas diárias para alertas de sem uso)
-      const [threadsSnap, clientesSnap, alertasSnap, metricasSnap] = await Promise.all([
+      // Buscar dados necessários (incluindo métricas diárias e config de filtros)
+      const [threadsSnap, clientesSnap, alertasSnap, metricasSnap, filterConfigSnap] = await Promise.all([
         getDocs(collection(db, 'threads')),
         getDocs(collection(db, 'clientes')),
         getDocs(collection(db, 'alertas')),
-        getDocs(collection(db, 'metricas_diarias'))
+        getDocs(collection(db, 'metricas_diarias')),
+        getDoc(doc(db, 'config', 'email_filters'))
       ]);
 
-      const threads = threadsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const clientes = clientesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const alertasExistentes = alertasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const metricas = metricasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const threads = threadsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const clientes = clientesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const alertasExistentes = alertasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const metricas = metricasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const filterConfig = filterConfigSnap.exists() ? filterConfigSnap.data() : null;
 
-      // Gerar novos alertas
-      const novosAlertas = verificarTodosAlertas(clientes, threads, alertasExistentes, metricas);
+      // Gerar novos alertas (com filtro de email aplicado)
+      const novosAlertas = verificarTodosAlertas(clientes, threads, alertasExistentes, metricas, filterConfig);
 
       // Salvar novos alertas e criar tarefas no ClickUp
       let criados = 0;

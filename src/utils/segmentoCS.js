@@ -1,18 +1,33 @@
 /**
- * Segmento CS - Customer Segmentation for CS Hub
+ * Segmento CS - Segmentacao de Clientes para CS Hub
  *
  * Classifica clientes em 4 segmentos baseado em dados diretos:
- * - GROW: Melhores clientes com potencial de expansao
- * - NURTURE: Clientes estaveis para manter
- * - WATCH: Clientes com sinais de alerta
- * - RESCUE: Clientes criticos em risco de churn
+ * - CRESCIMENTO: Melhores clientes com potencial de expansao
+ * - ESTAVEL: Clientes estaveis para manter
+ * - ALERTA: Clientes com sinais de alerta
+ * - RESGATE: Clientes criticos em risco de churn
  */
+
+// Mapa de compatibilidade para valores antigos (ingles -> portugues)
+const LEGACY_SEGMENT_MAP = {
+  'GROW': 'CRESCIMENTO',
+  'NURTURE': 'ESTAVEL',
+  'WATCH': 'ALERTA',
+  'RESCUE': 'RESGATE'
+};
+
+/**
+ * Normaliza valor de segmento (converte legado EN para PT)
+ */
+function normalizarSegmento(segmento) {
+  return LEGACY_SEGMENT_MAP[segmento] || segmento;
+}
 
 // Constantes dos segmentos
 export const SEGMENTOS_CS = {
-  GROW: {
-    value: 'GROW',
-    label: 'Grow',
+  CRESCIMENTO: {
+    value: 'CRESCIMENTO',
+    label: 'Crescimento',
     description: 'Melhores clientes - alto potencial de expansao',
     color: '#10b981',
     bgColor: 'rgba(16, 185, 129, 0.15)',
@@ -32,9 +47,9 @@ export const SEGMENTOS_CS = {
       'Solicitar case de sucesso'
     ]
   },
-  NURTURE: {
-    value: 'NURTURE',
-    label: 'Nurture',
+  ESTAVEL: {
+    value: 'ESTAVEL',
+    label: 'Estavel',
     description: 'Clientes estaveis - manter engajamento',
     color: '#3b82f6',
     bgColor: 'rgba(59, 130, 246, 0.15)',
@@ -54,9 +69,9 @@ export const SEGMENTOS_CS = {
       'Monitorar renovacao'
     ]
   },
-  WATCH: {
-    value: 'WATCH',
-    label: 'Watch',
+  ALERTA: {
+    value: 'ALERTA',
+    label: 'Alerta',
     description: 'Atencao necessaria - sinais de risco',
     color: '#f59e0b',
     bgColor: 'rgba(245, 158, 11, 0.15)',
@@ -76,9 +91,9 @@ export const SEGMENTOS_CS = {
       'Propor plano de acao'
     ]
   },
-  RESCUE: {
-    value: 'RESCUE',
-    label: 'Rescue',
+  RESGATE: {
+    value: 'RESGATE',
+    label: 'Resgate',
     description: 'Critico - risco iminente de churn',
     color: '#ef4444',
     bgColor: 'rgba(239, 68, 68, 0.15)',
@@ -103,52 +118,57 @@ export const SEGMENTOS_CS = {
 
 // Lista ordenada para selects
 export const SEGMENTO_OPTIONS = [
-  SEGMENTOS_CS.GROW,
-  SEGMENTOS_CS.NURTURE,
-  SEGMENTOS_CS.WATCH,
-  SEGMENTOS_CS.RESCUE
+  SEGMENTOS_CS.CRESCIMENTO,
+  SEGMENTOS_CS.ESTAVEL,
+  SEGMENTOS_CS.ALERTA,
+  SEGMENTOS_CS.RESGATE
 ];
 
 // Segmento default
-export const DEFAULT_SEGMENTO = 'NURTURE';
+export const DEFAULT_SEGMENTO = 'ESTAVEL';
 
 /**
- * Obter info do segmento
+ * Obter info do segmento (com compatibilidade para valores legados)
  */
 export function getSegmentoInfo(segmento) {
-  return SEGMENTOS_CS[segmento] || null;
+  const normalized = normalizarSegmento(segmento);
+  return SEGMENTOS_CS[normalized] || null;
 }
 
 /**
  * Obter cor do segmento
  */
 export function getSegmentoColor(segmento) {
-  return SEGMENTOS_CS[segmento]?.color || '#6b7280';
+  const normalized = normalizarSegmento(segmento);
+  return SEGMENTOS_CS[normalized]?.color || '#6b7280';
 }
 
 /**
  * Obter cor de fundo do segmento
  */
 export function getSegmentoBgColor(segmento) {
-  return SEGMENTOS_CS[segmento]?.bgColor || 'rgba(107, 114, 128, 0.15)';
+  const normalized = normalizarSegmento(segmento);
+  return SEGMENTOS_CS[normalized]?.bgColor || 'rgba(107, 114, 128, 0.15)';
 }
 
 /**
  * Obter label do segmento
  */
 export function getSegmentoLabel(segmento) {
-  return SEGMENTOS_CS[segmento]?.label || segmento;
+  const normalized = normalizarSegmento(segmento);
+  return SEGMENTOS_CS[normalized]?.label || segmento;
 }
 
 /**
  * Obter acoes recomendadas
  */
 export function getSegmentoAcoes(segmento) {
-  return SEGMENTOS_CS[segmento]?.acoes || [];
+  const normalized = normalizarSegmento(segmento);
+  return SEGMENTOS_CS[normalized]?.acoes || [];
 }
 
 // ============================================
-// CALCULO SIMPLIFICADO - SEM HEALTH SCORE
+// CALCULO SIMPLIFICADO - BASEADO EM METRICAS DIRETAS
 // ============================================
 
 /**
@@ -261,7 +281,7 @@ function calcularEngajamento(metricas) {
 /**
  * FUNCAO PRINCIPAL: Calcular segmento do cliente
  *
- * Usa dados diretos, sem depender de Health Score
+ * Usa dados diretos de metricas
  *
  * @param {Object} cliente - Documento do cliente
  * @param {Array} threads - Threads recentes
@@ -296,54 +316,55 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   // LOGICA DE CLASSIFICACAO (ordem de prioridade)
   // ============================================
 
-  // 1. RESCUE - Critico (verificar primeiro)
+  // 1. RESGATE - Critico (verificar primeiro)
   if (emAvisoPrevio) {
-    return { segmento: 'RESCUE', motivo: 'Em aviso previo', fatores };
+    return { segmento: 'RESGATE', motivo: 'Em aviso previo', fatores };
   }
   if (diasSemUso >= 30) {
-    return { segmento: 'RESCUE', motivo: `${diasSemUso} dias sem uso`, fatores };
+    return { segmento: 'RESGATE', motivo: `${diasSemUso} dias sem uso`, fatores };
   }
   if (reclamacaoGrave) {
-    return { segmento: 'RESCUE', motivo: 'Reclamacao grave recente', fatores };
+    return { segmento: 'RESGATE', motivo: 'Reclamacao grave recente', fatores };
   }
   if (frequenciaUso === 'sem_uso' && reclamacoesRecentes) {
-    return { segmento: 'RESCUE', motivo: 'Sem uso + reclamacoes', fatores };
+    return { segmento: 'RESGATE', motivo: 'Sem uso + reclamacoes', fatores };
   }
 
-  // 2. WATCH - Atencao
+  // 2. ALERTA - Atencao
   if (diasSemUso >= 14) {
-    return { segmento: 'WATCH', motivo: `${diasSemUso} dias sem uso`, fatores };
+    return { segmento: 'ALERTA', motivo: `${diasSemUso} dias sem uso`, fatores };
   }
   if (reclamacoesRecentes) {
-    return { segmento: 'WATCH', motivo: 'Reclamacoes recentes', fatores };
+    return { segmento: 'ALERTA', motivo: 'Reclamacoes recentes', fatores };
   }
   if (championSaiu) {
-    return { segmento: 'WATCH', motivo: 'Champion saiu', fatores };
+    return { segmento: 'ALERTA', motivo: 'Champion saiu', fatores };
   }
   if (frequenciaUso === 'raro' || frequenciaUso === 'sem_uso') {
-    return { segmento: 'WATCH', motivo: 'Uso raro ou inexistente', fatores };
+    return { segmento: 'ALERTA', motivo: 'Uso raro ou inexistente', fatores };
   }
   if (frequenciaUso === 'irregular') {
-    return { segmento: 'WATCH', motivo: 'Uso irregular', fatores };
+    return { segmento: 'ALERTA', motivo: 'Uso irregular', fatores };
   }
 
-  // 3. GROW - Potencial de expansao
+  // 3. CRESCIMENTO - Potencial de expansao
   if (frequenciaUso === 'frequente' && engajamento === 'alto' && !reclamacoesRecentes) {
-    return { segmento: 'GROW', motivo: 'Uso frequente + alto engajamento', fatores };
+    return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + alto engajamento', fatores };
   }
   if (frequenciaUso === 'frequente' && engajamento === 'medio' && !reclamacoesRecentes) {
-    return { segmento: 'GROW', motivo: 'Uso frequente + bom engajamento', fatores };
+    return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + bom engajamento', fatores };
   }
 
-  // 4. NURTURE - Default (clientes estaveis)
-  return { segmento: 'NURTURE', motivo: 'Cliente estavel', fatores };
+  // 4. ESTAVEL - Default (clientes estaveis)
+  return { segmento: 'ESTAVEL', motivo: 'Cliente estavel', fatores };
 }
 
 /**
- * Obter segmento do cliente (valor salvo ou calcular)
+ * Obter segmento do cliente (valor salvo, com normalizacao de legado)
  */
 export function getClienteSegmento(cliente) {
-  return cliente?.segmento_cs || DEFAULT_SEGMENTO;
+  const raw = cliente?.segmento_cs || DEFAULT_SEGMENTO;
+  return normalizarSegmento(raw);
 }
 
 /**

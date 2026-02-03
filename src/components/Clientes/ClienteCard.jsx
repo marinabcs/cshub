@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom'
 import { Users, Calendar, User } from 'lucide-react'
 import { Card, CardContent } from '../UI/Card'
-import { StatusBadge, Badge } from '../UI/Badge'
-import { HealthBar } from '../UI/HealthBar'
+import { Badge } from '../UI/Badge'
+import { SegmentoBadge } from '../UI/SegmentoBadge'
 import { formatRelativeTime } from '../../utils/helpers'
 import { timestampToDate } from '../../services/api'
+import { getClienteSegmento } from '../../utils/segmentoCS'
 
 export default function ClienteCard({ cliente, usuariosCount = 0 }) {
   return (
@@ -23,11 +24,7 @@ export default function ClienteCard({ cliente, usuariosCount = 0 }) {
                 <p className="text-sm text-dark-400">{cliente.team_type}</p>
               </div>
             </div>
-            <StatusBadge status={cliente.health_status} />
-          </div>
-
-          <div className="mb-4">
-            <HealthBar score={cliente.health_score} />
+            <SegmentoBadge segmento={getClienteSegmento(cliente)} size="sm" />
           </div>
 
           <div className="flex flex-wrap gap-2 mb-4">

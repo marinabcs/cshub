@@ -8,7 +8,6 @@
  * - Mensagens: Segue a thread -> Arquivar junto
  * - Alertas resolvidos: 6 meses -> Soft delete
  * - Audit logs: Permanente -> Nunca deletar
- * - Health history: 24 meses -> Deletar antigos
  */
 
 import {
@@ -34,7 +33,6 @@ export const RETENTION_CONFIG = {
   THREADS_RESOLVIDAS_MESES: 12,
   THREADS_INATIVAS_MESES: 6,
   ALERTAS_RESOLVIDOS_MESES: 6,
-  HEALTH_HISTORY_MESES: 24,
   AUDIT_LOGS_MESES: null, // Permanente, nunca deletar
 };
 
@@ -320,59 +318,6 @@ export async function restaurarAlerta(firestore, auth, alertaId) {
 }
 
 /**
- * Limpa health history antigo de um cliente
- *
- * @param {Object} firestore - Instância do Firestore
- * @param {string} clienteId - ID do cliente
- * @param {number} mesesManter - Meses de histórico a manter (padrão: 24)
- * @returns {Promise<Object>} - Resultado da operação
- */
-export async function limparHealthHistoryAntigo(firestore, clienteId, mesesManter = RETENTION_CONFIG.HEALTH_HISTORY_MESES) {
-  try {
-    const dataLimite = calcularDataLimite(mesesManter);
-
-    const healthQuery = query(
-      collection(firestore, `clientes/${clienteId}/health_history`),
-      where('created_at', '<', Timestamp.fromDate(dataLimite))
-    );
-
-    const snapshot = await getDocs(healthQuery);
-
-    if (snapshot.empty) {
-      return { success: true, deletados: 0 };
-    }
-
-    // Deletar em batches (máximo 500 por batch)
-    const batchSize = 500;
-    let deletados = 0;
-    let batch = writeBatch(firestore);
-    let batchCount = 0;
-
-    for (const docSnap of snapshot.docs) {
-      batch.delete(docSnap.ref);
-      batchCount++;
-      deletados++;
-
-      if (batchCount >= batchSize) {
-        await batch.commit();
-        batch = writeBatch(firestore);
-        batchCount = 0;
-      }
-    }
-
-    // Commit remaining
-    if (batchCount > 0) {
-      await batch.commit();
-    }
-
-    return { success: true, deletados, clienteId };
-  } catch (error) {
-    console.error('[Retention] Erro ao limpar health history:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-/**
  * Busca threads elegíveis para arquivamento
  * @param {Object} firestore - Instância do Firestore
  * @returns {Promise<Object>} - { resolvidas: [], inativas: [] }
@@ -483,11 +428,6 @@ export async function executarRetencaoCompleta(firestore, auth, options = {}) {
       deletados: 0,
       erros: 0,
     },
-    healthHistory: {
-      clientesProcessados: 0,
-      registrosDeletados: 0,
-      erros: 0,
-    },
     erros: [],
     finalizadoEm: null,
   };
@@ -590,37 +530,10 @@ export async function executarRetencaoCompleta(firestore, auth, options = {}) {
       }
     }
 
-    // 3. Processar health history (buscar todos os clientes)
-    log('Processando health history...');
-
-    try {
-      const clientesSnap = await getDocs(collection(firestore, 'clientes'));
-
-      for (const clienteDoc of clientesSnap.docs) {
-        if (dryRun) {
-          relatorio.healthHistory.clientesProcessados++;
-          continue;
-        }
-
-        const resultado = await limparHealthHistoryAntigo(firestore, clienteDoc.id);
-
-        if (resultado.success) {
-          relatorio.healthHistory.clientesProcessados++;
-          relatorio.healthHistory.registrosDeletados += resultado.deletados;
-        } else {
-          relatorio.healthHistory.erros++;
-          relatorio.erros.push({ tipo: 'health_history', id: clienteDoc.id, erro: resultado.error });
-        }
-      }
-    } catch (error) {
-      log(`Erro ao processar health history: ${error.message}`);
-      relatorio.healthHistory.erros++;
-    }
-
     relatorio.finalizadoEm = new Date().toISOString();
 
     log('Retenção completa finalizada!');
-    log(`Resumo: ${relatorio.threads.resolvidas.arquivadas + relatorio.threads.inativas.arquivadas} threads arquivadas, ${relatorio.alertas.deletados} alertas deletados, ${relatorio.healthHistory.registrosDeletados} registros de health deletados`);
+    log(`Resumo: ${relatorio.threads.resolvidas.arquivadas + relatorio.threads.inativas.arquivadas} threads arquivadas, ${relatorio.alertas.deletados} alertas deletados`);
 
     return relatorio;
   } catch (error) {
@@ -670,8 +583,6 @@ export default {
   // Operações de alerta
   softDeleteAlerta,
   restaurarAlerta,
-  // Health history
-  limparHealthHistoryAntigo,
   // Busca
   buscarThreadsParaArquivar,
   buscarAlertasParaSoftDelete,

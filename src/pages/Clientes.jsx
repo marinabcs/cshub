@@ -7,6 +7,7 @@ import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Down
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento } from '../utils/segmentoCS';
 import { SegmentoBadge } from '../components/UI/SegmentoBadge';
+import { AREAS_ATUACAO, getAreaLabel } from '../utils/areasAtuacao';
 
 // Chave para localStorage
 const FILTERS_STORAGE_KEY = 'cshub_clientes_filters';
@@ -69,6 +70,10 @@ export default function Clientes() {
     const saved = loadFiltersFromStorage();
     return saved?.segmento && Array.isArray(saved.segmento) ? saved.segmento : [];
   });
+  const [filterAreaAtuacao, setFilterAreaAtuacao] = useState(() => {
+    const saved = loadFiltersFromStorage();
+    return saved?.areaAtuacao && Array.isArray(saved.areaAtuacao) ? saved.areaAtuacao : [];
+  });
 
   const [showOrphanModal, setShowOrphanModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -85,6 +90,7 @@ export default function Clientes() {
   // Estado para dropdowns de filtro
   const [showEscopoDropdown, setShowEscopoDropdown] = useState(false);
   const [showSegmentoDropdown, setShowSegmentoDropdown] = useState(false);
+  const [showAreaDropdown, setShowAreaDropdown] = useState(false);
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [sortOption, setSortOption] = useState(() => {
     const saved = loadFiltersFromStorage();
@@ -109,9 +115,10 @@ export default function Clientes() {
       clienteStatus: filterClienteStatus,
       type: filterType,
       segmento: filterSegmento,
+      areaAtuacao: filterAreaAtuacao,
       sortOption
     });
-  }, [searchTerm, filterClienteStatus, filterType, filterSegmento, sortOption]);
+  }, [searchTerm, filterClienteStatus, filterType, filterSegmento, filterAreaAtuacao, sortOption]);
 
   const fetchData = async () => {
     try {
@@ -215,6 +222,8 @@ export default function Clientes() {
         }
       } else if (batchField === 'team_type') {
         updates.team_type = batchValue;
+      } else if (batchField === 'area_atuacao') {
+        updates.area_atuacao = batchValue;
       }
 
       // Aplicar updates em todos os clientes selecionados
@@ -267,11 +276,12 @@ export default function Clientes() {
       const matchesType = filterType.length === 0 || filterType.some(type => cliente.team_type && cliente.team_type.includes(type));
       // Filtro de segmento CS
       const matchesSegmento = filterSegmento.length === 0 || filterSegmento.includes(getClienteSegmento(cliente));
-      return matchesSearch && matchesClienteStatus && matchesType && matchesSegmento;
+      const matchesArea = filterAreaAtuacao.length === 0 || filterAreaAtuacao.includes(cliente.area_atuacao);
+      return matchesSearch && matchesClienteStatus && matchesType && matchesSegmento && matchesArea;
     })
     .sort((a, b) => {
-      // Ordem de prioridade dos segmentos: RESCUE > WATCH > NURTURE > GROW
-      const segmentoOrder = { RESCUE: 1, WATCH: 2, NURTURE: 3, GROW: 4 };
+      // Ordem de prioridade dos segmentos: RESGATE > ALERTA > ESTAVEL > CRESCIMENTO
+      const segmentoOrder = { RESGATE: 1, ALERTA: 2, ESTAVEL: 3, CRESCIMENTO: 4 };
       switch (sortOption) {
         case 'name_asc':
           return (a.team_name || '').localeCompare(b.team_name || '', 'pt-BR');
@@ -287,7 +297,7 @@ export default function Clientes() {
     });
 
   const exportToCSV = () => {
-    const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Status', 'Segmento CS', 'Qtd Times'];
+    const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Status', 'Segmento CS', 'Área de Atuação', 'Qtd Times'];
     const rows = filteredClientes.map(cliente => [
       cliente.team_name || cliente.nome || '',
       cliente.responsavel_nome || '',
@@ -295,6 +305,7 @@ export default function Clientes() {
       (cliente.tags || []).join('; '),
       getStatusLabel(cliente.status || 'ativo'),
       getSegmentoLabel(getClienteSegmento(cliente)),
+      getAreaLabel(cliente.area_atuacao),
       (cliente.times || []).length
     ]);
 
@@ -499,6 +510,25 @@ export default function Clientes() {
               <Building2 style={{ width: '14px', height: '14px' }} />
               Alterar Tipo
             </button>
+            <button
+              onClick={() => { setBatchField('area_atuacao'); setShowBatchModal(true); }}
+              style={{
+                padding: '8px 16px',
+                background: 'rgba(6, 182, 212, 0.2)',
+                border: '1px solid rgba(6, 182, 212, 0.4)',
+                borderRadius: '8px',
+                color: '#06b6d4',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Building2 style={{ width: '14px', height: '14px' }} />
+              Alterar Área
+            </button>
           </div>
         </div>
       )}
@@ -562,7 +592,7 @@ export default function Clientes() {
         {/* Segmento CS Dropdown */}
         <div style={{ position: 'relative' }}>
           <button
-            onClick={() => { setShowSegmentoDropdown(!showSegmentoDropdown); setShowEscopoDropdown(false); setShowSortDropdown(false); }}
+            onClick={() => { setShowSegmentoDropdown(!showSegmentoDropdown); setShowEscopoDropdown(false); setShowSortDropdown(false); setShowAreaDropdown(false); }}
             style={{
               padding: '10px 14px',
               background: filterSegmento.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
@@ -681,7 +711,7 @@ export default function Clientes() {
         {teamTypes.length > 0 && (
           <div style={{ position: 'relative' }}>
             <button
-              onClick={() => { setShowEscopoDropdown(!showEscopoDropdown); setShowSegmentoDropdown(false); setShowSortDropdown(false); }}
+              onClick={() => { setShowEscopoDropdown(!showEscopoDropdown); setShowSegmentoDropdown(false); setShowSortDropdown(false); setShowAreaDropdown(false); }}
               style={{
                 padding: '10px 14px',
                 background: filterType.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
@@ -796,10 +826,128 @@ export default function Clientes() {
           </div>
         )}
 
+        {/* Área de Atuação Dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => { setShowAreaDropdown(!showAreaDropdown); setShowSegmentoDropdown(false); setShowEscopoDropdown(false); setShowSortDropdown(false); }}
+            style={{
+              padding: '10px 14px',
+              background: filterAreaAtuacao.length > 0 ? 'rgba(6, 182, 212, 0.2)' : 'rgba(30, 27, 75, 0.6)',
+              border: `1px solid ${filterAreaAtuacao.length > 0 ? '#06b6d4' : 'rgba(139, 92, 246, 0.2)'}`,
+              borderRadius: '10px',
+              color: filterAreaAtuacao.length > 0 ? '#06b6d4' : '#94a3b8',
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              minWidth: '130px'
+            }}
+          >
+            {filterAreaAtuacao.length === 0 ? 'Área: Todas' : `Área: ${filterAreaAtuacao.length}`}
+            <ChevronDown style={{ width: '14px', height: '14px' }} />
+          </button>
+
+          {showAreaDropdown && (
+            <>
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowAreaDropdown(false)} />
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: '8px',
+                background: '#1e1b4b',
+                border: '1px solid rgba(6, 182, 212, 0.3)',
+                borderRadius: '12px',
+                padding: '8px',
+                minWidth: '220px',
+                maxHeight: '350px',
+                overflowY: 'auto',
+                zIndex: 100,
+                boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+              }}>
+                {filterAreaAtuacao.length > 0 && (
+                  <button
+                    onClick={() => setFilterAreaAtuacao([])}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      marginBottom: '8px',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                      borderRadius: '8px',
+                      color: '#ef4444',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <X style={{ width: '12px', height: '12px' }} />
+                    Limpar
+                  </button>
+                )}
+                {AREAS_ATUACAO.map(area => {
+                  const isSelected = filterAreaAtuacao.includes(area.value);
+                  const count = clientes.filter(c => c.area_atuacao === area.value).length;
+                  if (count === 0 && !isSelected) return null;
+                  return (
+                    <button
+                      key={area.value}
+                      onClick={() => {
+                        if (isSelected) {
+                          setFilterAreaAtuacao(filterAreaAtuacao.filter(a => a !== area.value));
+                        } else {
+                          setFilterAreaAtuacao([...filterAreaAtuacao, area.value]);
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: isSelected ? 'rgba(6, 182, 212, 0.15)' : 'transparent',
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: isSelected ? '#06b6d4' : '#94a3b8',
+                        fontSize: '13px',
+                        fontWeight: isSelected ? '500' : '400',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '4px',
+                          border: `2px solid ${isSelected ? '#06b6d4' : 'rgba(139, 92, 246, 0.3)'}`,
+                          background: isSelected ? '#06b6d4' : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          {isSelected && <Check style={{ width: '12px', height: '12px', color: 'white' }} />}
+                        </div>
+                        {area.label}
+                      </div>
+                      <span style={{ color: '#64748b', fontSize: '11px' }}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Ordenação Dropdown */}
         <div style={{ position: 'relative', marginLeft: 'auto' }}>
           <button
-            onClick={() => { setShowSortDropdown(!showSortDropdown); setShowSegmentoDropdown(false); setShowEscopoDropdown(false); }}
+            onClick={() => { setShowSortDropdown(!showSortDropdown); setShowSegmentoDropdown(false); setShowEscopoDropdown(false); setShowAreaDropdown(false); }}
             style={{
               padding: '10px 14px',
               background: 'rgba(30, 27, 75, 0.6)',
@@ -1041,7 +1189,22 @@ export default function Clientes() {
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <h3 style={{ color: isInativo ? '#9ca3af' : 'white', fontSize: '15px', fontWeight: '600', margin: '0 0 2px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cliente.team_name}</h3>
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>{cliente.team_type || 'Sem tipo'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>{cliente.team_type || 'Sem tipo'}</span>
+                      {cliente.area_atuacao && (
+                        <span style={{
+                          padding: '2px 8px',
+                          background: 'rgba(6, 182, 212, 0.1)',
+                          border: '1px solid rgba(6, 182, 212, 0.2)',
+                          borderRadius: '6px',
+                          color: '#06b6d4',
+                          fontSize: '10px',
+                          fontWeight: '500'
+                        }}>
+                          {getAreaLabel(cliente.area_atuacao)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <SegmentoBadge segmento={getClienteSegmento(cliente)} size="sm" />
@@ -1303,6 +1466,7 @@ export default function Clientes() {
                 {batchField === 'status' && 'Novo Status'}
                 {batchField === 'responsavel' && 'Novo Responsável'}
                 {batchField === 'team_type' && 'Novo Tipo'}
+                {batchField === 'area_atuacao' && 'Nova Área de Atuação'}
               </label>
 
               {batchField === 'status' && (
@@ -1372,6 +1536,30 @@ export default function Clientes() {
                   {teamTypes.map(type => (
                     <option key={type} value={type} style={{ background: '#1e1b4b' }}>
                       {type}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {batchField === 'area_atuacao' && (
+                <select
+                  value={batchValue}
+                  onChange={(e) => setBatchValue(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: '#0f0a1f',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '14px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="" style={{ background: '#1e1b4b' }}>Selecione uma área...</option>
+                  {AREAS_ATUACAO.map(area => (
+                    <option key={area.value} value={area.value} style={{ background: '#1e1b4b' }}>
+                      {area.label}
                     </option>
                   ))}
                 </select>

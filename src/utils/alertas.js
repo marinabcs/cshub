@@ -1,3 +1,5 @@
+import { applyFiltersToThreads } from './emailFilters';
+
 // Tipos de alertas
 export const ALERTA_TIPOS = {
   sem_uso_plataforma: {
@@ -457,7 +459,7 @@ export function gerarAlertasCreditosBaixos(clientes, alertasExistentes, limiteCr
 }
 
 // Executar todas as verificações
-export function verificarTodosAlertas(clientes, threads, alertasExistentes, metricas = []) {
+export function verificarTodosAlertas(clientes, threads, alertasExistentes, metricas = [], filterConfig = null) {
   console.log(`[Alertas] ========== INICIO VERIFICACAO ==========`);
   console.log(`[Alertas] Total clientes recebidos: ${clientes.length}`);
   console.log(`[Alertas] Total threads recebidas: ${threads.length}`);
@@ -540,10 +542,18 @@ export function verificarTodosAlertas(clientes, threads, alertasExistentes, metr
     }
   }
 
+  // Filtrar threads irrelevantes antes de gerar alertas
+  let threadsRelevantes = threads;
+  if (filterConfig && filterConfig.filtro_ativo !== false) {
+    threadsRelevantes = applyFiltersToThreads(threads, filterConfig).filter(t => !t._isFiltered);
+  }
+  // Excluir threads marcadas manualmente como irrelevantes
+  threadsRelevantes = threadsRelevantes.filter(t => !t.filtrado_manual);
+
   const novosAlertas = [
     ...gerarAlertasSemUso(clientes, metricas, alertasExistentes, threadsMap),
-    ...gerarAlertasProblemaReclamacao(threads, alertasExistentes, clientesMap),
-    ...gerarAlertasSentimentoNegativo(threads, alertasExistentes, clientesMap),
+    ...gerarAlertasProblemaReclamacao(threadsRelevantes, alertasExistentes, clientesMap),
+    ...gerarAlertasSentimentoNegativo(threadsRelevantes, alertasExistentes, clientesMap),
     // DESATIVADOS TEMPORARIAMENTE:
     // ...gerarAlertasRespostaPendente(threads, alertasExistentes),
     // ...gerarAlertasCreditosBaixos(clientes, alertasExistentes),

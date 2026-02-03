@@ -207,18 +207,6 @@ function formatarRelatorio(relatorio, verbose = false) {
     }
   }
 
-  console.log('\n--- HEALTH HISTORY ---');
-
-  if (relatorio.healthHistory) {
-    const { healthHistory } = relatorio;
-    console.log(`Registros (>${RETENTION_CONFIG.HEALTH_HISTORY_MESES} meses):`);
-    console.log(`  Clientes processados: ${healthHistory.clientesProcessados}`);
-    console.log(`  Registros deletados: ${COLORS.green}${healthHistory.registrosDeletados}${COLORS.reset}`);
-    if (healthHistory.erros > 0) {
-      console.log(`  Erros: ${COLORS.red}${healthHistory.erros}${COLORS.reset}`);
-    }
-  }
-
   // Erros detalhados
   if (relatorio.erros?.length > 0) {
     console.log(`\n${COLORS.red}--- ERROS (${relatorio.erros.length}) ---${COLORS.reset}`);
@@ -265,14 +253,12 @@ export async function executarJob(firestore, auth, options = {}) {
   const totalProcessado =
     (relatorio.threads?.resolvidas?.arquivadas || 0) +
     (relatorio.threads?.inativas?.arquivadas || 0) +
-    (relatorio.alertas?.deletados || 0) +
-    (relatorio.healthHistory?.registrosDeletados || 0);
+    (relatorio.alertas?.deletados || 0);
 
   const totalErros =
     (relatorio.threads?.resolvidas?.erros || 0) +
     (relatorio.threads?.inativas?.erros || 0) +
-    (relatorio.alertas?.erros || 0) +
-    (relatorio.healthHistory?.erros || 0);
+    (relatorio.alertas?.erros || 0);
 
   if (totalErros > 0) {
     logger.warn(`Job finalizado com ${totalErros} erros. ${totalProcessado} itens processados.`);

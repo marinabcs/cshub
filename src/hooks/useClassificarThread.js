@@ -8,7 +8,7 @@ export function useClassificarThread() {
   const [classificando, setClassificando] = useState(false);
   const [erro, setErro] = useState(null);
 
-  const classificar = async (teamId, threadId, conversa, threadData = {}) => {
+  const classificar = async (teamId, threadId, conversa, threadData = {}, observacoesAtivas = []) => {
     setClassificando(true);
     setErro(null);
 
@@ -18,8 +18,18 @@ export function useClassificarThread() {
         throw new Error('API da OpenAI não configurada. Adicione VITE_OPENAI_API_KEY no arquivo .env');
       }
 
+      // Formatar observações do CS como contexto
+      let contextoCliente = '';
+      if (observacoesAtivas.length > 0) {
+        contextoCliente = observacoesAtivas.map(o => {
+          const data = o.criado_em?.toDate ? o.criado_em.toDate() : new Date(o.criado_em);
+          const dataStr = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          return `- [${dataStr}] ${o.texto}`;
+        }).join('\n');
+      }
+
       // Chamar a IA para classificar
-      const resultado = await classificarThread(conversa);
+      const resultado = await classificarThread(conversa, contextoCliente);
 
       // Preparar dados para salvar
       const classificacaoData = {

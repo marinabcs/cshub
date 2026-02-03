@@ -3,17 +3,12 @@ import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firesto
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { Database, RefreshCw, Search, Wrench } from 'lucide-react';
-import { useCalcularTodosHealthScores } from '../hooks/useHealthScore';
-import { getHealthColor, getHealthLabel } from '../utils/healthScore';
 import { migrarClientes } from '../utils/seedData';
 
 export default function DebugFirestore() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
-
-  // Health Score calculation
-  const { calculating: healthCalculating, results: healthResults, calcularTodos: calcularTodosHealthScores } = useCalcularTodosHealthScores();
 
   // Metrics debug state
   const [metricsDebugClienteId, setMetricsDebugClienteId] = useState('');
@@ -437,67 +432,6 @@ export default function DebugFirestore() {
         )}
       </div>
 
-      {/* Health Score Section */}
-      <div style={{
-        background: 'rgba(30, 27, 75, 0.4)',
-        border: '1px solid rgba(139, 92, 246, 0.15)',
-        borderRadius: '20px',
-        padding: '24px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-          <h2 style={{ color: 'white', fontSize: '18px', margin: 0 }}>Recalcular Health Score</h2>
-          <button
-            onClick={calcularTodosHealthScores}
-            disabled={healthCalculating}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 16px',
-              background: healthCalculating ? 'rgba(139, 92, 246, 0.5)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-              border: 'none',
-              borderRadius: '10px',
-              color: 'white',
-              fontWeight: '600',
-              cursor: healthCalculating ? 'not-allowed' : 'pointer',
-              fontSize: '13px'
-            }}
-          >
-            <RefreshCw style={{ width: '16px', height: '16px', animation: healthCalculating ? 'spin 1s linear infinite' : 'none' }} />
-            {healthCalculating ? 'Calculando...' : 'Calcular Todos'}
-          </button>
-        </div>
-
-        {healthResults && healthResults.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {healthResults.map((result, index) => (
-              <div
-                key={index}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '12px 16px',
-                  background: result.success ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                  border: `1px solid ${result.success ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
-                  borderRadius: '10px'
-                }}
-              >
-                <span style={{ color: 'white', fontSize: '14px' }}>{result.nome}</span>
-                {result.skipped ? (
-                  <span style={{ color: '#64748b', fontSize: '13px' }}>Inativo</span>
-                ) : result.success ? (
-                  <span style={{ color: getHealthColor(result.status), fontSize: '14px', fontWeight: '600' }}>
-                    {result.score} - {getHealthLabel(result.status)}
-                  </span>
-                ) : (
-                  <span style={{ color: '#ef4444', fontSize: '13px' }}>{result.error}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

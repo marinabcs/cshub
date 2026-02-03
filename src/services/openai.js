@@ -86,7 +86,7 @@ export function getSentimentoInfo(sentimento) {
 }
 
 // Classificar thread com IA
-export async function classificarThread(conversa) {
+export async function classificarThread(conversa, contextoCliente = '') {
   if (!OPENAI_API_KEY) {
     throw new Error('VITE_OPENAI_API_KEY não configurada. Adicione no arquivo .env');
   }
@@ -95,7 +95,7 @@ export async function classificarThread(conversa) {
 
 CONVERSA:
 ${conversa}
-
+${contextoCliente ? `\nCONTEXTO DO CLIENTE (observações do CS):\n${contextoCliente}\n\nConsidere estas observações ao avaliar sentimento e categoria.\n` : ''}
 Retorne APENAS um JSON válido (sem markdown, sem explicações) com:
 {
   "categoria": "erro_bug" | "reclamacao" | "problema_tecnico" | "feedback" | "duvida_pergunta" | "solicitacao" | "outro",
