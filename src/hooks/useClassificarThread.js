@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { doc, updateDoc, addDoc, collection, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { classificarThread, isOpenAIConfigured } from '../services/openai';
+import { validateForm } from '../validation';
+import { classificacaoManualSchema } from '../validation/thread';
 
 // Hook para classificar uma thread com IA
 export function useClassificarThread() {
@@ -63,6 +65,12 @@ export function useClassificarThread() {
     setErro(null);
 
     try {
+      // Validar dados da classificação
+      const validationErrors = validateForm(classificacaoManualSchema, classificacao);
+      if (validationErrors) {
+        throw new Error(Object.values(validationErrors).join(', '));
+      }
+
       const classificacaoData = {
         categoria: classificacao.categoria,
         sentimento: classificacao.sentimento,

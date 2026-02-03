@@ -3,6 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ClipboardList, Plus, Trash2, Save, Loader2, AlertTriangle, FileText, Link2, X } from 'lucide-react';
 import { doc, getDoc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { validateForm } from '../validation';
+import { playbookSchema } from '../validation/playbook';
+import { ErrorMessage } from '../components/UI/ErrorMessage';
 
 export default function PlaybookForm() {
   const { id } = useParams();
@@ -12,6 +15,7 @@ export default function PlaybookForm() {
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [formErrors, setFormErrors] = useState({});
 
   // Campos do formulário
   const [nome, setNome] = useState('');
@@ -95,15 +99,28 @@ export default function PlaybookForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormErrors({});
 
-    // Validações
-    if (!nome.trim()) {
-      alert('Nome do playbook é obrigatório');
-      return;
-    }
+    const formData = {
+      nome: nome.trim(),
+      descricao: descricao.trim(),
+      duracao_estimada_dias: parseInt(duracaoEstimada) || 0,
+      ativo,
+      etapas: etapas.map((etapa, index) => ({
+        ordem: index + 1,
+        nome: etapa.nome.trim(),
+        descricao: etapa.descricao?.trim() || '',
+        prazo_dias: parseInt(etapa.prazo_dias) || 0,
+        obrigatoria: Boolean(etapa.obrigatoria),
+        documentos: (etapa.documentos || [])
+          .filter(doc => doc.nome?.trim() && doc.url?.trim())
+          .map(doc => ({ nome: doc.nome.trim(), url: doc.url.trim() }))
+      }))
+    };
 
-    if (etapas.some(e => !e.nome.trim())) {
-      alert('Todas as etapas devem ter um nome');
+    const validationErrors = validateForm(playbookSchema, formData);
+    if (validationErrors) {
+      setFormErrors(validationErrors);
       return;
     }
 
@@ -111,20 +128,7 @@ export default function PlaybookForm() {
 
     try {
       const playbookData = {
-        nome: nome.trim(),
-        descricao: descricao.trim(),
-        duracao_estimada_dias: parseInt(duracaoEstimada) || 30,
-        ativo,
-        etapas: etapas.map((etapa, index) => ({
-          ordem: index + 1,
-          nome: etapa.nome.trim(),
-          descricao: etapa.descricao?.trim() || '',
-          prazo_dias: parseInt(etapa.prazo_dias) || 1,
-          obrigatoria: Boolean(etapa.obrigatoria),
-          documentos: (etapa.documentos || [])
-            .filter(doc => doc.nome?.trim() && doc.url?.trim())
-            .map(doc => ({ nome: doc.nome.trim(), url: doc.url.trim() }))
-        })),
+        ...formData,
         updated_at: Timestamp.now()
       };
 
@@ -239,7 +243,7 @@ export default function PlaybookForm() {
                   width: '100%',
                   padding: '14px 16px',
                   background: '#0f0a1f',
-                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  border: formErrors.nome ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)',
                   borderRadius: '12px',
                   color: 'white',
                   fontSize: '14px',
@@ -247,6 +251,7 @@ export default function PlaybookForm() {
                   boxSizing: 'border-box'
                 }}
               />
+              <ErrorMessage error={formErrors.nome} />
             </div>
 
             <div>
@@ -387,7 +392,7 @@ export default function PlaybookForm() {
                       style={{
                         padding: '12px 14px',
                         background: '#0f0a1f',
-                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                        border: formErrors[`etapas.${index}.nome`] ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.2)',
                         borderRadius: '10px',
                         color: 'white',
                         fontSize: '14px',
@@ -571,6 +576,7 @@ export default function PlaybookForm() {
               </div>
             ))}
           </div>
+          <ErrorMessage error={formErrors.etapas} />
         </div>
 
         {/* Botões de ação */}

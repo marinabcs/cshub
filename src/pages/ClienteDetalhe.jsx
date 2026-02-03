@@ -13,6 +13,9 @@ import PlaybooksSection from '../components/Cliente/PlaybooksSection';
 import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
 import HeavyUsersCard from '../components/Cliente/HeavyUsersCard';
 import { useEmailFilters } from '../hooks/useEmailFilters';
+import { validateForm } from '../validation';
+import { documentoSchema, observacaoSchema } from '../validation/documento';
+import { ErrorMessage } from '../components/UI/ErrorMessage';
 import { useUserActivityStatus } from '../hooks/useUserActivityStatus';
 import { UserActivityDot } from '../components/UserActivityBadge';
 
@@ -154,6 +157,7 @@ export default function ClienteDetalhe() {
   const [docForm, setDocForm] = useState({ titulo: '', descricao: '', url: '' });
   const [savingDoc, setSavingDoc] = useState(false);
   const [editingDoc, setEditingDoc] = useState(null);
+  const [formErrors, setFormErrors] = useState({});
 
   // Observações do CS
   const [observacoes, setObservacoes] = useState([]);
@@ -323,7 +327,12 @@ export default function ClienteDetalhe() {
 
   // Salvar documento
   const handleSaveDoc = async () => {
-    if (!docForm.titulo || !docForm.url) return;
+    setFormErrors({});
+    const validationErrors = validateForm(documentoSchema, docForm);
+    if (validationErrors) {
+      setFormErrors(validationErrors);
+      return;
+    }
     setSavingDoc(true);
     try {
       if (editingDoc) {
@@ -391,7 +400,12 @@ export default function ClienteDetalhe() {
 
   // Salvar nova observação
   const handleSaveObs = async () => {
-    if (!obsTexto.trim()) return;
+    setFormErrors({});
+    const validationErrors = validateForm(observacaoSchema, { texto: obsTexto.trim() });
+    if (validationErrors) {
+      setFormErrors(validationErrors);
+      return;
+    }
     setSavingObs(true);
     try {
       await addDoc(collection(db, 'observacoes_cs'), {
@@ -1054,7 +1068,7 @@ export default function ClienteDetalhe() {
                       width: '100%',
                       padding: '10px 12px',
                       background: '#0f0a1f',
-                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      border: formErrors.titulo ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)',
                       borderRadius: '8px',
                       color: 'white',
                       fontSize: '14px',
@@ -1062,6 +1076,7 @@ export default function ClienteDetalhe() {
                       boxSizing: 'border-box'
                     }}
                   />
+                  <ErrorMessage error={formErrors.titulo} />
                 </div>
                 <div>
                   <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '6px' }}>URL *</label>
@@ -1074,7 +1089,7 @@ export default function ClienteDetalhe() {
                       width: '100%',
                       padding: '10px 12px',
                       background: '#0f0a1f',
-                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      border: formErrors.url ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)',
                       borderRadius: '8px',
                       color: 'white',
                       fontSize: '14px',
@@ -1082,6 +1097,7 @@ export default function ClienteDetalhe() {
                       boxSizing: 'border-box'
                     }}
                   />
+                  <ErrorMessage error={formErrors.url} />
                 </div>
               </div>
               <div style={{ marginBottom: '16px' }}>
@@ -1312,7 +1328,7 @@ export default function ClienteDetalhe() {
                   width: '100%',
                   padding: '12px 14px',
                   background: '#0f0a1f',
-                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  border: formErrors.texto ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)',
                   borderRadius: '8px',
                   color: 'white',
                   fontSize: '14px',
@@ -1320,10 +1336,11 @@ export default function ClienteDetalhe() {
                   resize: 'vertical',
                   boxSizing: 'border-box',
                   lineHeight: 1.5,
-                  marginBottom: '12px'
+                  marginBottom: '4px'
                 }}
               />
-              <div style={{ display: 'flex', gap: '12px' }}>
+              <ErrorMessage error={formErrors.texto} />
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button
                   onClick={handleSaveObs}
                   disabled={!obsTexto.trim() || savingObs}

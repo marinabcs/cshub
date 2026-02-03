@@ -8,6 +8,9 @@ import { STATUS_OPTIONS, DEFAULT_STATUS, getStatusColor, getStatusLabel } from '
 import { logAction, calculateChanges } from '../utils/audit';
 import { useAuth } from '../contexts/AuthContext';
 import { AREAS_ATUACAO } from '../utils/areasAtuacao';
+import { validateForm } from '../validation';
+import { clienteSchema, stakeholderSchema } from '../validation/cliente';
+import { ErrorMessage } from '../components/UI/ErrorMessage';
 
 const TAGS_CONTEXTO = [
   'Onboarding',
@@ -54,6 +57,7 @@ export default function ClienteForm() {
   const [senhaPadrao, setSenhaPadrao] = useState('');
   const [showSenha, setShowSenha] = useState(false);
   const [areaAtuacao, setAreaAtuacao] = useState('');
+  const [errors, setErrors] = useState({});
 
   // Filter state for teams
   const [searchTime, setSearchTime] = useState('');
@@ -213,10 +217,12 @@ export default function ClienteForm() {
   };
 
   const addStakeholder = () => {
-    if (!novoStakeholder.nome.trim() || !novoStakeholder.email.trim()) {
-      alert('Nome e email são obrigatórios');
+    const validationErrors = validateForm(stakeholderSchema, novoStakeholder);
+    if (validationErrors) {
+      setErrors(validationErrors);
       return;
     }
+    setErrors({});
     setStakeholders(prev => [...prev, { ...novoStakeholder, id: Date.now() }]);
     setNovoStakeholder({ nome: '', email: '', cargo: '', telefone: '' });
     setShowStakeholderModal(false);
@@ -228,8 +234,25 @@ export default function ClienteForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!nome.trim()) {
-      alert('Por favor, informe o nome do cliente');
+    setErrors({});
+
+    // Montar dados para validação
+    const formData = {
+      nome: nome.trim(),
+      status,
+      categorias_produto: categoriasProduto,
+      responsaveis,
+      tags,
+      times: timesSelecionados,
+      team_type: getTeamTypes().join(', '),
+      stakeholders,
+      senha_padrao: senhaPadrao,
+      area_atuacao: areaAtuacao || null
+    };
+
+    const validationErrors = validateForm(clienteSchema, formData);
+    if (validationErrors) {
+      setErrors(validationErrors);
       return;
     }
 
@@ -237,13 +260,12 @@ export default function ClienteForm() {
     const nomeNormalizado = nome.trim().toLowerCase();
     const clienteDuplicado = clientes.find(c => {
       const nomeCliente = (c.nome || c.team_name || '').toLowerCase();
-      // Se estamos editando, ignorar o próprio cliente
       if (isEditing && c.id === id) return false;
       return nomeCliente === nomeNormalizado;
     });
 
     if (clienteDuplicado) {
-      alert(`Já existe um cliente com o nome "${clienteDuplicado.nome || clienteDuplicado.team_name}". Por favor, escolha outro nome.`);
+      setErrors({ nome: `Já existe um cliente com o nome "${clienteDuplicado.nome || clienteDuplicado.team_name}"` });
       return;
     }
 
@@ -377,7 +399,7 @@ export default function ClienteForm() {
                     width: '100%',
                     padding: '12px 16px',
                     background: '#0f0a1f',
-                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    border: errors.nome ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)',
                     borderRadius: '12px',
                     color: 'white',
                     fontSize: '14px',
@@ -385,6 +407,7 @@ export default function ClienteForm() {
                     boxSizing: 'border-box'
                   }}
                 />
+                <ErrorMessage error={errors.nome} />
               </div>
 
               <div style={{ marginBottom: '20px' }}>
@@ -460,6 +483,7 @@ export default function ClienteForm() {
                     );
                   })}
                 </div>
+                <ErrorMessage error={errors.categorias_produto} />
                 {categoriasProduto.length > 0 && (
                   <p style={{ color: '#64748b', fontSize: '12px', marginTop: '8px' }}>
                     {categoriasProduto.some(cat => CATEGORIAS_PRODUTO.find(c => c.value === cat)?.usaPlatforma)
@@ -954,8 +978,9 @@ export default function ClienteForm() {
                   value={novoStakeholder.nome}
                   onChange={(e) => setNovoStakeholder(prev => ({ ...prev, nome: e.target.value }))}
                   placeholder="Nome completo"
-                  style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: errors.nome ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
                 />
+                <ErrorMessage error={errors.nome} />
               </div>
               <div>
                 <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Email *</label>
@@ -964,8 +989,9 @@ export default function ClienteForm() {
                   value={novoStakeholder.email}
                   onChange={(e) => setNovoStakeholder(prev => ({ ...prev, email: e.target.value }))}
                   placeholder="email@empresa.com"
-                  style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: errors.email ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
                 />
+                <ErrorMessage error={errors.email} />
               </div>
               <div>
                 <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Cargo</label>

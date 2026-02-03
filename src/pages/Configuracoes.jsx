@@ -13,6 +13,8 @@ import { DEFAULT_EMAIL_FILTERS } from '../utils/emailFilters';
 import { isClickUpConfigured } from '../services/clickup';
 import { useSincronizarClickUp } from '../hooks/useAlertas';
 import { sincronizarPlaybooksComClickUp } from '../services/playbooks';
+import { validateForm } from '../validation';
+import { configGeralSchema } from '../validation/configuracoes';
 
 export default function Configuracoes() {
   const { user } = useAuth();
@@ -232,6 +234,14 @@ export default function Configuracoes() {
 
   const handleSave = async () => {
     if (!isAdmin) return;
+
+    // Validar configurações numéricas
+    const configData = { ...parametros, ...segmentoConfig };
+    const validationErrors = validateForm(configGeralSchema, configData);
+    if (validationErrors) {
+      alert('Erro de validação:\n' + Object.values(validationErrors).join('\n'));
+      return;
+    }
 
     setSaving(true);
     setSaveSuccess(false);
