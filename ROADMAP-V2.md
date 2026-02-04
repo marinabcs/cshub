@@ -7,21 +7,22 @@
 
 ---
 
-## STATUS DOS ITENS JA IMPLEMENTADOS
+## STATUS GERAL DO PROJETO
 
-| Item | Status |
-|------|--------|
-| 1.1 Filtros de email/conversas | ✅ Concluído |
-| 1.2 Observações do CS para IA | ✅ Concluído |
-| 1.3 Segmentação por área de atuação | ✅ Concluído |
-| 2.2 Validação com Zod | ✅ Concluído |
-| 4.3 Roteiro de testes | ✅ Concluído |
-| SEC-1 Firestore Security Rules | ✅ Concluído |
-| SEC-2 Console.logs removidos em produção | ✅ Concluído |
-| SEC-3 Logger utility | ✅ Concluído |
-| SEC-4 Fallbacks hardcoded removidos | ✅ Concluído |
-| 2.1 Cloud Functions | ⏸️ On hold (aguardando plano Blaze) |
-| 2.3 Rate Limiting | ⏸️ On hold (depende de 2.1) |
+**🎉 ROADMAP V2 COMPLETO (código) — 04/02/2026**
+
+Todos os sprints de código (2-7) estão concluídos. Restam apenas ações manuais de deploy/validação.
+
+| Sprint | Itens | Status |
+|--------|-------|--------|
+| Pré-V2 | 1.1, 1.2, 1.3, 2.2, 4.3, SEC-1 a SEC-4 | ✅ Concluído |
+| Sprint 2 — Bugs Críticos | BUG-1, BUG-2 | ✅ Código pronto (validação manual pendente) |
+| Sprint 3 — Campos e Tags | 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6 | ✅ Completo |
+| Sprint 4 — Perfis | 4.1 | ⚠️ Parcial (4 items [x], 3 dependem de Apollo.io) |
+| Sprint 5 — Analytics | 5.1, 5.2 | ✅ Completo |
+| Sprint 6 — Performance | 6.1, 6.2, 6.3 | ✅ Completo |
+| Sprint 7 — Segurança | 7.1–7.10 | ✅ Completo (7.7 e 7.9 parciais — ações manuais) |
+| Extra — Calculadora Onboarding | — | ✅ Completo |
 
 ---
 
@@ -393,6 +394,97 @@ SE tipo_conta == "google_gratuito":
 
 ---
 
+## 🎓 CALCULADORA DE ONBOARDING ✅ (Feature extra — fora do ROADMAP original)
+
+**Implementado em:** 04/02/2026
+**Status:** Completo
+
+Wizard que gera plano de onboarding personalizado baseado em questionário de 20 perguntas, calculando quais dos 11 módulos devem ser Ao Vivo vs Online.
+
+**Arquivos criados:**
+| Arquivo | Descrição |
+|---------|-----------|
+| `src/constants/onboarding.js` | 11 módulos, 20 perguntas, regras de classificação, first values |
+| `src/utils/onboardingCalculator.js` | Lógica pura: classificação, montagem de sessões, progresso |
+| `src/validation/onboarding.js` | Zod schemas do questionário e ajustes |
+| `src/services/onboarding.js` | CRUD Firestore (`clientes/{id}/onboarding_planos` subcollection) |
+| `src/pages/OnboardingCalculadora.jsx` | Página wizard: selecionar cliente → questionário → resultado → salvar |
+| `src/components/Cliente/OnboardingSection.jsx` | Tab no ClienteDetalhe: sessões, first values, progresso, handoff |
+
+**Arquivos editados:** App.jsx (rotas), Sidebar.jsx (menu), ClienteDetalhe.jsx (tab), validation/index.js (exports)
+
+**Funcionalidades:**
+- [x] Wizard 4 etapas (selecionar cliente → 20 perguntas → resultado com grid 11 módulos → confirmação)
+- [x] Classificação automática: M1/M2 sempre ao vivo, demais por regras de negócio
+- [x] Ajuste manual pelo CSM com justificativa obrigatória (min 10 chars)
+- [x] Agendamento de sessões (max 90min, exceção M1+M2=105min, respeita pré-requisitos)
+- [x] Progress tracking: 60% sessões + 30% first values + 10% tutoriais
+- [x] Handoff elegível quando todas sessões concluídas + todos first values ao vivo atingidos
+
+---
+
+## ⚠️ AÇÕES MANUAIS PENDENTES (DEPLOY / SEGURANÇA / VALIDAÇÃO)
+
+> Itens que requerem ação manual da Marina ou do time. Nenhum depende de código novo.
+
+### 🚀 Deploy Cloud Functions (PRIORIDADE ALTA)
+As 7 Cloud Functions estão prontas em `functions/index.js` mas precisam ser deployed:
+
+```bash
+# 1. Configurar secrets (se ainda não feito)
+firebase functions:secrets:set OPENAI_API_KEY
+firebase functions:secrets:set CLICKUP_API_KEY    # usar chave NOVA (ver item 3 abaixo)
+
+# 2. Deploy
+firebase deploy --only functions
+
+# 3. Verificar
+firebase functions:log
+```
+
+**Funções que serão deployadas:**
+| Função | Tipo | Descrição |
+|--------|------|-----------|
+| `classifyThread` | onCall | Classificação de threads via OpenAI |
+| `clickupProxy` | onCall | Proxy para API ClickUp |
+| `generateSummary` | onCall | Geração de resumo executivo via OpenAI |
+| `validateDomain` | beforeUserCreated | Bloqueia cadastro de emails fora @trakto.io |
+| `syncUserRole` | onDocumentWritten | Sincroniza role Firestore → Custom Claims |
+| `setUserRole` | onCall | Admin define role manualmente |
+| `scheduledCleanup` | onSchedule | (se existir) Limpeza periódica |
+
+### 🔑 Segurança — ClickUp Key Exposta (PRIORIDADE ALTA)
+A chave ClickUp `pk_43150128_...` está hardcoded em 3 commits antigos do histórico git.
+
+**Passos:**
+1. **Revogar** a key atual no dashboard ClickUp (Settings → Apps → API Token)
+2. **Gerar** uma nova API key
+3. **Salvar** via: `firebase functions:secrets:set CLICKUP_API_KEY`
+4. **Deploy**: `firebase deploy --only functions`
+5. **(Opcional)** Limpar histórico: `bfg --replace-text <(echo 'pk_43150128_J7V5F0JC0VC3QQS1TJP2D53F5Q7TFKBE') .`
+
+### 👥 Migrar Custom Claims (PRIORIDADE MÉDIA)
+Usuários existentes não têm Custom Claims no Firebase Auth. Duas opções:
+
+**Opção A (automática):** Editar qualquer campo do usuário em `usuarios_sistema` no Firestore → trigger `syncUserRole` propagará o role para Custom Claims automaticamente.
+
+**Opção B (manual):** Chamar a Cloud Function `setUserRole` via console ou script:
+```js
+// No console do Firebase ou via httpsCallable
+setUserRole({ uid: 'USER_UID', role: 'admin' })
+```
+
+### ✅ Validação Manual (PRIORIDADE BAIXA)
+- [ ] Validar segmentação com 5 contas de teste (Bodega Aurrera, EPA, etc.) — BUG-1
+- [ ] Revisar associações duplicadas de times/clientes usando ferramenta de diagnóstico — BUG-2
+- [ ] Testar Calculadora de Onboarding com cliente real
+
+### 📦 Dependências Externas (NÃO BLOQUEANTES)
+- `xlsx@0.18.5`: sem fix disponível (SheetJS abandonou open-source). Uso atual é write-only (exportação), vulnerabilidades afetam parsing. Risco mitigado.
+- Apollo.io API (item 4.1): requer conta para completar enriquecimento automático de contatos
+
+---
+
 ## 🔮 V3 - FUNCIONALIDADES FUTURAS
 
 > Itens levantados na reunião mas que dependem de infraestrutura adicional.
@@ -444,46 +536,50 @@ SE tipo_conta == "google_gratuito":
 
 ---
 
-## ORDEM SUGERIDA DE IMPLEMENTAÇÃO (ATUALIZADA)
+## ORDEM SUGERIDA DE IMPLEMENTAÇÃO (ATUALIZADA 04/02/2026)
 
-### Sprint 2 - Bugs Críticos ← ESTAMOS AQUI
-1. Recalcular segmentação CS automaticamente (BUG-1)
-2. Corrigir associação de threads/times (BUG-2)
+### ~~Sprint 2 - Bugs Críticos~~ ✅
+1. ~~Recalcular segmentação CS automaticamente (BUG-1)~~ ✅
+2. ~~Corrigir associação de threads/times (BUG-2)~~ ✅
 
-### Sprint 3 - Novos Campos e Tags (Feedback do time)
-3. Novos campos na ficha do cliente (3.0)
-4. Sistema de tags de problema - manual + automático (3.1)
-5. Registro de bugs/problemas por cliente (3.2)
-6. Registro de interações completo (3.3)
-7. Sazonalidade/calendário por cliente (3.4)
-8. Tipo de conta e período diferenciado (3.5)
-9. Configuração de SLA em Configurações (3.6)
+### ~~Sprint 3 - Novos Campos e Tags~~ ✅
+3. ~~Novos campos na ficha do cliente (3.0)~~ ✅
+4. ~~Sistema de tags de problema (3.1)~~ ✅
+5. ~~Registro de bugs/problemas (3.2)~~ ✅
+6. ~~Registro de interações (3.3)~~ ✅
+7. ~~Sazonalidade/calendário (3.4)~~ ✅
+8. ~~Tipo de conta e período (3.5)~~ ✅
+9. ~~Configuração de SLA (3.6)~~ ✅
 
-### Sprint 4 - Perfis
-10. Busca de perfil online dos contatos (4.1)
+### ~~Sprint 4 - Perfis~~ ⚠️ Parcial
+10. ~~Busca de perfil (4.1)~~ ⚠️ — campos, edição e sugestão IA feitos; Apollo.io pendente
 
-### Sprint 5 - Inteligência
+### ~~Sprint 5 - Inteligência~~ ✅
 11. ~~Análise por área + sazonalidade (5.1)~~ ✅
 12. ~~Melhorias no Analytics (5.2)~~ ✅
 
-### Sprint 6 - Performance
+### ~~Sprint 6 - Performance~~ ✅
 13. ~~Paginação (6.1)~~ ✅
 14. ~~Cache (6.2)~~ ✅
 15. ~~Lazy Loading (6.3)~~ ✅
 
-### Sprint 7 - Segurança
+### ~~Sprint 7 - Segurança~~ ✅
 16. ~~Debug protegido (7.1)~~ ✅
 17. ~~Validação OpenAI (7.2)~~ ✅
 18. ~~Firebase env vars (7.3)~~ ✅
 19. ~~Sanitização de erros (7.4)~~ ✅
-20. ~~API Keys → Cloud Functions (7.5)~~ ✅ CRÍTICO
+20. ~~API Keys → Cloud Functions (7.5)~~ ✅
 21. ~~parseInt radix 10 (7.6)~~ ✅
 22. ~~Limpeza Git (7.7)~~ ⚠️ parcial — ClickUp key requer ação manual
 23. ~~Política de senha (7.8)~~ ✅
 24. ~~npm audit (7.9)~~ ⚠️ parcial — jspdf corrigido, xlsx sem fix (uso write-only mitiga risco)
-25. ~~Segurança Cloud Functions (7.10)~~ ✅ — domínio server-side, Custom Claims RBAC, rate limiting
+25. ~~Segurança Cloud Functions (7.10)~~ ✅
 
-### V3 (próximo ciclo)
+### ~~Extra - Calculadora de Onboarding~~ ✅
+26. Wizard 20 perguntas → classificação 11 módulos → plano de sessões ✅
+27. Progress tracking no ClienteDetalhe (tab Onboarding) ✅
+
+### V3 (próximo ciclo) ← PRÓXIMO
 - Emails enriquecidos (V3.1)
 - Thread interna (V3.2)
 - Disparo de emails (V3.3)
