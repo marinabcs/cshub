@@ -205,18 +205,21 @@ SE tipo_conta == "google_gratuito":
 ## 🔵 SPRINT 4 - PERFIS E BUSCA (Prioridade Média)
 
 ### 4.1 Busca de perfil online dos contatos
-**Status:** Pendente
+**Status:** Parcialmente implementado
 **Dependência:** Nenhuma
 
 **O que fazer:**
-- [ ] Adicionar campos: nome do contato, cargo, LinkedIn URL, email
-- [ ] Suporte a múltiplos contatos por empresa (decisor, operacional, financeiro)
-- [ ] Busca automática via LinkedIn (avaliar APIs: Proxycurl, RocketReach)
-- [ ] Exibir foto, cargo e empresa no card do contato
-- [ ] Enriquecer contexto da IA
+- [x] Adicionar campos: linkedin_url, tipo_contato (decisor/operacional/financeiro/tecnico/outro) ao stakeholderSchema
+- [x] Edição de stakeholders existentes (modal com modo edição + botão Pencil)
+- [x] Cards ricos no ClienteDetalhe: avatar colorido por tipo, badge, LinkedIn clicável
+- [x] Sugestão automática de contatos extraídos das threads (seção "Contatos Sugeridos")
+- [ ] Busca automática via API (Apollo.io — ver V3.8)
+- [ ] Exibir foto no card do contato
+- [ ] Enriquecer contexto da IA com dados de contatos
 
 **Considerações:**
 - APIs de LinkedIn ~$0.01-0.03/lookup
+- Apollo.io: 50 créditos/mês grátis (enriquecimento por email)
 - Alternativa manual: CS preenche após primeira call
 - LGPD: apenas dados profissionais públicos
 
@@ -434,6 +437,16 @@ SE tipo_conta == "google_gratuito":
 ### V3.7 Responsividade mobile
 - [ ] Testar e ajustar todas as páginas
 - [ ] Menu mobile (hamburger)
+
+### V3.8 Enriquecimento de contatos via Apollo.io
+**Necessidade:** Enriquecer automaticamente dados de stakeholders (cargo, LinkedIn, telefone) via API
+**Dependência:** Sistema de stakeholders atualizado (4.1)
+
+- [ ] Integrar API Apollo.io para enriquecimento por email (50 créditos/mês grátis)
+- [ ] Botão "Enriquecer" individual no card do stakeholder
+- [ ] Enriquecimento em lote (todos stakeholders sem LinkedIn)
+- [ ] Cache de resultados para evitar lookups duplicados
+- [ ] Alternativas: Proxycurl, RocketReach, Clearbit
 
 ---
 

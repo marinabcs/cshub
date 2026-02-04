@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam } from '../services/api';
-import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, UserCircle, Phone, Mail, Briefcase, Eye, EyeOff, Key } from 'lucide-react';
+import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, UserCircle, Phone, Mail, Briefcase, Eye, EyeOff, Key, Pencil } from 'lucide-react';
 import { STATUS_OPTIONS, DEFAULT_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { logAction, calculateChanges } from '../utils/audit';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,6 +20,14 @@ const TAGS_CONTEXTO = [
   'Expansão',
   'Renovação',
   'Churn Risk'
+];
+
+const TIPOS_CONTATO = [
+  { value: 'decisor', label: 'Decisor', color: '#8b5cf6' },
+  { value: 'operacional', label: 'Operacional', color: '#06b6d4' },
+  { value: 'financeiro', label: 'Financeiro', color: '#10b981' },
+  { value: 'tecnico', label: 'Técnico', color: '#f59e0b' },
+  { value: 'outro', label: 'Outro', color: '#64748b' }
 ];
 
 const CATEGORIAS_PRODUTO = [
@@ -75,7 +83,8 @@ export default function ClienteForm() {
   const [showStakeholderModal, setShowStakeholderModal] = useState(false);
 
   // New stakeholder form
-  const [novoStakeholder, setNovoStakeholder] = useState({ nome: '', email: '', cargo: '', telefone: '' });
+  const [novoStakeholder, setNovoStakeholder] = useState({ nome: '', email: '', cargo: '', telefone: '', linkedin_url: '', tipo_contato: 'outro' });
+  const [editingStakeholderIndex, setEditingStakeholderIndex] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -232,16 +241,37 @@ export default function ClienteForm() {
     );
   };
 
-  const addStakeholder = () => {
+  const saveStakeholder = () => {
     const validationErrors = validateForm(stakeholderSchema, novoStakeholder);
     if (validationErrors) {
       setErrors(validationErrors);
       return;
     }
     setErrors({});
-    setStakeholders(prev => [...prev, { ...novoStakeholder, id: Date.now() }]);
-    setNovoStakeholder({ nome: '', email: '', cargo: '', telefone: '' });
+    if (editingStakeholderIndex !== null) {
+      setStakeholders(prev => prev.map((st, idx) =>
+        idx === editingStakeholderIndex ? { ...st, ...novoStakeholder } : st
+      ));
+      setEditingStakeholderIndex(null);
+    } else {
+      setStakeholders(prev => [...prev, { ...novoStakeholder, id: Date.now() }]);
+    }
+    setNovoStakeholder({ nome: '', email: '', cargo: '', telefone: '', linkedin_url: '', tipo_contato: 'outro' });
     setShowStakeholderModal(false);
+  };
+
+  const editStakeholder = (index) => {
+    const st = stakeholders[index];
+    setNovoStakeholder({
+      nome: st.nome || '',
+      email: st.email || '',
+      cargo: st.cargo || '',
+      telefone: st.telefone || '',
+      linkedin_url: st.linkedin_url || '',
+      tipo_contato: st.tipo_contato || 'outro'
+    });
+    setEditingStakeholderIndex(index);
+    setShowStakeholderModal(true);
   };
 
   const removeStakeholder = (index) => {
@@ -828,20 +858,41 @@ export default function ClienteForm() {
                           <UserCircle style={{ width: '20px', height: '20px', color: '#a78bfa' }} />
                         </div>
                         <div>
-                          <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>{st.nome}</p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                            <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>{st.nome}</p>
+                            {st.tipo_contato && st.tipo_contato !== 'outro' && (
+                              <span style={{
+                                padding: '2px 8px',
+                                background: `${(TIPOS_CONTATO.find(t => t.value === st.tipo_contato)?.color || '#64748b')}20`,
+                                color: TIPOS_CONTATO.find(t => t.value === st.tipo_contato)?.color || '#64748b',
+                                borderRadius: '8px', fontSize: '10px', fontWeight: '500'
+                              }}>
+                                {TIPOS_CONTATO.find(t => t.value === st.tipo_contato)?.label || st.tipo_contato}
+                              </span>
+                            )}
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <span style={{ color: '#64748b', fontSize: '12px' }}>{st.cargo || 'Sem cargo'}</span>
                             <span style={{ color: '#94a3b8', fontSize: '12px' }}>{st.email}</span>
                           </div>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeStakeholder(idx)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                      >
-                        <Trash2 style={{ width: '16px', height: '16px', color: '#ef4444' }} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => editStakeholder(idx)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                        >
+                          <Pencil style={{ width: '16px', height: '16px', color: '#94a3b8' }} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeStakeholder(idx)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                        >
+                          <Trash2 style={{ width: '16px', height: '16px', color: '#ef4444' }} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1182,8 +1233,8 @@ export default function ClienteForm() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div style={{ background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', width: '100%', maxWidth: '450px', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Adicionar Stakeholder</h3>
-              <button onClick={() => setShowStakeholderModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+              <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>{editingStakeholderIndex !== null ? 'Editar Stakeholder' : 'Adicionar Stakeholder'}</h3>
+              <button onClick={() => { setShowStakeholderModal(false); setEditingStakeholderIndex(null); setErrors({}); }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                 <X style={{ width: '20px', height: '20px', color: '#64748b' }} />
               </button>
             </div>
@@ -1231,22 +1282,57 @@ export default function ClienteForm() {
                   style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
                 />
               </div>
+              <div>
+                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>LinkedIn</label>
+                <input
+                  type="url"
+                  value={novoStakeholder.linkedin_url}
+                  onChange={(e) => setNovoStakeholder(prev => ({ ...prev, linkedin_url: e.target.value }))}
+                  placeholder="https://linkedin.com/in/nome"
+                  style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: errors.linkedin_url ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                />
+                <ErrorMessage error={errors.linkedin_url} />
+              </div>
+              <div>
+                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>Tipo de Contato</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {TIPOS_CONTATO.map(tipo => (
+                    <button
+                      key={tipo.value}
+                      type="button"
+                      onClick={() => setNovoStakeholder(prev => ({ ...prev, tipo_contato: tipo.value }))}
+                      style={{
+                        padding: '6px 12px',
+                        background: novoStakeholder.tipo_contato === tipo.value ? `${tipo.color}30` : 'rgba(15, 10, 31, 0.6)',
+                        border: novoStakeholder.tipo_contato === tipo.value ? `2px solid ${tipo.color}` : '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '16px',
+                        color: novoStakeholder.tipo_contato === tipo.value ? tipo.color : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: novoStakeholder.tipo_contato === tipo.value ? '600' : '400',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {tipo.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
               <button
                 type="button"
-                onClick={() => setShowStakeholderModal(false)}
+                onClick={() => { setShowStakeholderModal(false); setEditingStakeholderIndex(null); setErrors({}); }}
                 style={{ padding: '10px 20px', background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', color: '#94a3b8', fontSize: '14px', cursor: 'pointer' }}
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={addStakeholder}
+                onClick={saveStakeholder}
                 style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}
               >
-                Adicionar
+                {editingStakeholderIndex !== null ? 'Salvar' : 'Adicionar'}
               </button>
             </div>
           </div>

@@ -4,7 +4,9 @@ export const stakeholderSchema = z.object({
   nome: z.string().min(1, 'Nome é obrigatório'),
   email: z.string().email('Email inválido'),
   cargo: z.string().optional().default(''),
-  telefone: z.string().optional().default('')
+  telefone: z.string().optional().default(''),
+  linkedin_url: z.string().url('URL do LinkedIn inválida').optional().or(z.literal('')).default(''),
+  tipo_contato: z.enum(['decisor', 'operacional', 'financeiro', 'tecnico', 'outro']).optional().default('outro')
 });
 
 export const clienteSchema = z.object({

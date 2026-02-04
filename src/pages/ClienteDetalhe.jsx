@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SEGMENTOS_CS, getSegmentoInfo, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge, SegmentoCard } from '../components/UI/SegmentoBadge';
@@ -26,6 +26,14 @@ const getInitials = (name) => {
   if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 };
+
+const TIPOS_CONTATO = [
+  { value: 'decisor', label: 'Decisor', color: '#8b5cf6' },
+  { value: 'operacional', label: 'Operacional', color: '#06b6d4' },
+  { value: 'financeiro', label: 'Financeiro', color: '#10b981' },
+  { value: 'tecnico', label: 'Técnico', color: '#f59e0b' },
+  { value: 'outro', label: 'Outro', color: '#64748b' }
+];
 
 // Decodificar HTML entities e limpar conteúdo de mensagem
 const cleanMessageContent = (text) => {
@@ -167,6 +175,10 @@ export default function ClienteDetalhe() {
   const [obsTexto, setObsTexto] = useState('');
   const [savingObs, setSavingObs] = useState(false);
   const [mostrarResolvidas, setMostrarResolvidas] = useState(false);
+
+  // Contatos sugeridos (extraídos das threads)
+  const [suggestedContacts, setSuggestedContacts] = useState([]);
+  const [dismissedSuggestions, setDismissedSuggestions] = useState([]);
 
   // Tags de Problema
   const [showTagDropdown, setShowTagDropdown] = useState(false);
@@ -327,6 +339,65 @@ export default function ClienteDetalhe() {
   }, [id]);
 
   // Recalcular segmento manualmente
+  // Extrair contatos únicos das threads para sugestão
+  const extractContactsFromThreads = () => {
+    if (!threads || threads.length === 0 || !cliente) return;
+
+    const existingEmails = new Set(
+      (cliente.stakeholders || []).map(s => s.email.toLowerCase())
+    );
+
+    const senderMap = new Map();
+    for (const thread of threads) {
+      const email = thread.remetente_email || thread.sender_email || thread.from || '';
+      const nome = thread.remetente_nome || thread.sender_name || '';
+      if (!email || existingEmails.has(email.toLowerCase())) continue;
+      if (email.toLowerCase().includes('@trakto.io')) continue;
+      if (/noreply|no-reply|no_reply|mailer|bounce/i.test(email)) continue;
+
+      if (!senderMap.has(email.toLowerCase())) {
+        senderMap.set(email.toLowerCase(), { email, nome, threadCount: 1 });
+      } else {
+        const existing = senderMap.get(email.toLowerCase());
+        existing.threadCount++;
+        if (!existing.nome && nome) existing.nome = nome;
+      }
+    }
+
+    const suggestions = Array.from(senderMap.values())
+      .filter(s => !dismissedSuggestions.includes(s.email.toLowerCase()))
+      .sort((a, b) => b.threadCount - a.threadCount);
+    setSuggestedContacts(suggestions);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'pessoas' && threads.length > 0 && cliente) {
+      extractContactsFromThreads();
+    }
+  }, [activeTab, threads, cliente?.stakeholders]);
+
+  const handleAddSuggestedContact = async (contact) => {
+    const newStakeholder = {
+      id: Date.now(),
+      nome: contact.nome || contact.email.split('@')[0],
+      email: contact.email,
+      cargo: '', telefone: '', linkedin_url: '', tipo_contato: 'outro'
+    };
+    const updatedStakeholders = [...(cliente.stakeholders || []), newStakeholder];
+    try {
+      await updateDoc(doc(db, 'clientes', id), { stakeholders: updatedStakeholders });
+      setCliente(prev => ({ ...prev, stakeholders: updatedStakeholders }));
+      setSuggestedContacts(prev => prev.filter(c => c.email.toLowerCase() !== contact.email.toLowerCase()));
+    } catch (error) {
+      console.error('Erro ao adicionar contato:', error);
+    }
+  };
+
+  const handleDismissSuggestion = (email) => {
+    setDismissedSuggestions(prev => [...prev, email.toLowerCase()]);
+    setSuggestedContacts(prev => prev.filter(c => c.email.toLowerCase() !== email.toLowerCase()));
+  };
+
   const handleRecalcularSegmento = async () => {
     if (!cliente || cliente.status === 'inativo') return;
 
@@ -2597,14 +2668,14 @@ export default function ClienteDetalhe() {
       )}
 
       {/* Stakeholders Section - dentro da aba Pessoas */}
-      {activeTab === 'pessoas' && cliente?.stakeholders && cliente.stakeholders.length > 0 && (
+      {activeTab === 'pessoas' && (
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Star style={{ width: '20px', height: '20px', color: '#f97316' }} />
             <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Stakeholders</h2>
             <span style={{ padding: '4px 12px', background: 'rgba(249, 115, 22, 0.2)', color: '#fb923c', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
-              {cliente.stakeholders.length} {cliente.stakeholders.length === 1 ? 'pessoa' : 'pessoas'}
+              {(cliente?.stakeholders || []).length} {(cliente?.stakeholders || []).length === 1 ? 'pessoa' : 'pessoas'}
             </span>
           </div>
           <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.1)', color: '#f97316', borderRadius: '8px', fontSize: '11px' }}>
@@ -2612,62 +2683,148 @@ export default function ClienteDetalhe() {
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-          {cliente.stakeholders.map((stakeholder, index) => (
+        {cliente?.stakeholders && cliente.stakeholders.length > 0 ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px' }}>
+          {cliente.stakeholders.map((stakeholder, index) => {
+            const tipoInfo = TIPOS_CONTATO.find(t => t.value === stakeholder.tipo_contato) || TIPOS_CONTATO[4];
+            return (
             <div
               key={stakeholder.id || index}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
                 padding: '16px',
                 background: 'rgba(15, 10, 31, 0.6)',
                 border: '1px solid rgba(249, 115, 22, 0.15)',
                 borderRadius: '12px'
               }}
             >
-              <div style={{
-                width: '40px',
-                height: '40px',
-                background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontSize: '14px',
-                fontWeight: '600',
-                flexShrink: 0
-              }}>
-                {getInitials(stakeholder.nome)}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {stakeholder.nome}
-                </p>
-                {stakeholder.cargo && (
-                  <p style={{ color: '#f97316', fontSize: '12px', margin: '0 0 4px 0' }}>
-                    {stakeholder.cargo}
-                  </p>
-                )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <a
-                    href={`mailto:${stakeholder.email}`}
-                    style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <Mail style={{ width: '12px', height: '12px' }} />
-                    {stakeholder.email}
-                  </a>
-                  {stakeholder.telefone && (
-                    <a
-                      href={`tel:${stakeholder.telefone}`}
-                      style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
-                    >
-                      <Phone style={{ width: '12px', height: '12px' }} />
-                      {stakeholder.telefone}
-                    </a>
-                  )}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                <div style={{
+                  width: '44px', height: '44px',
+                  background: `linear-gradient(135deg, ${tipoInfo.color} 0%, ${tipoInfo.color}99 100%)`,
+                  borderRadius: '10px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'white', fontSize: '15px', fontWeight: '600', flexShrink: 0
+                }}>
+                  {getInitials(stakeholder.nome)}
                 </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {stakeholder.nome}
+                    </p>
+                    {stakeholder.tipo_contato && stakeholder.tipo_contato !== 'outro' && (
+                      <span style={{
+                        padding: '2px 8px',
+                        background: `${tipoInfo.color}20`,
+                        color: tipoInfo.color,
+                        borderRadius: '8px', fontSize: '10px', fontWeight: '600', flexShrink: 0
+                      }}>
+                        {tipoInfo.label}
+                      </span>
+                    )}
+                  </div>
+                  {stakeholder.cargo && (
+                    <p style={{ color: '#f97316', fontSize: '12px', margin: '0 0 6px 0' }}>{stakeholder.cargo}</p>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <a href={`mailto:${stakeholder.email}`} style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Mail style={{ width: '12px', height: '12px' }} />{stakeholder.email}
+                    </a>
+                    {stakeholder.telefone && (
+                      <a href={`tel:${stakeholder.telefone}`} style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Phone style={{ width: '12px', height: '12px' }} />{stakeholder.telefone}
+                      </a>
+                    )}
+                    {stakeholder.linkedin_url && (
+                      <a href={stakeholder.linkedin_url} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Linkedin style={{ width: '12px', height: '12px' }} />LinkedIn
+                        <ExternalLink style={{ width: '10px', height: '10px' }} />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            );
+          })}
+        </div>
+        ) : (
+          <div style={{ padding: '32px', textAlign: 'center' }}>
+            <Star style={{ width: '32px', height: '32px', color: '#64748b', margin: '0 auto 8px' }} />
+            <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>Nenhum stakeholder cadastrado. Adicione na ficha do cliente.</p>
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* Contatos Sugeridos (extraídos das threads) */}
+      {activeTab === 'pessoas' && suggestedContacts.length > 0 && (
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Sparkles style={{ width: '20px', height: '20px', color: '#06b6d4' }} />
+            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Contatos Sugeridos</h2>
+            <span style={{ padding: '4px 12px', background: 'rgba(6, 182, 212, 0.2)', color: '#06b6d4', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
+              {suggestedContacts.length}
+            </span>
+          </div>
+          <span style={{ padding: '4px 10px', background: 'rgba(6, 182, 212, 0.1)', color: '#06b6d4', borderRadius: '8px', fontSize: '11px' }}>
+            Extraído das conversas
+          </span>
+        </div>
+        <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '12px', marginTop: 0 }}>
+          Estas pessoas apareceram nas conversas deste cliente. Deseja adicioná-las como stakeholders?
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {suggestedContacts.slice(0, 10).map((contact) => (
+            <div key={contact.email} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)',
+              border: '1px solid rgba(6, 182, 212, 0.1)', borderRadius: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '36px', height: '36px', background: 'rgba(6, 182, 212, 0.2)',
+                  borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#06b6d4', fontSize: '13px', fontWeight: '600'
+                }}>
+                  {getInitials(contact.nome || contact.email.split('@')[0])}
+                </div>
+                <div>
+                  <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>
+                    {contact.nome || contact.email.split('@')[0]}
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>{contact.email}</span>
+                    <span style={{ color: '#64748b', fontSize: '11px' }}>
+                      {contact.threadCount} {contact.threadCount === 1 ? 'conversa' : 'conversas'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => handleAddSuggestedContact(contact)}
+                  style={{
+                    padding: '6px 12px', background: 'rgba(16, 185, 129, 0.2)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px',
+                    color: '#10b981', fontSize: '12px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '4px'
+                  }}
+                >
+                  <Plus style={{ width: '14px', height: '14px' }} />Adicionar
+                </button>
+                <button
+                  onClick={() => handleDismissSuggestion(contact.email)}
+                  style={{
+                    padding: '6px 8px', background: 'none',
+                    border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '8px',
+                    color: '#64748b', fontSize: '12px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center'
+                  }}
+                >
+                  <X style={{ width: '14px', height: '14px' }} />
+                </button>
               </div>
             </div>
           ))}
