@@ -104,13 +104,13 @@ export default function PlaybookForm() {
     const formData = {
       nome: nome.trim(),
       descricao: descricao.trim(),
-      duracao_estimada_dias: parseInt(duracaoEstimada) || 0,
+      duracao_estimada_dias: parseInt(duracaoEstimada, 10) || 0,
       ativo,
       etapas: etapas.map((etapa, index) => ({
         ordem: index + 1,
         nome: etapa.nome.trim(),
         descricao: etapa.descricao?.trim() || '',
-        prazo_dias: parseInt(etapa.prazo_dias) || 0,
+        prazo_dias: parseInt(etapa.prazo_dias, 10) || 0,
         obrigatoria: Boolean(etapa.obrigatoria),
         documentos: (etapa.documentos || [])
           .filter(doc => doc.nome?.trim() && doc.url?.trim())

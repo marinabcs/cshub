@@ -396,7 +396,7 @@ export function useLimparAlertasInvalidos() {
           // Verificar se o título contém números de dias
           const match = data.titulo?.match(/(\d+)\s*dias/);
           if (match) {
-            const dias = parseInt(match[1]);
+            const dias = parseInt(match[1], 10);
             // Considerar inválido se >= 100 dias (provavelmente sem dados reais)
             return dias >= 100;
           }

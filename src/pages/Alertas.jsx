@@ -1479,7 +1479,7 @@ export default function Alertas() {
                   </label>
                   <select
                     value={clickUpPrioridade}
-                    onChange={(e) => setClickUpPrioridade(parseInt(e.target.value))}
+                    onChange={(e) => setClickUpPrioridade(parseInt(e.target.value, 10))}
                     style={{
                       width: '100%',
                       padding: '12px 16px',

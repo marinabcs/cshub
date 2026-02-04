@@ -222,7 +222,7 @@ export default function Analytics() {
     }
     const hoje = new Date();
     const diasAtras = new Date(hoje);
-    diasAtras.setDate(diasAtras.getDate() - parseInt(periodo));
+    diasAtras.setDate(diasAtras.getDate() - parseInt(periodo, 10));
     return diasAtras;
   };
 
@@ -237,7 +237,7 @@ export default function Analytics() {
   const getDataPeriodoAnterior = () => {
     const diasPeriodo = periodo === 'custom'
       ? Math.ceil((getDataFimPeriodo() - getDataDoPeriodo()) / (1000 * 60 * 60 * 24))
-      : parseInt(periodo);
+      : parseInt(periodo, 10);
     const inicio = new Date(getDataDoPeriodo());
     inicio.setDate(inicio.getDate() - diasPeriodo);
     return inicio;

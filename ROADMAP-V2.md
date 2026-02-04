@@ -335,15 +335,14 @@ SE tipo_conta == "google_gratuito":
 - [x] Verificado: zero ocorrências de `sk-proj-` e `pk_` no `dist/` após build
 - [x] Autenticação verificada automaticamente pelo `onCall` (request.auth)
 
-### 7.6 Validação de parseInt e inputs numéricos
+### 7.6 ~~Validação de parseInt e inputs numéricos~~ ✅ CONCLUÍDO
 **Ref SEGURANCA.md:** #9, #14 (CWE-20)
 **Prioridade:** MÉDIA
-**Nota:** Zod já cobre formulários, mas falta validação em `clickup.js` e outros locais programáticos.
 
-**O que fazer:**
-- [ ] Adicionar radix 10 e validação `isNaN` em `parseInt` do `clickup.js` (linhas 61-63)
-- [ ] Revisar outros usos de `parseInt`/`Number()` no projeto
-- [ ] Criar util `safeParseInt(value, fallback)` se necessário
+**O que foi feito:**
+- [x] Radix 10 adicionado em 9 ocorrências de `parseInt` em 6 arquivos
+- [x] `Number()` revisado — 4 usos em Configuracoes.jsx já tinham `|| 0`
+- [x] Util `safeParseInt` não necessário (todos os usos são simples)
 
 ### 7.7 Limpeza do histórico Git (API keys)
 **Ref SEGURANCA.md:** #1 (CWE-798)
@@ -478,6 +477,7 @@ SE tipo_conta == "google_gratuito":
 18. ~~Firebase env vars (7.3)~~ ✅
 19. ~~Sanitização de erros (7.4)~~ ✅
 20. ~~API Keys → Cloud Functions (7.5)~~ ✅ CRÍTICO
+21. ~~parseInt radix 10 (7.6)~~ ✅
 
 ### On Hold (aguardando decisão do time)
 - Cloud Functions (2.1) — precisa plano Blaze

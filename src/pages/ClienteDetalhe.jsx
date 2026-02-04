@@ -780,7 +780,7 @@ export default function ClienteDetalhe() {
         data_interacao: Timestamp.fromDate(new Date(interacaoForm.data + 'T12:00:00')),
         participantes: interacaoForm.participantes.trim(),
         notas: interacaoForm.notas.trim(),
-        duracao: parseInt(interacaoForm.duracao) || 0,
+        duracao: parseInt(interacaoForm.duracao, 10) || 0,
         link_gravacao: interacaoForm.link_gravacao.trim(),
         updated_at: Timestamp.now()
       };

@@ -62,9 +62,9 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
 
   // Adicionar responsáveis (múltiplos ou único)
   if (responsaveisIds && responsaveisIds.length > 0) {
-    body.assignees = responsaveisIds.map(id => parseInt(id));
+    body.assignees = responsaveisIds.map(id => parseInt(id, 10));
   } else if (responsavelId) {
-    body.assignees = [parseInt(responsavelId)];
+    body.assignees = [parseInt(responsavelId, 10)];
   }
 
   // Adicionar data de vencimento se fornecida (ClickUp espera timestamp em ms)
