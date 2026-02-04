@@ -4,7 +4,7 @@ export const CATEGORIAS_VALIDAS = [
   'erro_bug',
   'problema_tecnico',
   'feedback',
-  'duvida',
+  'duvida_pergunta',
   'solicitacao',
   'reclamacao',
   'outro'
@@ -25,4 +25,10 @@ export const classificacaoManualSchema = z.object({
     errorMap: () => ({ message: 'Selecione um sentimento' })
   }),
   resumo: z.string().nullable().optional()
+});
+
+export const classificacaoIASchema = z.object({
+  categoria: z.enum(CATEGORIAS_VALIDAS).catch('outro'),
+  sentimento: z.enum(SENTIMENTOS_VALIDOS).catch('neutro'),
+  resumo: z.string().max(500).catch('Não foi possível gerar um resumo.')
 });

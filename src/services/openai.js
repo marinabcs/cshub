@@ -1,3 +1,6 @@
+import { classificacaoIASchema } from '../validation/thread';
+import { logger } from '../utils/logger';
+
 // API Key - Carregada via vite.config.js do arquivo .env
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
 
@@ -145,23 +148,24 @@ Critérios para SENTIMENTO:
 
     // Parse do JSON (remove possíveis backticks)
     const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
-    const resultado = JSON.parse(jsonStr);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      logger.warn('Resposta da IA não é JSON válido');
+      return {
+        categoria: 'outro',
+        sentimento: 'neutro',
+        resumo: 'Não foi possível classificar esta conversa.'
+      };
+    }
 
-    // Validar campos
-    if (!THREAD_CATEGORIAS[resultado.categoria]) {
-      resultado.categoria = 'outro';
-    }
-    if (!THREAD_SENTIMENTOS[resultado.sentimento]) {
-      resultado.sentimento = 'neutro';
-    }
-    if (!resultado.resumo || typeof resultado.resumo !== 'string') {
-      resultado.resumo = 'Não foi possível gerar um resumo.';
-    }
-
+    // Validar com Zod — campos inválidos recebem fallback automático
+    const resultado = classificacaoIASchema.parse(parsed);
     return resultado;
   } catch (error) {
-    console.error('Erro ao classificar thread:', error);
-    throw error;
+    logger.error('Falha na classificação de thread');
+    throw new Error('Não foi possível classificar a conversa. Tente novamente.');
   }
 }
 

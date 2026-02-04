@@ -295,16 +295,15 @@ SE tipo_conta == "google_gratuito":
 - [x] Sidebar não expõe link para `/debug`
 - [x] Nenhuma outra rota/funcionalidade de debug encontrada
 
-### 7.2 Validação de schema nas respostas da OpenAI
+### 7.2 Validação de schema nas respostas da OpenAI ✅
 **Ref SEGURANCA.md:** #11 (CWE-502)
 **Prioridade:** ALTA
-**Risco:** `JSON.parse` sem validação pode causar crash ou dados malformados
 
-**O que fazer:**
-- [ ] Validar resposta da OpenAI com Zod schema em `src/services/openai.js`
-- [ ] Schema: `categoria` (enum), `sentimento` (enum), `resumo` (string max 500)
-- [ ] Fallback seguro se resposta não bater com schema (retornar classificação "indefinido")
-- [ ] Logar erro sem expor detalhes da API
+- [x] `classificacaoIASchema` com Zod em `src/validation/thread.js` — `.catch()` para fallback automático
+- [x] Corrigido enum mismatch: `'duvida'` → `'duvida_pergunta'` em CATEGORIAS_VALIDAS
+- [x] `JSON.parse` com try/catch dedicado — retorna classificação default se JSON inválido
+- [x] `logger.error` em vez de `console.error` — sem exposição de detalhes da API
+- [x] Erro genérico para o caller: `'Não foi possível classificar a conversa'`
 
 ### 7.3 Firebase Config em variáveis de ambiente
 **Ref SEGURANCA.md:** #2 (CWE-798)
@@ -487,6 +486,7 @@ SE tipo_conta == "google_gratuito":
 
 ### Sprint 7 - Segurança
 16. ~~Debug protegido (7.1)~~ ✅
+17. ~~Validação OpenAI (7.2)~~ ✅
 
 ### On Hold (aguardando decisão do time)
 - Cloud Functions (2.1) — precisa plano Blaze
