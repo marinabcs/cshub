@@ -378,17 +378,18 @@ SE tipo_conta == "google_gratuito":
   - Vulnerabilidades (Prototype Pollution, ReDoS) afetam **parsing de input**, não escrita — risco mitigado
   - Avaliar substituição por alternativa em V3 se necessário
 
-### 7.10 Segurança que depende de Cloud Functions (On Hold)
+### 7.10 Segurança que depende de Cloud Functions ✅
 
-> Estes itens requerem backend (Cloud Functions / plano Blaze). Ficam junto com 2.1.
-> O item 7.5 pode ser resolvido SEM Cloud Functions usando Vercel/Cloudflare Workers.
+| Item | Ref | Status |
+|------|-----|--------|
+| Backend proxy para APIs | #3 | ✅ Concluído no 7.5 (classifyThread, clickupProxy, generateSummary) |
+| Validação de domínio server-side | #5 | ✅ `validateDomain` — beforeUserCreated bloqueia emails fora @trakto.io |
+| Custom Claims (RBAC server) | #6 | ✅ `syncUserRole` (trigger Firestore→Claims) + `setUserRole` (admin onCall) |
+| Rate Limiting | #16 | ✅ In-memory rate limiting: 30/min OpenAI, 60/min ClickUp |
 
-| Item | Ref | Descrição |
-|------|-----|-----------|
-| Backend proxy para APIs | #3 | Alternativa ao 7.5 usando Cloud Functions ao invés de Vercel/Cloudflare |
-| Validação de domínio server-side | #5 | Cloud Function `auth.user().onCreate` para bloquear domínios inválidos |
-| Custom Claims (RBAC server) | #6 | Implementar roles via Custom Claims no Firebase Auth |
-| Rate Limiting | #16 | Limitar requisições por IP/usuário |
+- `requireRole()` helper com custom claims + fallback Firestore (período de migração)
+- Viewers excluídos das funções (consistente com Firestore rules)
+- 7 Cloud Functions total em `southamerica-east1`
 
 ---
 
@@ -480,10 +481,7 @@ SE tipo_conta == "google_gratuito":
 22. ~~Limpeza Git (7.7)~~ ⚠️ parcial — ClickUp key requer ação manual
 23. ~~Política de senha (7.8)~~ ✅
 24. ~~npm audit (7.9)~~ ⚠️ parcial — jspdf corrigido, xlsx sem fix (uso write-only mitiga risco)
-
-### On Hold (aguardando decisão do time)
-- Cloud Functions (2.1) — precisa plano Blaze
-- Rate Limiting (2.3) — depende de 2.1
+25. ~~Segurança Cloud Functions (7.10)~~ ✅ — domínio server-side, Custom Claims RBAC, rate limiting
 
 ### V3 (próximo ciclo)
 - Emails enriquecidos (V3.1)

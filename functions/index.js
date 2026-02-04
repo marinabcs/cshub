@@ -7,10 +7,213 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { onRequest, onCall, HttpsError } from 'firebase-functions/v2/https';
+import { getAuth } from 'firebase-admin/auth';
+import { beforeUserCreated } from 'firebase-functions/v2/identity';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 
 // Inicializar Firebase Admin
 initializeApp();
 const db = getFirestore();
+
+// ============================================
+// HELPERS - RATE LIMITING & ROLE CHECKING
+// ============================================
+
+/**
+ * Rate limiter em memoria (por instancia de Cloud Function).
+ * Reseta no cold start. Adequado para escala pequena.
+ */
+const rateLimitMap = new Map();
+
+function checkRateLimit(uid, { maxRequests = 30, windowMs = 60000 } = {}) {
+  const now = Date.now();
+
+  if (!rateLimitMap.has(uid)) {
+    rateLimitMap.set(uid, { count: 1, windowStart: now });
+    return;
+  }
+
+  const entry = rateLimitMap.get(uid);
+
+  if (now - entry.windowStart > windowMs) {
+    rateLimitMap.set(uid, { count: 1, windowStart: now });
+    return;
+  }
+
+  entry.count++;
+  if (entry.count > maxRequests) {
+    throw new HttpsError(
+      'resource-exhausted',
+      'Muitas requisicoes. Tente novamente em alguns instantes.'
+    );
+  }
+}
+
+// Limpeza periodica do mapa (a cada 5 minutos)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitMap.entries()) {
+    if (now - entry.windowStart > 120000) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 300000);
+
+/**
+ * Verifica se o usuario tem um dos roles permitidos.
+ * Usa custom claims (rapido) com fallback para Firestore (migracao).
+ */
+async function requireRole(request, allowedRoles) {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Login necessario');
+  }
+
+  const claimRole = request.auth.token.role;
+  if (claimRole && allowedRoles.includes(claimRole)) {
+    return claimRole;
+  }
+
+  const uid = request.auth.uid;
+  const userDoc = await db.collection('usuarios_sistema').doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError('permission-denied', 'Usuario nao cadastrado no sistema');
+  }
+
+  const userData = userDoc.data();
+  if (!userData.role || !allowedRoles.includes(userData.role)) {
+    throw new HttpsError(
+      'permission-denied',
+      'Voce nao tem permissao para esta acao'
+    );
+  }
+
+  return userData.role;
+}
+
+// ============================================
+// BLOCKING FUNCTION - VALIDACAO DE DOMINIO
+// ============================================
+
+/**
+ * Bloqueia criacao de usuarios com email fora do dominio @trakto.io.
+ * Roda ANTES do usuario ser criado no Firebase Auth.
+ */
+export const validateDomain = beforeUserCreated({
+  region: 'southamerica-east1'
+}, (event) => {
+  const email = event.data.email;
+
+  if (!email || !email.toLowerCase().endsWith('@trakto.io')) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Apenas emails @trakto.io sao permitidos'
+    );
+  }
+
+  console.log(`Usuario ${email} aprovado para criacao`);
+});
+
+// ============================================
+// FIRESTORE TRIGGER - SINCRONIZAR CUSTOM CLAIMS
+// ============================================
+
+/**
+ * Quando o documento do usuario em usuarios_sistema eh criado/atualizado,
+ * sincroniza o role para Firebase Auth Custom Claims.
+ */
+export const syncUserRole = onDocumentWritten({
+  document: 'usuarios_sistema/{userId}',
+  region: 'southamerica-east1'
+}, async (event) => {
+  const userId = event.params.userId;
+
+  if (!event.data.after.exists) {
+    console.log(`Usuario ${userId} removido, limpando claims`);
+    try {
+      await getAuth().setCustomUserClaims(userId, {});
+    } catch (err) {
+      console.error(`Erro ao limpar claims de ${userId}:`, err.message);
+    }
+    return;
+  }
+
+  const afterData = event.data.after.data();
+  const newRole = afterData.role || 'viewer';
+
+  const beforeData = event.data.before.exists ? event.data.before.data() : null;
+  if (beforeData && beforeData.role === newRole) {
+    console.log(`Role de ${userId} nao mudou (${newRole}), pulando sync`);
+    return;
+  }
+
+  console.log(`Sincronizando claims para ${userId}: role=${newRole}`);
+
+  try {
+    await getAuth().setCustomUserClaims(userId, {
+      role: newRole,
+      domain: 'trakto.io'
+    });
+    console.log(`Claims atualizadas para ${userId}: role=${newRole}`);
+  } catch (err) {
+    console.error(`Erro ao setar claims de ${userId}:`, err.message);
+  }
+});
+
+// ============================================
+// SET USER ROLE - FUNCAO ADMIN PARA SETAR ROLES
+// ============================================
+
+const VALID_ROLES = ['viewer', 'cs', 'gestor', 'admin', 'super_admin'];
+
+/**
+ * Funcao onCall para admins definirem roles de usuarios.
+ * Util para migracao inicial e gerenciamento manual.
+ */
+export const setUserRole = onCall({
+  region: 'southamerica-east1'
+}, async (request) => {
+  await requireRole(request, ['admin', 'super_admin']);
+
+  const { userId, role } = request.data;
+
+  if (!userId || typeof userId !== 'string') {
+    throw new HttpsError('invalid-argument', 'userId eh obrigatorio');
+  }
+
+  if (!role || !VALID_ROLES.includes(role)) {
+    throw new HttpsError(
+      'invalid-argument',
+      `Role invalido. Valores aceitos: ${VALID_ROLES.join(', ')}`
+    );
+  }
+
+  const callerRole = request.auth.token.role;
+  if (role === 'super_admin' && callerRole !== 'super_admin') {
+    throw new HttpsError(
+      'permission-denied',
+      'Apenas super_admin pode promover a super_admin'
+    );
+  }
+
+  try {
+    await getAuth().setCustomUserClaims(userId, {
+      role: role,
+      domain: 'trakto.io'
+    });
+
+    await db.collection('usuarios_sistema').doc(userId).update({
+      role: role,
+      updated_at: Timestamp.now()
+    });
+
+    console.log(`Role de ${userId} atualizado para ${role} por ${request.auth.uid}`);
+
+    return { success: true, userId, role };
+  } catch (err) {
+    console.error(`Erro ao setar role de ${userId}:`, err.message);
+    throw new HttpsError('internal', 'Erro ao atualizar role do usuario');
+  }
+});
 
 // ============================================
 // WEBHOOK CLICKUP - SINCRONIZAÇÃO DE STATUS
@@ -226,9 +429,8 @@ export const classifyThread = onCall({
   region: 'southamerica-east1',
   secrets: ['OPENAI_API_KEY']
 }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Login necessário');
-  }
+  await requireRole(request, ['cs', 'gestor', 'admin', 'super_admin']);
+  checkRateLimit(request.auth.uid, { maxRequests: 30, windowMs: 60000 });
 
   const { conversa, contextoCliente } = request.data;
 
@@ -307,9 +509,8 @@ export const clickupProxy = onCall({
   region: 'southamerica-east1',
   secrets: ['CLICKUP_API_KEY']
 }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Login necessário');
-  }
+  await requireRole(request, ['cs', 'gestor', 'admin', 'super_admin']);
+  checkRateLimit(request.auth.uid, { maxRequests: 60, windowMs: 60000 });
 
   const { action, payload } = request.data;
 
@@ -418,9 +619,8 @@ export const generateSummary = onCall({
   region: 'southamerica-east1',
   secrets: ['OPENAI_API_KEY']
 }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Login necessário');
-  }
+  await requireRole(request, ['cs', 'gestor', 'admin', 'super_admin']);
+  checkRateLimit(request.auth.uid, { maxRequests: 30, windowMs: 60000 });
 
   const { prompt, systemMsg, lang } = request.data;
 
