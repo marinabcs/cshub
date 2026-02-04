@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { getUsuariosCountByTeam } from '../services/api';
+import { getUsuariosCountByTeam, getThreadsByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from 'lucide-react';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
-import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento } from '../utils/segmentoCS';
+import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge } from '../components/UI/SegmentoBadge';
 import { AREAS_ATUACAO, getAreaLabel } from '../utils/areasAtuacao';
 
@@ -87,6 +87,10 @@ export default function Clientes() {
   const [batchValue, setBatchValue] = useState('');
   const [batchUpdating, setBatchUpdating] = useState(false);
 
+  // Estados para recalculação de segmentos
+  const [recalculandoSegmentos, setRecalculandoSegmentos] = useState(false);
+  const [recalcProgress, setRecalcProgress] = useState({ current: 0, total: 0, updated: 0 });
+
   // Estado para dropdowns de filtro
   const [showEscopoDropdown, setShowEscopoDropdown] = useState(false);
   const [showSegmentoDropdown, setShowSegmentoDropdown] = useState(false);
@@ -165,6 +169,27 @@ export default function Clientes() {
   };
 
   const orphanTimes = getOrphanTimes();
+
+  // Detectar times compartilhados entre clientes
+  const getSharedTimes = () => {
+    const timeToClientes = {};
+    clientes.forEach(cliente => {
+      (cliente.times || []).forEach(teamId => {
+        if (!timeToClientes[teamId]) timeToClientes[teamId] = [];
+        timeToClientes[teamId].push(cliente);
+      });
+    });
+    return Object.entries(timeToClientes)
+      .filter(([, clients]) => clients.length > 1)
+      .map(([teamId, clients]) => ({
+        teamId,
+        teamName: times.find(t => t.id === teamId)?.team_name || teamId,
+        clientes: clients
+      }));
+  };
+
+  const sharedTimes = getSharedTimes();
+  const [showSharedModal, setShowSharedModal] = useState(false);
 
   const formatDate = (timestamp) => {
     if (!timestamp) return 'Sem registro';
@@ -247,6 +272,124 @@ export default function Clientes() {
       alert('Erro ao atualizar clientes. Tente novamente.');
     } finally {
       setBatchUpdating(false);
+    }
+  };
+
+  // Recalcular segmentos de todos os clientes ativos
+  const handleRecalcularSegmentos = async () => {
+    const clientesAtivos = clientes.filter(c => c.status !== 'inativo' && !c.segmento_override);
+    if (clientesAtivos.length === 0) return;
+
+    setRecalculandoSegmentos(true);
+    setRecalcProgress({ current: 0, total: clientesAtivos.length, updated: 0 });
+
+    let updatedCount = 0;
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const CONCURRENT_LIMIT = 5;
+
+    try {
+      for (let i = 0; i < clientesAtivos.length; i += CONCURRENT_LIMIT) {
+        const chunk = clientesAtivos.slice(i, i + CONCURRENT_LIMIT);
+
+        const results = await Promise.all(chunk.map(async (cliente) => {
+          try {
+            let teamIds = cliente.times || [];
+            if (teamIds.length === 0 && cliente.team_id) teamIds = [cliente.team_id];
+            if (teamIds.length === 0) teamIds = [cliente.id];
+
+            const [threadsResult, metricasRaw, usuariosSnap] = await Promise.all([
+              teamIds.length > 0 ? getThreadsByTeam(teamIds).catch(() => []) : [],
+              teamIds.length > 0 ? (async () => {
+                const metricasRef = collection(db, 'metricas_diarias');
+                const chunkSize = 10;
+                const promises = [];
+                for (let j = 0; j < teamIds.length; j += chunkSize) {
+                  const c = teamIds.slice(j, j + chunkSize);
+                  promises.push(getDocs(query(metricasRef, where('team_id', 'in', c), where('data', '>=', thirtyDaysAgo))));
+                }
+                const snaps = await Promise.all(promises);
+                return snaps.flatMap(s => s.docs.map(d => d.data()));
+              })().catch(() => []) : [],
+              teamIds.length > 0 ? (async () => {
+                const usuariosRef = collection(db, 'usuarios_lookup');
+                const chunkSize = 10;
+                const promises = [];
+                for (let j = 0; j < teamIds.length; j += chunkSize) {
+                  const c = teamIds.slice(j, j + chunkSize);
+                  promises.push(getDocs(query(usuariosRef, where('team_id', 'in', c))));
+                }
+                const snaps = await Promise.all(promises);
+                return snaps.flatMap(s => s.docs.map(d => d.data()));
+              })().catch(() => []) : []
+            ]);
+
+            const aggregated = metricasRaw.reduce((acc, d) => {
+              const dataDate = d.data?.toDate?.() || (d.data ? new Date(d.data) : null);
+              const temAtividade = (d.logins || 0) > 0 || (d.pecas_criadas || 0) > 0 || (d.downloads || 0) > 0 || (d.uso_ai_total || 0) > 0;
+              return {
+                logins: acc.logins + (d.logins || 0),
+                pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
+                downloads: acc.downloads + (d.downloads || 0),
+                uso_ai_total: acc.uso_ai_total + (d.uso_ai_total || 0),
+                dias_ativos: acc.dias_ativos + (temAtividade ? 1 : 0),
+                ultima_atividade: dataDate && (!acc.ultima_atividade || dataDate > acc.ultima_atividade) ? dataDate : acc.ultima_atividade
+              };
+            }, { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0, dias_ativos: 0, ultima_atividade: null });
+
+            const resultado = calcularSegmentoCS(cliente, threadsResult, aggregated, usuariosSnap.length || 1);
+            const segmentoAtual = getClienteSegmento(cliente);
+
+            return {
+              clienteId: cliente.id,
+              novoSegmento: resultado.segmento,
+              motivo: resultado.motivo,
+              changed: resultado.segmento !== segmentoAtual,
+              segmentoAnterior: segmentoAtual
+            };
+          } catch (err) {
+            console.error(`Erro ao recalcular ${cliente.team_name || cliente.id}:`, err);
+            return null;
+          }
+        }));
+
+        // Salvar resultados no Firestore em batch
+        const changedResults = results.filter(r => r && r.changed);
+        if (changedResults.length > 0) {
+          const batch = writeBatch(db);
+          for (const result of changedResults) {
+            const ref = doc(db, 'clientes', result.clienteId);
+            batch.update(ref, {
+              segmento_cs: result.novoSegmento,
+              segmento_motivo: result.motivo,
+              segmento_recalculado_em: Timestamp.fromDate(new Date()),
+              segmento_anterior: result.segmentoAnterior
+            });
+          }
+          await batch.commit();
+          updatedCount += changedResults.length;
+        }
+
+        // Atualizar timestamp para os que nao mudaram
+        const unchangedResults = results.filter(r => r && !r.changed);
+        if (unchangedResults.length > 0) {
+          const batch2 = writeBatch(db);
+          for (const result of unchangedResults) {
+            const ref = doc(db, 'clientes', result.clienteId);
+            batch2.update(ref, { segmento_recalculado_em: Timestamp.fromDate(new Date()) });
+          }
+          await batch2.commit();
+        }
+
+        setRecalcProgress({ current: Math.min(i + CONCURRENT_LIMIT, clientesAtivos.length), total: clientesAtivos.length, updated: updatedCount });
+      }
+
+      await fetchData();
+      alert(`Recalculacao concluida! ${updatedCount} segmento(s) atualizado(s) de ${clientesAtivos.length} clientes.`);
+    } catch (error) {
+      console.error('Erro ao recalcular segmentos:', error);
+      alert('Erro durante a recalculacao. Verifique o console.');
+    } finally {
+      setRecalculandoSegmentos(false);
     }
   };
 
@@ -411,6 +554,61 @@ export default function Clientes() {
         </div>
       )}
 
+      {/* Alerta de Times Compartilhados */}
+      {sharedTimes.length > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '16px 20px',
+          background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.1) 100%)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '12px',
+          marginBottom: '24px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              background: 'rgba(239, 68, 68, 0.2)',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <AlertTriangle style={{ width: '20px', height: '20px', color: '#ef4444' }} />
+            </div>
+            <div>
+              <p style={{ color: '#fca5a5', fontSize: '14px', fontWeight: '600', margin: '0 0 2px 0' }}>
+                {sharedTimes.length} {sharedTimes.length === 1 ? 'time compartilhado' : 'times compartilhados'} entre clientes
+              </p>
+              <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>
+                Threads desses times podem aparecer em clientes errados. Corrija as atribuicoes.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowSharedModal(true)}
+            style={{
+              padding: '10px 20px',
+              background: 'rgba(239, 68, 68, 0.2)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              borderRadius: '10px',
+              color: '#fca5a5',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            Ver detalhes
+            <ChevronRight style={{ width: '16px', height: '16px' }} />
+          </button>
+        </div>
+      )}
+
       {/* Barra de Edição em Lote */}
       {selectedClientes.size > 0 && (
         <div style={{
@@ -557,6 +755,29 @@ export default function Clientes() {
           >
             <Download style={{ width: '18px', height: '18px' }} />
             Exportar CSV
+          </button>
+          <button
+            onClick={handleRecalcularSegmentos}
+            disabled={recalculandoSegmentos}
+            style={{
+              padding: '12px 20px',
+              background: recalculandoSegmentos ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '12px',
+              color: recalculandoSegmentos ? '#64748b' : '#a78bfa',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: recalculandoSegmentos ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <RotateCcw style={{ width: '18px', height: '18px' }} />
+            {recalculandoSegmentos
+              ? `Recalculando... ${recalcProgress.current}/${recalcProgress.total} (${recalcProgress.updated} alterados)`
+              : 'Recalcular Segmentos'
+            }
           </button>
           <button
             onClick={() => navigate('/clientes/novo')}
@@ -1353,6 +1574,85 @@ export default function Clientes() {
                       <Link style={{ width: '14px', height: '14px' }} />
                       Vincular a Cliente
                     </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Times Compartilhados */}
+      {showSharedModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '32px' }}>
+          <div style={{ background: '#1a1033', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '20px', width: '100%', maxWidth: '650px', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  background: 'rgba(239, 68, 68, 0.2)',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <AlertTriangle style={{ width: '20px', height: '20px', color: '#ef4444' }} />
+                </div>
+                <div>
+                  <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 4px 0' }}>Times Compartilhados</h3>
+                  <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>{sharedTimes.length} {sharedTimes.length === 1 ? 'time com conflito' : 'times com conflito'}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowSharedModal(false)} style={{ width: '36px', height: '36px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X style={{ width: '18px', height: '18px', color: '#ef4444' }} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+              <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
+                Esses times estao vinculados a mais de um cliente. Edite os clientes para remover a duplicidade.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {sharedTimes.map(shared => (
+                  <div key={shared.teamId} style={{
+                    padding: '16px',
+                    background: 'rgba(15, 10, 31, 0.6)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    borderRadius: '12px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                      <Building2 style={{ width: '18px', height: '18px', color: '#fca5a5' }} />
+                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0 }}>{shared.teamName}</p>
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>({shared.teamId})</span>
+                    </div>
+                    <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '8px' }}>Vinculado a:</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {shared.clientes.map(cliente => (
+                        <button
+                          key={cliente.id}
+                          onClick={() => {
+                            setShowSharedModal(false);
+                            navigate(`/clientes/${cliente.id}/editar`);
+                          }}
+                          style={{
+                            padding: '6px 14px',
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            borderRadius: '8px',
+                            color: '#fca5a5',
+                            fontSize: '13px',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Pencil style={{ width: '12px', height: '12px' }} />
+                          {cliente.nome || cliente.team_name || cliente.id}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

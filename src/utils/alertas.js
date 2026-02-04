@@ -484,36 +484,38 @@ export function verificarTodosAlertas(clientes, threads, alertasExistentes, metr
 
   // Criar mapa de clientes para lookup rápido
   // Mapear por TODOS os campos que podem ser IDs
+  // IMPORTANTE: detectar conflitos (times compartilhados entre clientes)
   const clientesMap = {};
+  const timesCompartilhados = new Set();
+
   for (const cliente of clientes) {
-    // Mapear pelo ID do documento Firestore
-    if (cliente.id) {
-      clientesMap[cliente.id] = cliente;
-    }
-    // Mapear pelo team_id (singular)
-    if (cliente.team_id) {
-      clientesMap[cliente.team_id] = cliente;
-    }
-    // Mapear por CADA ID no array times (principal fonte de team_ids)
-    if (cliente.times && Array.isArray(cliente.times)) {
-      for (const timeId of cliente.times) {
-        if (timeId) {
-          clientesMap[timeId] = cliente;
-        }
+    const idsDoCliente = [
+      cliente.id,
+      cliente.team_id,
+      ...(cliente.times || []),
+      cliente._id,
+      cliente.teamId,
+      cliente.mongo_id
+    ].filter(Boolean);
+
+    for (const idKey of idsDoCliente) {
+      if (clientesMap[idKey] && clientesMap[idKey].id !== cliente.id) {
+        // Conflito: este ID já pertence a outro cliente
+        timesCompartilhados.add(idKey);
+        console.warn(`[Alertas] CONFLITO: time ${idKey} compartilhado entre "${clientesMap[idKey].nome || clientesMap[idKey].team_name}" e "${cliente.nome || cliente.team_name}"`);
+      } else {
+        clientesMap[idKey] = cliente;
       }
     }
-    // Mapear pelo _id (formato MongoDB)
-    if (cliente._id) {
-      clientesMap[cliente._id] = cliente;
-    }
-    // Mapear pelo teamId (camelCase)
-    if (cliente.teamId) {
-      clientesMap[cliente.teamId] = cliente;
-    }
-    // Mapear pelo mongo_id se existir
-    if (cliente.mongo_id) {
-      clientesMap[cliente.mongo_id] = cliente;
-    }
+  }
+
+  // Remover IDs conflitantes do mapa para evitar associação errada
+  for (const conflictId of timesCompartilhados) {
+    delete clientesMap[conflictId];
+  }
+
+  if (timesCompartilhados.size > 0) {
+    console.warn(`[Alertas] ${timesCompartilhados.size} time(s) compartilhado(s) removidos do mapa para evitar alertas errados:`, [...timesCompartilhados]);
   }
 
   console.log(`[Alertas] ClientesMap tem ${Object.keys(clientesMap).length} entradas (${clientes.length} clientes)`);

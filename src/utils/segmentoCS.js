@@ -347,6 +347,15 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     return { segmento: 'ALERTA', motivo: 'Uso irregular', fatores };
   }
 
+  // 2.5 GUARDA: Zero producao real nao pode ser ESTAVEL ou CRESCIMENTO
+  // Cliente pode ter logins mas nao produz nada na plataforma
+  if ((metricas?.pecas_criadas || 0) === 0 && (metricas?.downloads || 0) === 0 && (metricas?.uso_ai_total || 0) === 0) {
+    if (diasSemUso >= 7) {
+      return { segmento: 'RESGATE', motivo: 'Sem producao e sem uso recente', fatores };
+    }
+    return { segmento: 'ALERTA', motivo: 'Login sem producao (0 pecas, 0 downloads, 0 AI)', fatores };
+  }
+
   // 3. CRESCIMENTO - Potencial de expansao
   if (frequenciaUso === 'frequente' && engajamento === 'alto' && !reclamacoesRecentes) {
     return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + alto engajamento', fatores };

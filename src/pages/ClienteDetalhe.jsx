@@ -129,11 +129,12 @@ export default function ClienteDetalhe() {
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
   const [mensagens, setMensagens] = useState([]);
-  const [usageData, setUsageData] = useState({ logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
+  const [usageData, setUsageData] = useState({ logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0, dias_ativos: 0, ultima_atividade: null });
   const [usuarios, setUsuarios] = useState([]);
   const [showAllUsuarios, setShowAllUsuarios] = useState(false);
   const [loading, setLoading] = useState(true);
   const [teamIds, setTeamIds] = useState([]);
+  const [segmentoCalculado, setSegmentoCalculado] = useState(null);
 
   // Tab state
   const [activeTab, setActiveTab] = useState('resumo');
@@ -236,12 +237,18 @@ export default function ClienteDetalhe() {
           setThreads(sortedThreads);
 
           // Processar métricas de uso
-          const aggregated = metricasResult.reduce((acc, d) => ({
-            logins: acc.logins + (d.logins || 0),
-            pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
-            downloads: acc.downloads + (d.downloads || 0),
-            ai_total: acc.ai_total + (d.uso_ai_total || 0)
-          }), { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0 });
+          const aggregated = metricasResult.reduce((acc, d) => {
+            const dataDate = d.data?.toDate?.() || (d.data ? new Date(d.data) : null);
+            const temAtividade = (d.logins || 0) > 0 || (d.pecas_criadas || 0) > 0 || (d.downloads || 0) > 0 || (d.uso_ai_total || 0) > 0;
+            return {
+              logins: acc.logins + (d.logins || 0),
+              pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
+              downloads: acc.downloads + (d.downloads || 0),
+              ai_total: acc.ai_total + (d.uso_ai_total || 0),
+              dias_ativos: acc.dias_ativos + (temAtividade ? 1 : 0),
+              ultima_atividade: dataDate && (!acc.ultima_atividade || dataDate > acc.ultima_atividade) ? dataDate : acc.ultima_atividade
+            };
+          }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0, dias_ativos: 0, ultima_atividade: null });
           setUsageData(aggregated);
 
           // Processar usuários
@@ -251,6 +258,45 @@ export default function ClienteDetalhe() {
             return nameA.localeCompare(nameB);
           });
           setUsuarios(sortedUsers);
+
+          // Recalcular segmento CS automaticamente
+          if (clienteData.status !== 'inativo' && !clienteData.segmento_override) {
+            const metricasParaCalculo = {
+              logins: aggregated.logins,
+              pecas_criadas: aggregated.pecas_criadas,
+              downloads: aggregated.downloads,
+              uso_ai_total: aggregated.ai_total,
+              dias_ativos: aggregated.dias_ativos,
+              ultima_atividade: aggregated.ultima_atividade
+            };
+
+            const resultado = calcularSegmentoCS(clienteData, sortedThreads, metricasParaCalculo, sortedUsers.length || 1);
+            const segmentoAtual = getClienteSegmento(clienteData);
+            const mudou = resultado.segmento !== segmentoAtual;
+            const now = new Date();
+
+            setSegmentoCalculado({ ...resultado, changed: mudou, recalculadoEm: now });
+
+            // Salvar no Firestore
+            const clienteRef = doc(db, 'clientes', id);
+            if (mudou) {
+              await updateDoc(clienteRef, {
+                segmento_cs: resultado.segmento,
+                segmento_motivo: resultado.motivo,
+                segmento_recalculado_em: Timestamp.fromDate(now),
+                segmento_anterior: segmentoAtual
+              });
+              setCliente(prev => ({
+                ...prev,
+                segmento_cs: resultado.segmento,
+                segmento_motivo: resultado.motivo,
+                segmento_recalculado_em: Timestamp.fromDate(now),
+                segmento_anterior: segmentoAtual
+              }));
+            } else {
+              await updateDoc(clienteRef, { segmento_recalculado_em: Timestamp.fromDate(now) });
+            }
+          }
         }
       } catch (error) {
         console.error('Erro ao buscar cliente:', error);
@@ -260,6 +306,39 @@ export default function ClienteDetalhe() {
     };
     fetchCliente();
   }, [id]);
+
+  // Recalcular segmento manualmente
+  const handleRecalcularSegmento = async () => {
+    if (!cliente || cliente.status === 'inativo') return;
+
+    const metricasParaCalculo = {
+      logins: usageData.logins,
+      pecas_criadas: usageData.pecas_criadas,
+      downloads: usageData.downloads,
+      uso_ai_total: usageData.ai_total,
+      dias_ativos: usageData.dias_ativos || 0,
+      ultima_atividade: usageData.ultima_atividade || null
+    };
+
+    const resultado = calcularSegmentoCS(cliente, threads, metricasParaCalculo, usuarios.length || 1);
+    const segmentoAtual = getClienteSegmento(cliente);
+    const now = new Date();
+
+    setSegmentoCalculado({ ...resultado, changed: resultado.segmento !== segmentoAtual, recalculadoEm: now });
+
+    const clienteRef = doc(db, 'clientes', id);
+    const updateData = {
+      segmento_cs: resultado.segmento,
+      segmento_motivo: resultado.motivo,
+      segmento_recalculado_em: Timestamp.fromDate(now),
+      segmento_override: false
+    };
+    if (resultado.segmento !== segmentoAtual) {
+      updateData.segmento_anterior = segmentoAtual;
+    }
+    await updateDoc(clienteRef, updateData);
+    setCliente(prev => ({ ...prev, ...updateData }));
+  };
 
   const fetchMensagens = async (thread) => {
     try {
@@ -824,17 +903,73 @@ export default function ClienteDetalhe() {
       {cliente.status !== 'inativo' && (
       <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Segmento CS</h3>
-          <SegmentoBadge segmento={getClienteSegmento(cliente)} size="lg" />
+          <div>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>Segmento CS</h3>
+            {(cliente.segmento_recalculado_em || segmentoCalculado?.recalculadoEm) && (
+              <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
+                Recalculado em {(cliente.segmento_recalculado_em?.toDate?.() || segmentoCalculado?.recalculadoEm)?.toLocaleString('pt-BR')}
+              </p>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={handleRecalcularSegmento}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '6px 12px',
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '12px',
+                color: '#a78bfa', fontSize: '13px', fontWeight: '500', cursor: 'pointer'
+              }}
+            >
+              <RotateCcw style={{ width: '14px', height: '14px' }} />
+              Recalcular
+            </button>
+            <SegmentoBadge segmento={getClienteSegmento(cliente)} size="lg" />
+          </div>
         </div>
+
+        {/* Motivo da classificacao */}
+        {segmentoCalculado?.motivo && (
+          <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', marginBottom: '6px', textTransform: 'uppercase' }}>Motivo</p>
+            <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>{segmentoCalculado.motivo}</p>
+          </div>
+        )}
+
+        {/* Fatores do calculo */}
+        {segmentoCalculado?.fatores && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
+            <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+              <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 2px 0' }}>Dias sem uso</p>
+              <p style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>{segmentoCalculado.fatores.dias_sem_uso}</p>
+            </div>
+            <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+              <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 2px 0' }}>Frequencia</p>
+              <p style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0 }}>{segmentoCalculado.fatores.frequencia_uso}</p>
+            </div>
+            <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+              <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 2px 0' }}>Engajamento</p>
+              <p style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0 }}>{segmentoCalculado.fatores.engajamento}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Indicador de mudanca */}
+        {segmentoCalculado?.changed && cliente.segmento_anterior && (
+          <div style={{ padding: '10px 16px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '12px', marginBottom: '16px' }}>
+            <p style={{ color: '#f59e0b', fontSize: '13px', margin: 0 }}>
+              Segmento atualizado de {cliente.segmento_anterior} para {getClienteSegmento(cliente)}
+            </p>
+          </div>
+        )}
 
         {(() => {
           const segmentoInfo = getSegmentoInfo(getClienteSegmento(cliente));
           if (!segmentoInfo) return null;
           return (
             <>
-              <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 20px 0' }}>{segmentoInfo.description}</p>
-
               {/* Criterios */}
               <div style={{ marginBottom: '20px' }}>
                 <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase' }}>Criterios deste segmento</p>

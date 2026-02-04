@@ -1,365 +1,517 @@
 # ROADMAP V2 - CS Hub
 
 **Criado em:** 02/02/2026
-**Atualizado em:** 03/02/2026
-**Objetivo:** Lista de implementações para discussão com o time
-**Status:** Aguardando priorização
+**Atualizado em:** 04/02/2026
+**Objetivo:** Lista de implementações priorizadas com base no feedback do time
+**Fonte:** Reunião 04/02 com Valeria, César, Nathalia Montiel e Natalia Santos
 
 ---
 
-## 1. QUALIDADE DE DADOS E FUNDACAO (Prioridade Alta)
+## STATUS DOS ITENS JA IMPLEMENTADOS
 
-> Itens que melhoram a base de dados existente e habilitam funcionalidades futuras.
-
-### 1.1 Melhorar filtros de email / conversas
-**Status:** Pendente
-**Prioridade:** ALTA - Impacto direto na operação diária
-
-**Problema:**
-- Emails de lixo (newsletters, notificações automáticas, spam) estão entrando nas conversas com clientes
-- Polui a análise de sentimento e classificação da IA
-- CS perde tempo filtrando manualmente
-
-**O que fazer:**
-- [ ] Criar lista de remetentes/domínios bloqueados (blacklist)
-- [ ] Filtrar por padrões comuns (noreply@, newsletter@, marketing@, unsubscribe)
-- [ ] Ignorar emails com headers de auto-reply/bulk/list
-- [ ] Adicionar filtro por palavras-chave no assunto (ex: "unsubscribe", "newsletter")
-- [ ] Interface em Configurações para gerenciar a blacklist
-- [ ] Opção de marcar manualmente como "não relevante" para treinar o filtro
-
-### 1.2 Campos de observação do CS (notas para contexto da IA)
-**Status:** Pendente
-**Prioridade:** ALTA - Enriquece a análise da IA
-
-**Problema:**
-- Após uma call ou reunião, o CS tem informações importantes que a IA não conhece
-- A IA analisa o cliente sem contexto qualitativo (ex: "cliente mencionou que vai trocar de plano", "está insatisfeito com feature X")
-
-**O que fazer:**
-- [ ] Adicionar campo "Observações do CS" na ficha do cliente (textarea com histórico)
-- [ ] Cada observação com data, autor e texto
-- [ ] Incluir observações no prompt da IA ao classificar threads e calcular segmentação
-- [ ] Permitir marcar observação como "ativa" ou "resolvida"
-- [ ] Exibir observações recentes no detalhe do cliente e no painel da thread
-
-### 1.3 Segmentação de empresas por área de atuação
-**Status:** Pendente
-**Prioridade:** ALTA - Pré-requisito para análise de sazonalidade
-
-**O que fazer:**
-- [ ] Adicionar campo `area_atuacao` na collection `clientes`
-- [ ] Lista de áreas: Aviação, Telecomunicações, Varejo, Educação, Saúde, Financeiro, Tecnologia, Indústria, Governo, Alimentação, Imobiliário, Outros
-- [ ] Select no formulário de cliente (criação e edição)
-- [ ] Filtro por área na lista de clientes
-- [ ] Permitir edição em lote (selecionar vários clientes e atribuir área)
-- [ ] Migração: adicionar campo nos clientes existentes (valor padrão: null/não definido)
+| Item | Status |
+|------|--------|
+| 1.1 Filtros de email/conversas | ✅ Concluído |
+| 1.2 Observações do CS para IA | ✅ Concluído |
+| 1.3 Segmentação por área de atuação | ✅ Concluído |
+| 2.2 Validação com Zod | ✅ Concluído |
+| 4.3 Roteiro de testes | ✅ Concluído |
+| SEC-1 Firestore Security Rules | ✅ Concluído |
+| SEC-2 Console.logs removidos em produção | ✅ Concluído |
+| SEC-3 Logger utility | ✅ Concluído |
+| SEC-4 Fallbacks hardcoded removidos | ✅ Concluído |
+| 2.1 Cloud Functions | ⏸️ On hold (aguardando plano Blaze) |
+| 2.3 Rate Limiting | ⏸️ On hold (depende de 2.1) |
 
 ---
 
-## 2. SEGURANCA (Prioridade Alta - Aguardando time)
+## 🔴 SPRINT 2 - BUGS CRÍTICOS (Prioridade Máxima)
 
-> Itens que dependem de decisão/alinhamento com o time.
+> Reportados pelo time na reunião de 04/02. Comprometem a confiabilidade da ferramenta.
 
-### 2.1 Migrar APIs para Cloud Functions
-**Status:** Aguardando feedback do time
-**Custo estimado:** $0-1/mês (free tier cobre maior parte)
-**Requisito:** Ativar plano Blaze no Firebase
-
-**O que fazer:**
-- [ ] Criar Cloud Function `classificarThreadIA` (proxy OpenAI)
-- [ ] Criar Cloud Function `criarTarefaClickUp` (proxy ClickUp)
-- [ ] Criar Cloud Function `buscarMembrosClickUp` (proxy ClickUp)
-- [ ] Mover chaves para Firebase Secrets
-- [ ] Atualizar frontend para chamar as Functions
-- [ ] Remover VITE_OPENAI_API_KEY e VITE_CLICKUP_API_KEY do .env
-
-**Por que:**
-- Chaves de API atualmente ficam expostas no bundle JavaScript
-- Qualquer pessoa pode extrair e usar nossas chaves
-- Risco de consumo indevido da quota OpenAI
-
-### 2.2 Validação de inputs (Zod)
-**Status:** Pendente
-**Custo:** Nenhum (biblioteca Zod é gratuita)
+### BUG-1: Segmentação CS não recalcula automaticamente
+**Reportado por:** Valeria (exemplo: Bodega Aurrera 63% saúde sem usar plataforma)
+**Prioridade:** CRÍTICA
+**Causa raiz:** Segmento é gravado no Firestore (`cliente.segmento_cs`) mas nunca recalculado automaticamente. Cliente pode ficar como ESTÁVEL indefinidamente mesmo sem uso.
 
 **O que fazer:**
-- [ ] Instalar Zod (`npm install zod`)
-- [ ] Criar schemas de validação para formulários (clientes, alertas, threads)
-- [ ] Validar dados antes de enviar ao Firestore
-- [ ] Mensagens de erro claras para o usuário
+- [x] Recalcular segmento ao abrir a ficha do cliente (ClienteDetalhe)
+- [x] Recalcular em lote na lista de clientes (botão "Recalcular Segmentos" em Clientes.jsx)
+- [x] Garantir que cliente com 0 uso → ALERTA ou RESGATE (nunca ESTÁVEL/CRESCIMENTO)
+- [x] Exibir data da última recalculação no SegmentoCard
+- [ ] Validar com 5 contas de teste (Bodega Aurrera, EPA, etc.)
 
-### 2.3 Rate Limiting
-**Status:** Pendente (depende de 2.1)
-**Custo:** Depende da implementação
+### BUG-2: Threads associadas a clientes errados
+**Reportado por:** Valeria (Bodega Aurrera mostrando conversas de Omnicom, Nissan)
+**Prioridade:** CRÍTICA
+**Causa raiz:** Múltiplos clientes podem compartilhar o mesmo `team_id` no array `times`. O mapeamento `clientesMap[teamId]` sobrescreve — o último cliente processado "rouba" as threads.
 
 **O que fazer:**
-- [ ] Implementar rate limiting nas Cloud Functions
-- [ ] Limitar chamadas por usuário/IP
+- [x] Adicionar validação: impedir vincular time que já pertence a outro cliente (já existia, feedback visual melhorado)
+- [x] Criar ferramenta de diagnóstico: listar times compartilhados entre clientes (banner + modal em Clientes.jsx)
+- [ ] Revisar dados atuais e corrigir associações duplicadas (manual, usar a ferramenta de diagnóstico)
+- [x] Garantir que ClienteForm.jsx já bloqueia times de outros clientes (verificado e melhorado)
+- [x] Fix: clientesMap em alertas.js agora detecta conflitos e remove times compartilhados do mapa
 
 ---
 
-## 3. ENRIQUECIMENTO DE DADOS (Prioridade Média-Alta)
+## 🟡 SPRINT 3 - NOVOS CAMPOS E ENRIQUECIMENTO (Feedback do time)
 
-> Funcionalidades que adicionam contexto e profundidade aos dados dos clientes.
+> Funcionalidades pedidas diretamente pelo time para o dia a dia.
 
-### 3.1 Busca de perfil online dos contatos
+### 3.0 Novos campos na ficha do cliente
+**Reportado por:** Valeria, Nathalia Montiel
+**Prioridade:** ALTA
+
+**Campos a adicionar na collection `clientes` e no ClienteForm:**
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `bugs_reportados` | Array de `{titulo, descricao, link_clickup, status, data, prioridade}` | Bugs reportados pelo cliente |
+| `calendario_campanhas` | Object `{jan: 'alta'/'baixa'/'normal', fev: ...}` | Sazonalidade esperada por mês |
+| `pessoa_video` | Boolean | Tem pessoa capacitada para Motion |
+| `modulos_concluidos` | Array de strings `['estatico', 'ai', 'motion']` | Módulos finalizados do onboarding |
+| `first_value_atingido` | Object `{estatico: date, ai: date, motion: date}` | Data de primeiro valor por módulo |
+| `tipo_conta` | Enum `'pagante' / 'google_gratuito'` | Diferencia período de análise e pesos |
+| `tags_problema` | Array de `{tag, origem, data, thread_id?}` | Tags de problema (manual ou automática) |
+
+**O que fazer:**
+- [ ] Adicionar campos no ClienteForm.jsx (seção nova "Onboarding e Produto")
+- [ ] Criar schema Zod para os novos campos
+- [ ] Exibir no ClienteDetalhe → Resumo
+- [ ] Migrar clientes existentes (valores padrão: null/vazio)
+
+### 3.1 Sistema de Tags de Problema (manual + automático)
+**Reportado por:** Marina
+**Prioridade:** ALTA
+**Problema:** Não há forma rápida de identificar visualmente quais clientes estão com problemas ativos.
+
+**Como funciona:**
+
+**Tags manuais:**
+- CS pode adicionar/remover tags de problema diretamente na ficha do cliente
+- Tags pré-definidas: `Problema Ativo`, `Bug Reportado`, `Insatisfeito`, `Risco de Churn`, `Aguardando Resolução`
+- Tags customizadas: CS pode digitar tags livres
+
+**Tags automáticas (via classificação IA):**
+- Quando a IA classifica uma thread como `erro_bug`, `reclamacao` ou `problema` → auto-adiciona tag no cliente
+- Quando sentimento = `negativo` ou `urgente` → auto-adiciona tag `Insatisfeito` ou `Urgente`
+- Tag automática registra `origem: 'ia'`, `thread_id` e `data` para rastreabilidade
+- CS pode remover tags automáticas manualmente se o problema foi resolvido
+
+**Visualização:**
+- Tags visíveis no card do cliente na lista (chips coloridos)
+- Filtro na lista de clientes: "Mostrar apenas clientes com problemas"
+- Contador de tags ativas no dashboard/analytics
+
+**O que fazer:**
+- [ ] Adicionar campo `tags_problema` na collection `clientes` (array de objetos)
+- [ ] Interface de tags no ClienteDetalhe (adicionar/remover, chips visuais)
+- [ ] Tags pré-definidas + campo de tag customizada
+- [ ] Integrar com `useClassificarThread.js`: ao classificar como problema/bug/negativo, auto-adicionar tag
+- [ ] Exibir tags no card da lista de clientes (Clientes.jsx)
+- [ ] Filtro "Clientes com problemas" na lista
+- [ ] Incluir contagem de tags ativas como fator na segmentação CS
+
+### 3.2 Registro de bugs/problemas por cliente
+**Reportado por:** Valeria, Nathalia Montiel
+**Prioridade:** ALTA
+**Exemplo:** "EPA já reportou 5 bugs — isso contextualiza risco de churn"
+
+**O que fazer:**
+- [ ] Criar aba "Bugs/Problemas" no ClienteDetalhe (ou adicionar na aba Observações)
+- [ ] CRUD: título, descrição, prioridade, status (aberto/em_andamento/resolvido), link ClickUp/Jira
+- [ ] Vincular com tarefas ClickUp automaticamente
+- [ ] Contagem de bugs ativos visível no card da lista de clientes
+- [ ] Incluir `bugs_abertos_count` como fator na segmentação CS (muitos bugs = risco)
+
+### 3.3 Registro de TODAS as interações (calls, reuniões, touchpoints)
+**Reportado por:** Valeria, Nathalia Montiel
+**Prioridade:** ALTA
+
+**O que registrar:**
+- Calls de onboarding
+- Calls de feedback
+- Calls de dúvidas/suporte
+- Sessões extras de treinamento
+- Qualquer touchpoint relevante
+
+**O que fazer:**
+- [ ] Criar collection `interacoes` (cliente_id, tipo, data, participantes, notas, duracao, link_gravacao)
+- [ ] Tipos: `onboarding`, `feedback`, `suporte`, `treinamento`, `qbr`, `outro`
+- [ ] Formulário rápido no ClienteDetalhe → aba "Interações"
+- [ ] Timeline cronológica de todas interações
+- [ ] Métricas: total interações (30d), tempo desde última interação
+- [ ] Incluir contagem de interações no cálculo de segmentação CS
+- [ ] Futuro: integrar com Google Drive para puxar gravações automaticamente
+
+### 3.4 Sazonalidade por cliente (calendário de campanhas)
+**Reportado por:** Marina
+**Prioridade:** MÉDIA-ALTA
+**Problema:** Cliente pode ter mês sem campanha e parecer "em risco"
+
+**O que fazer:**
+- [ ] Interface visual de calendário 12 meses no ClienteForm (jan-dez, cada um: alta/normal/baixa)
+- [ ] Exibir no ClienteDetalhe → Resumo como mini calendário visual
+- [ ] Ajustar segmentação: se mês atual = "baixa", aplicar fator 0.5 no peso de inatividade
+- [ ] Alerta inteligente: "Cliente deveria estar ativo (mês de alta) mas não está"
+- [ ] Permitir edição em lote por área de atuação (ex: todos de Varejo = alta em nov-dez)
+
+### 3.5 Tipo de conta e período de análise diferenciado
+**Reportado por:** Valeria
+**Prioridade:** MÉDIA
+
+**Regras:**
+```
+SE tipo_conta == "pagante":
+    periodo_analise = 30 dias
+    peso_metricas_plataforma = alto (inatividade é grave)
+
+SE tipo_conta == "google_gratuito":
+    periodo_analise = 60 dias
+    peso_metricas_plataforma = moderado
+```
+
+**O que fazer:**
+- [ ] Adicionar campo `tipo_conta` no ClienteForm (select: Pagante / Google Gratuito)
+- [ ] Ajustar `calcularSegmentoCS` para considerar tipo de conta nos thresholds
+- [ ] Configuração dos períodos em Configurações
+
+### 3.6 Configuração de SLA na página de Configurações
+**Reportado por:** Time (reunião 04/02)
+**Prioridade:** MÉDIA
+**Decisão:** SLA é configuração global (uma vez), não por cliente.
+
+**Parâmetros de SLA a configurar:**
+
+| Situação | Primeira Resposta (padrão) |
+|----------|---------------------------|
+| Dias úteis (horário comercial) | 8 horas |
+| Final de semana | Próximo dia útil |
+| Cliente em campanha ativa | 4 horas |
+| Bug crítico bloqueante | 2 horas |
+
+**O que fazer:**
+- [ ] Adicionar seção "SLA de Atendimento" na página Configurações
+- [ ] Campos: tempo de resposta por situação (horas), horário comercial (início/fim)
+- [ ] Salvar na collection `config` (doc `sla`)
+- [ ] Validação Zod para os campos numéricos
+- [ ] Futuro: alertas quando SLA estiver próximo de estourar (depende de 3.3 interações)
+
+---
+
+## 🔵 SPRINT 4 - PERFIS E BUSCA (Prioridade Média)
+
+### 4.1 Busca de perfil online dos contatos
 **Status:** Pendente
 **Dependência:** Nenhuma
 
 **O que fazer:**
-- [ ] Adicionar campos de contato na ficha do cliente: nome do contato, cargo, LinkedIn URL, email
+- [ ] Adicionar campos: nome do contato, cargo, LinkedIn URL, email
 - [ ] Suporte a múltiplos contatos por empresa (decisor, operacional, financeiro)
-- [ ] Busca automática de dados via LinkedIn (avaliar APIs: Proxycurl, RocketReach, ou scraping permitido)
-- [ ] Exibir foto, cargo atual e empresa no card do contato
-- [ ] Enriquecer contexto da IA com informações do contato (ex: "falar com diretor vs analista")
+- [ ] Busca automática via LinkedIn (avaliar APIs: Proxycurl, RocketReach)
+- [ ] Exibir foto, cargo e empresa no card do contato
+- [ ] Enriquecer contexto da IA
 
 **Considerações:**
-- APIs de LinkedIn têm custo (~$0.01-0.03 por lookup)
-- Alternativa manual: CS preenche os dados após primeira call
-- LGPD: armazenar apenas dados profissionais públicos
-
-### 3.2 Registro e gestão de reuniões
-**Status:** Pendente
-**Dependência:** Nenhuma
-
-**O que fazer:**
-- [ ] Criar collection `reunioes` no Firestore (cliente_id, data, participantes, tipo, notas, gravacao_url, transcricao)
-- [ ] Formulário para registrar reunião (data, participantes, pauta, resultado)
-- [ ] Registro automático via integração com Google Calendar / Outlook (futuro)
-- [ ] Timeline de reuniões na ficha do cliente
-- [ ] Métricas: frequência de reuniões por cliente, tempo desde última reunião
-
-### 3.3 Upload de gravações e transcrições de reuniões
-**Status:** Pendente
-**Dependência:** 3.2 (Registro de reuniões)
-
-**O que fazer:**
-- [ ] Upload de áudio/vídeo para Firebase Storage (limitar tamanho: 500MB)
-- [ ] Transcrição automática via API (Whisper/OpenAI ou Google Speech-to-Text)
-- [ ] Player de áudio/vídeo embutido na ficha da reunião
-- [ ] Resumo automático da transcrição via IA (pontos-chave, ação items, sentimento)
-- [ ] Busca por conteúdo nas transcrições
-- [ ] Alimentar observações do CS automaticamente com insights da transcrição
-
-**Custos estimados:**
-- Firebase Storage: ~$0.026/GB/mês
-- Whisper API: ~$0.006/minuto de áudio
-- Google Speech-to-Text: ~$0.006-0.024/minuto
+- APIs de LinkedIn ~$0.01-0.03/lookup
+- Alternativa manual: CS preenche após primeira call
+- LGPD: apenas dados profissionais públicos
 
 ---
 
-## 4. INTELIGENCIA E ANALYTICS (Prioridade Média)
+## 🟣 SPRINT 5 - INTELIGÊNCIA E ANALYTICS
 
-> Funcionalidades que geram insights a partir dos dados enriquecidos.
-
-### 4.1 Análise de uso por área de atuação + Predição de sazonalidade
-**Status:** Pendente
-**Dependência:** 1.3 (Segmentação por área de atuação)
-
-**Objetivo:** Entender padrões sazonais por segmento de mercado e prever o melhor momento para abordagem proativa.
+### 5.1 Análise por área de atuação + Predição de sazonalidade
+**Dependência:** 1.3 ✅ (já concluído) + 3.4 (calendário)
 
 **O que fazer:**
-- [ ] Filtro por área de atuação em todas as abas do Analytics
-- [ ] Dashboard de sazonalidade: gráfico de uso ao longo do ano por área
-- [ ] Detectar padrões (ex: Educação = pico jan-mar, Varejo = pico nov-dez)
-- [ ] Calcular "janela de abordagem ideal" (X dias antes do pico de sazonalidade)
-- [ ] Alertas automáticos: "Cliente [nome] (Varejo) - sazonalidade em 30 dias, agendar contato"
-- [ ] Comparativo: uso real vs. padrão esperado para a área (identificar anomalias)
+- [ ] Filtro por área em todas as abas do Analytics
+- [ ] Dashboard de sazonalidade: uso ao longo do ano por área
+- [ ] Detectar padrões (Educação = pico jan-mar, Varejo = nov-dez)
+- [ ] Calcular "janela de abordagem ideal" (X dias antes do pico)
+- [ ] Alertas: "Cliente [nome] (Varejo) - sazonalidade em 30 dias"
+- [ ] Comparativo: uso real vs. esperado
 
-**Exemplos de sazonalidade:**
-| Área | Período de pico | Abordagem ideal |
-|------|----------------|-----------------|
-| Educação | Janeiro-Março (volta às aulas) | Novembro-Dezembro |
-| Varejo | Novembro (Black Friday) / Dezembro (Natal) | Setembro-Outubro |
-| Financeiro | Janeiro (planejamento anual) | Novembro-Dezembro |
-
-**Considerações:**
-- Precisa de pelo menos 1 ano de dados históricos para predições confiáveis
-- Inicialmente configuração manual das sazonalidades por área, depois machine learning
-
-### 4.2 Melhorias no Analytics
-**Status:** A definir com o time
-
-**Possíveis melhorias:**
-- [ ] Exportar relatórios (PDF/Excel)
+### 5.2 Melhorias no Analytics
+- [ ] Exportar relatórios PDF/Excel
 - [ ] Filtros por período personalizados
 - [ ] Comparativo entre períodos
-- [ ] Dashboards customizáveis
-
-### 4.3 Testes das funcionalidades existentes
-**Status:** Pendente
-
-**O que testar:**
-- [ ] Analytics - todas as 5 abas
-- [ ] Alertas - criação automática e manual
-- [ ] Playbooks - execução completa
-- [ ] Segmentação CS - cálculo e classificação
-- [ ] Integração ClickUp - sincronização bidirecional
+- [ ] Dashboard de bugs/problemas por cliente
+- [ ] Dashboard de tags de problema (quais mais frequentes, tendência)
 
 ---
 
-## 5. PERFORMANCE (Prioridade Média)
+## ⚪ SPRINT 6 - PERFORMANCE
 
-### 5.1 Paginação em listas grandes
-**Status:** Pendente
-**Custo:** Nenhum
+### 6.1 Paginação em listas grandes
+- [ ] Lista de Clientes, Analytics, Alertas, Threads
+- [ ] `startAfter` do Firestore, 20-50 itens/página
 
-**Páginas afetadas:**
-- [ ] Lista de Clientes
-- [ ] Analytics (todas as abas)
-- [ ] Lista de Alertas
-- [ ] Lista de Threads
+### 6.2 Cache client-side
+- [ ] React Query ou SWR
+- [ ] Tempo de expiração por tipo de dado
 
-**O que fazer:**
-- [ ] Implementar paginação com `startAfter` do Firestore
-- [ ] Adicionar controles de navegação (anterior/próximo)
-- [ ] Limitar 20-50 itens por página
-
-### 5.2 Cache client-side
-**Status:** Pendente
-**Custo:** Nenhum
-
-**O que fazer:**
-- [ ] Implementar cache para dados que mudam pouco (ex: lista de clientes)
-- [ ] Usar React Query ou SWR para gerenciamento de cache
-- [ ] Definir tempo de expiração por tipo de dado
-
-### 5.3 Lazy Loading de componentes
-**Status:** Pendente
-**Custo:** Nenhum
-
-**O que fazer:**
-- [ ] Usar `React.lazy()` para páginas pesadas
-- [ ] Implementar `Suspense` com loading states
-- [ ] Code splitting por rota
+### 6.3 Lazy Loading
+- [ ] `React.lazy()` + `Suspense` por rota
 
 ---
 
-## 6. FUNCIONALIDADES ADICIONAIS (Prioridade Média-Baixa)
+## 🛡️ SPRINT 7 - SEGURANÇA
 
-### 6.1 Notificações
-**Status:** A definir
+> Baseado na análise de segurança (SEGURANCA.md). Itens separados entre o que pode ser feito AGORA e o que depende de Cloud Functions.
 
-**Opções:**
-- [ ] Notificações in-app (badge, toast)
+### Itens já implementados
+
+| Item | Status |
+|------|--------|
+| Firestore Security Rules (RBAC completo) | ✅ Concluído |
+| Console.logs removidos em produção (esbuild.drop) | ✅ Concluído |
+| Logger utility com níveis (src/utils/logger.js) | ✅ Concluído |
+| Fallbacks hardcoded removidos do vite.config.js | ✅ Concluído |
+| Validação de inputs com Zod (2.2) | ✅ Concluído |
+| `.env` no `.gitignore` | ✅ Concluído |
+
+### 7.1 Remover/proteger página de Debug em produção
+**Ref SEGURANCA.md:** #7 (CWE-489)
+**Prioridade:** ALTA
+**Risco:** Página `/debug` permite destruição total do banco de dados
+
+**O que fazer:**
+- [ ] Condicionar rota `/debug` a `import.meta.env.DEV` no App.jsx
+- [ ] Ou remover completamente o arquivo `DebugFirestore.jsx` e a rota
+- [ ] Verificar se existem outras rotas/funcionalidades de debug expostas
+
+### 7.2 Validação de schema nas respostas da OpenAI
+**Ref SEGURANCA.md:** #11 (CWE-502)
+**Prioridade:** ALTA
+**Risco:** `JSON.parse` sem validação pode causar crash ou dados malformados
+
+**O que fazer:**
+- [ ] Validar resposta da OpenAI com Zod schema em `src/services/openai.js`
+- [ ] Schema: `categoria` (enum), `sentimento` (enum), `resumo` (string max 500)
+- [ ] Fallback seguro se resposta não bater com schema (retornar classificação "indefinido")
+- [ ] Logar erro sem expor detalhes da API
+
+### 7.3 Firebase Config em variáveis de ambiente
+**Ref SEGURANCA.md:** #2 (CWE-798)
+**Prioridade:** MÉDIA
+**Nota:** Firebase API key no frontend é aceitável por design (protegido pelas Security Rules), mas mover para env vars é boa prática.
+
+**O que fazer:**
+- [ ] Mover config do Firebase de hardcoded para `import.meta.env.VITE_FIREBASE_*`
+- [ ] Adicionar variáveis no `.env` e `.env.example`
+- [ ] Atualizar `src/services/firebase.js`
+
+### 7.4 Sanitização de erros de API em produção
+**Ref SEGURANCA.md:** #12 (CWE-209)
+**Prioridade:** MÉDIA
+**Risco:** Erros da OpenAI/ClickUp expõem detalhes internos
+
+**O que fazer:**
+- [ ] Criar função `sanitizeError(error)` em `src/utils/`
+- [ ] Em produção: retornar mensagem genérica sem detalhes técnicos
+- [ ] Em dev: manter erro completo para debugging
+- [ ] Aplicar em `src/services/openai.js` e `src/services/clickup.js`
+
+### 7.5 API Keys expostas no bundle de produção (CRÍTICO)
+**Ref SEGURANCA.md:** #3 (CWE-200)
+**Prioridade:** CRÍTICA
+**Risco:** `VITE_OPENAI_API_KEY` e `VITE_CLICKUP_API_KEY` ficam visíveis no JavaScript compilado. Qualquer pessoa pode abrir o DevTools e extrair as chaves.
+
+**Situação atual:**
+- `src/services/openai.js` faz `fetch` direto para `api.openai.com` com a key no header `Authorization`
+- `src/services/clickup.js` faz `fetch` direto para `api.clickup.com` com a key no header `Authorization`
+- As chaves são injetadas via `vite.config.js` → `define` → ficam no bundle JS final
+
+**O que fazer (sem Cloud Functions):**
+- [ ] Criar um proxy simples com Vercel Edge Functions, Cloudflare Workers ou Netlify Functions (gratuito)
+- [ ] Mover chamadas OpenAI para o proxy: frontend chama `/api/classify` → proxy chama OpenAI com a key segura
+- [ ] Mover chamadas ClickUp para o proxy: frontend chama `/api/clickup/*` → proxy encaminha
+- [ ] Remover `VITE_OPENAI_API_KEY` e `VITE_CLICKUP_API_KEY` do `vite.config.js` define
+- [ ] Adicionar autenticação no proxy (verificar token Firebase do usuário)
+
+**Alternativa com Cloud Functions (se plano Blaze disponível):**
+- [ ] Criar Cloud Functions `classifyThread` e `clickupProxy`
+- [ ] Usar `firebase-functions` com `onCall` (já verifica auth automaticamente)
+
+### 7.6 Validação de parseInt e inputs numéricos
+**Ref SEGURANCA.md:** #9, #14 (CWE-20)
+**Prioridade:** MÉDIA
+**Nota:** Zod já cobre formulários, mas falta validação em `clickup.js` e outros locais programáticos.
+
+**O que fazer:**
+- [ ] Adicionar radix 10 e validação `isNaN` em `parseInt` do `clickup.js` (linhas 61-63)
+- [ ] Revisar outros usos de `parseInt`/`Number()` no projeto
+- [ ] Criar util `safeParseInt(value, fallback)` se necessário
+
+### 7.7 Limpeza do histórico Git (API keys)
+**Ref SEGURANCA.md:** #1 (CWE-798)
+**Prioridade:** ALTA
+**Risco:** Chaves antigas podem estar no histórico do Git mesmo com `.env` no `.gitignore`
+
+**O que fazer:**
+- [ ] Verificar se `.env` aparece no histórico Git (`git log --all --full-history -- .env`)
+- [ ] Se sim: usar BFG Repo-Cleaner para remover do histórico
+- [ ] Revogar e regenerar TODAS as API keys (OpenAI, ClickUp)
+- [ ] Gerar novas chaves nos dashboards respectivos
+- [ ] Atualizar `.env` local com novas chaves
+
+### 7.8 Política de senha mais forte
+**Ref SEGURANCA.md:** #10 (CWE-521)
+**Prioridade:** MÉDIA
+**Risco:** Senhas fracas podem ser descobertas por brute-force
+
+**Situação atual:** Zod em `src/validation/usuario.js` já tem `senhaSchema` com regex, mas a validação original em `Usuarios.jsx` exigia apenas 6 caracteres.
+
+**O que fazer:**
+- [ ] Verificar e reforçar `senhaSchema` no Zod: mínimo 8 chars, maiúscula, minúscula, número, especial
+- [ ] Exibir indicador de força da senha no formulário de criação de usuário
+- [ ] Mensagens claras em português sobre cada requisito não atendido
+
+### 7.9 Atualizar dependências vulneráveis (npm audit)
+**Prioridade:** ALTA
+**Risco:** `jspdf` tem vulnerabilidade HIGH (CVE: PDF Injection + DoS via BMP)
+
+**O que fazer:**
+- [ ] Executar `npm audit` e avaliar todas as vulnerabilidades
+- [ ] Atualizar `jspdf` para versão sem vulnerabilidades conhecidas (se disponível)
+- [ ] Se não houver fix: avaliar alternativa (ex: `pdf-lib`, `react-pdf`)
+- [ ] Configurar `npm audit` no CI/CD para alertar sobre novas vulnerabilidades
+- [ ] Revisar e atualizar outras dependências desatualizadas
+
+### 7.10 Segurança que depende de Cloud Functions (On Hold)
+
+> Estes itens requerem backend (Cloud Functions / plano Blaze). Ficam junto com 2.1.
+> O item 7.5 pode ser resolvido SEM Cloud Functions usando Vercel/Cloudflare Workers.
+
+| Item | Ref | Descrição |
+|------|-----|-----------|
+| Backend proxy para APIs | #3 | Alternativa ao 7.5 usando Cloud Functions ao invés de Vercel/Cloudflare |
+| Validação de domínio server-side | #5 | Cloud Function `auth.user().onCreate` para bloquear domínios inválidos |
+| Custom Claims (RBAC server) | #6 | Implementar roles via Custom Claims no Firebase Auth |
+| Rate Limiting | #16 | Limitar requisições por IP/usuário |
+
+---
+
+## 🔮 V3 - FUNCIONALIDADES FUTURAS
+
+> Itens levantados na reunião mas que dependem de infraestrutura adicional.
+
+### V3.1 Emails enriquecidos com contexto
+**Reportado por:** Time
+**Necessidade:** Email de engajamento preenchido com nome, dias sem acesso, última conversa, próxima campanha
+**Dependência:** 3.3 (interações) + 3.4 (sazonalidade)
+
+### V3.2 Thread interna para time técnico
+**Referência:** Modelo Hotmart (Zendesk)
+**Necessidade:** Encaminhar problema para time técnico sem sair do CS Hub, com thread interna (cliente não vê)
+**Dependência:** Infraestrutura de comunicação
+
+### V3.3 Disparo de emails direto do CS Hub
+**Necessidade:** Enviar emails sem sair para Gmail/Outlook. Registro automático da interação
+**Dependência:** Integração Gmail API ou SMTP
+
+### V3.4 Transcrição automática de reuniões
+**O que fazer:**
+- [ ] Upload de áudio/vídeo para Firebase Storage
+- [ ] Transcrição via Whisper/OpenAI
+- [ ] Resumo automático via IA
+- [ ] Puxar automaticamente do Google Drive (meeting recordings)
+
+### V3.5 Notificações
+- [ ] In-app (badge, toast)
 - [ ] Email para alertas críticos
-- [ ] Integração Slack/Discord
 - [ ] Push notifications (PWA)
 
-### 6.2 Multi-tenant / Multi-usuário
-**Status:** A definir
-
-**O que avaliar:**
+### V3.6 Multi-usuário com permissões
 - [ ] Controle de acesso por papel (admin, CS, viewer)
 - [ ] Permissões granulares
-- [ ] Audit log por usuário
+- [ ] Audit log
 
----
-
-## 7. UX/UI (Prioridade Baixa)
-
-### 7.1 Responsividade mobile
-**Status:** A verificar
-
-- [ ] Testar todas as páginas em mobile
-- [ ] Ajustar layouts que não funcionam bem
+### V3.7 Responsividade mobile
+- [ ] Testar e ajustar todas as páginas
 - [ ] Menu mobile (hamburger)
 
-### 7.2 Dark/Light mode
-**Status:** Opcional
+---
 
-- [ ] Implementar toggle de tema
-- [ ] Salvar preferência do usuário
+## ORDEM SUGERIDA DE IMPLEMENTAÇÃO (ATUALIZADA)
 
-### 7.3 Onboarding
-**Status:** A definir
+### Sprint 2 - Bugs Críticos ← ESTAMOS AQUI
+1. Recalcular segmentação CS automaticamente (BUG-1)
+2. Corrigir associação de threads/times (BUG-2)
 
-- [ ] Tour guiado para novos usuários
-- [ ] Tooltips explicativos
-- [ ] Checklist de configuração inicial
+### Sprint 3 - Novos Campos e Tags (Feedback do time)
+3. Novos campos na ficha do cliente (3.0)
+4. Sistema de tags de problema - manual + automático (3.1)
+5. Registro de bugs/problemas por cliente (3.2)
+6. Registro de interações completo (3.3)
+7. Sazonalidade/calendário por cliente (3.4)
+8. Tipo de conta e período diferenciado (3.5)
+9. Configuração de SLA em Configurações (3.6)
+
+### Sprint 4 - Perfis
+10. Busca de perfil online dos contatos (4.1)
+
+### Sprint 5 - Inteligência
+11. Análise por área + sazonalidade (5.1)
+12. Melhorias no Analytics (5.2)
+
+### Sprint 6 - Performance
+13. Paginação (6.1)
+14. Cache (6.2)
+15. Lazy Loading (6.3)
+
+### On Hold (aguardando decisão do time)
+- Cloud Functions (2.1) — precisa plano Blaze
+- Rate Limiting (2.3) — depende de 2.1
+
+### V3 (próximo ciclo)
+- Emails enriquecidos (V3.1)
+- Thread interna (V3.2)
+- Disparo de emails (V3.3)
+- Transcrição de reuniões (V3.4)
+- Notificações (V3.5)
+- Multi-usuário (V3.6)
+- Mobile (V3.7)
 
 ---
 
-## 8. INFRAESTRUTURA (Prioridade Baixa)
+## NOTAS DA REUNIÃO 04/02/2026
 
-### 8.1 CI/CD
-**Status:** Opcional
-
-- [ ] GitHub Actions para build automático
-- [ ] Deploy automático no Firebase Hosting
-- [ ] Testes automatizados antes do deploy
-
-### 8.2 Monitoramento
-**Status:** Opcional
-
-- [ ] Firebase Crashlytics
-- [ ] Logging estruturado
-- [ ] Alertas de erro
-
-### 8.3 Backup
-**Status:** A definir
-
-- [ ] Backup automático do Firestore
-- [ ] Estratégia de recuperação
-
----
-
-## ORDEM SUGERIDA DE IMPLEMENTACAO
-
-### Sprint 1 - Fundação e qualidade de dados
-1. Melhorar filtros de email/conversas (1.1)
-2. Campos de observação do CS para IA (1.2)
-3. Segmentação de empresas por área de atuação (1.3)
-4. Testar funcionalidades existentes (4.3)
-
-### Sprint 2 - Segurança + Validação
-5. Migrar APIs para Cloud Functions (2.1) *(aguardando time)*
-6. Validação de inputs com Zod (2.2)
-7. Rate Limiting (2.3)
-
-### Sprint 3 - Enriquecimento de dados
-8. Busca de perfil online dos contatos (3.1)
-9. Registro e gestão de reuniões (3.2)
-10. Upload de gravações e transcrições (3.3)
-
-### Sprint 4 - Inteligência e performance
-11. Análise por área de atuação + sazonalidade (4.1)
-12. Melhorias no Analytics (4.2)
-13. Paginação em listas (5.1)
-
-### Sprint 5 - Polish
-14. Cache client-side (5.2)
-15. Lazy Loading (5.3)
-16. Notificações (6.1)
-17. Responsividade mobile (7.1)
-
-### Futuro (V2.1+)
-18. Multi-usuário com permissões (6.2)
-19. CI/CD (8.1)
-20. Monitoramento avançado (8.2)
-21. Dark/Light mode (7.2)
-22. Onboarding (7.3)
-
----
-
-## NOTAS DA REUNIAO
-
-_Espaço para anotar decisões do time:_
-
-**Participantes:**
--
+**Participantes:** Valeria, César, Nathalia Montiel, Natalia Santos, Marina
 
 **Decisões:**
--
+- Manter período de 30 dias para clientes pagantes (R$20k/mês sem usar = red flag)
+- Considerar 60 dias apenas para contas Google gratuitas
+- Sem WhatsApp para suporte (não resolve problemas complexos, gera expectativa 24/7)
+- Alternativa: 2 sessões de 30 min/semana para dúvidas ao vivo
+- SLA é configuração global na página de Configurações (não por cliente)
+- Sistema de tags automáticas para marcar clientes com problemas via classificação IA
 
-**Prioridades definidas:**
-1.
-2.
-3.
+**SLA Sugerido (a configurar em Configurações):**
+
+| Situação | Primeira Resposta |
+|----------|-------------------|
+| Dias úteis (horário comercial) | 8 horas |
+| Final de semana | Próximo dia útil |
+| Cliente em campanha ativa | 4 horas |
+| Bug crítico bloqueante | 2 horas |
+
+**Referência Hotmart (Nathalia Montiel):**
+- Todos emails → tickets Zendesk automáticos
+- Templates prontos para questões fáceis
+- Thread interna no ticket (cliente não vê)
+- SLA: 24h primeira resposta, 3-5 dias resolução
+- CS: saúde = quantas features o cliente usa ativamente
+- Tudo em Salesforce + HubSpot
 
 **Próximos passos:**
--
+1. Marina: Corrigir bugs críticos (BUG-1, BUG-2)
+2. Marina: Preparar reunião de sexta para bater martelo nos playbooks
+3. César: Compartilhar vídeo do Banco Inter (modelo de onboarding)
+4. Time: Testar CS Hub e reportar mais bugs/sugestões
+5. Marina: Definir SLA de atendimento e comunicar no kickoff dos clientes
 
 ---
 
@@ -375,5 +527,3 @@ _Espaço para anotar decisões do time:_
 | ClickUp | $0 (usa plano existente) |
 | API de perfil (LinkedIn/Proxycurl) | $0 - $20 (depende de lookups) |
 | **Total estimado** | **$10 - $66/mês** |
-
-*Valores podem variar conforme uso real. Muitos itens novos podem começar com input manual (custo $0) e automatizar depois.*

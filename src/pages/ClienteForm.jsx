@@ -832,9 +832,9 @@ export default function ClienteForm() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ color: '#64748b', fontSize: '11px' }}>{time.team_type || 'Sem tipo'}</span>
                             {isDisabled && (
-                              <span style={{ color: '#f59e0b', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ color: '#ef4444', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <AlertCircle style={{ width: '10px', height: '10px' }} />
-                                {clienteDoTime.nome || clienteDoTime.team_name}
+                                Vinculado a {clienteDoTime.nome || clienteDoTime.team_name} — desvincule primeiro
                               </span>
                             )}
                           </div>
