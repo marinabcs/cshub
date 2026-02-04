@@ -1,5 +1,5 @@
 // Analytics - Dashboard Gerencial Completo com Abas
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -9,7 +9,7 @@ import {
   Download, Filter, X, ChevronDown, Activity, Clock,
   ExternalLink, FileSpreadsheet, RefreshCw, Monitor, UserCheck,
   DollarSign, ShieldAlert, Star, Zap, Award, Target, ArrowUpRight,
-  ArrowDownRight, Mail, Phone, Calendar, Building2
+  ArrowDownRight, Mail, Phone, Calendar, Building2, Bug, Tag
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
@@ -58,11 +58,13 @@ const TABS = [
   { id: 'usuarios', label: 'Usuários', icon: Users },
   { id: 'churn', label: 'Prevenção de Churn', icon: ShieldAlert },
   { id: 'inativos', label: 'Inativos', icon: Clock },
-  { id: 'sazonalidade', label: 'Sazonalidade', icon: Calendar }
+  { id: 'sazonalidade', label: 'Sazonalidade', icon: Calendar },
+  { id: 'problemas', label: 'Problemas', icon: Bug }
 ];
 
 export default function Analytics() {
   const navigate = useNavigate();
+  const contentRef = useRef(null);
   const [clientes, setClientes] = useState([]);
   const [alertas, setAlertas] = useState([]);
   const [threads, setThreads] = useState([]);
@@ -388,13 +390,36 @@ export default function Analytics() {
       RESGATE: clientesFiltrados.filter(c => getClienteSegmento(c) === 'RESGATE').length
     };
 
-    // Calcular variação percentual
+    // Calcular variação percentual de threads
     const variacaoThreads = totalThreadsAnterior > 0
       ? Math.round(((totalThreads - totalThreadsAnterior) / totalThreadsAnterior) * 100)
       : 0;
 
-    return { clientesAtivos, totalTimes, totalThreads, alertasPendentes, segmentoCounts, variacaoThreads };
-  }, [clientesFiltrados, threadsFiltradas, threadsPeriodoAnterior, alertasFiltrados]);
+    // Métricas de uso: período atual vs anterior
+    const dataLimite = getDataDoPeriodo();
+    const dataAnteriorInicio = getDataPeriodoAnterior();
+    const metricasPeriodoAtual = metricasDiarias.filter(m => {
+      const d = m.data?.toDate ? m.data.toDate() : new Date(m.data);
+      return d >= dataLimite;
+    });
+    const metricasPeriodoAnterior = metricasDiarias.filter(m => {
+      const d = m.data?.toDate ? m.data.toDate() : new Date(m.data);
+      return d >= dataAnteriorInicio && d < dataLimite;
+    });
+    const loginsAtual = metricasPeriodoAtual.reduce((s, m) => s + (m.logins || 0), 0);
+    const loginsAnterior = metricasPeriodoAnterior.reduce((s, m) => s + (m.logins || 0), 0);
+    const pecasAtual = metricasPeriodoAtual.reduce((s, m) => s + (m.pecas_criadas || 0), 0);
+    const pecasAnterior = metricasPeriodoAnterior.reduce((s, m) => s + (m.pecas_criadas || 0), 0);
+    const aiAtual = metricasPeriodoAtual.reduce((s, m) => s + (m.uso_ai_total || 0), 0);
+    const aiAnterior = metricasPeriodoAnterior.reduce((s, m) => s + (m.uso_ai_total || 0), 0);
+
+    const calcVar = (atual, anterior) => anterior > 0 ? Math.round(((atual - anterior) / anterior) * 100) : 0;
+    const variacaoLogins = calcVar(loginsAtual, loginsAnterior);
+    const variacaoPecas = calcVar(pecasAtual, pecasAnterior);
+    const variacaoAI = calcVar(aiAtual, aiAnterior);
+
+    return { clientesAtivos, totalTimes, totalThreads, alertasPendentes, segmentoCounts, variacaoThreads, variacaoLogins, variacaoPecas, variacaoAI };
+  }, [clientesFiltrados, threadsFiltradas, threadsPeriodoAnterior, alertasFiltrados, metricasDiarias, periodo, periodoCustom]);
 
   // ========== TOP 5 CLIENTES MAIS ENGAJADOS ==========
   const topClientesEngajados = useMemo(() => {
@@ -879,7 +904,64 @@ export default function Analytics() {
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(perfExport), 'Performance');
 
+    // Aba Bugs
+    const bugsExport = clientesFiltrados.flatMap(c =>
+      (c.bugs_reportados || []).map(b => ({
+        'Cliente': c.nome || c.team_name || '-',
+        'Título': b.titulo || '-',
+        'Descrição': b.descricao || '-',
+        'Prioridade': b.prioridade || '-',
+        'Status': b.status || '-',
+        'Data': b.data?.toDate ? b.data.toDate().toLocaleDateString('pt-BR') : '-',
+        'Resolvido Em': b.resolvido_em?.toDate ? b.resolvido_em.toDate().toLocaleDateString('pt-BR') : '-',
+        'Link ClickUp': b.link_clickup || '-'
+      }))
+    );
+    if (bugsExport.length > 0) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bugsExport), 'Bugs');
+    }
+
+    // Aba Tags Problema
+    const tagCounts = {};
+    clientesFiltrados.forEach(c => {
+      (c.tags_problema || []).forEach(t => {
+        if (!tagCounts[t.tag]) tagCounts[t.tag] = { count: 0, cs: 0, ia: 0 };
+        tagCounts[t.tag].count++;
+        if (t.origem === 'cs') tagCounts[t.tag].cs++;
+        else tagCounts[t.tag].ia++;
+      });
+    });
+    const tagsExport = Object.entries(tagCounts)
+      .sort(([,a], [,b]) => b.count - a.count)
+      .map(([tag, data]) => ({
+        'Tag': tag,
+        'Total': data.count,
+        'CS Manual': data.cs,
+        'IA Automático': data.ia,
+        '% IA': data.count > 0 ? Math.round((data.ia / data.count) * 100) + '%' : '0%'
+      }));
+    if (tagsExport.length > 0) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tagsExport), 'Tags Problema');
+    }
+
     XLSX.writeFile(wb, `relatorio_completo_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const exportToPDF = async () => {
+    if (!contentRef.current) return;
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      const opt = {
+        margin: 10,
+        filename: `analytics_${activeTab}_${new Date().toISOString().split('T')[0]}.pdf`,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0f0a1f' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+      };
+      await html2pdf().set(opt).from(contentRef.current).save();
+    } catch (err) {
+      console.error('Erro ao exportar PDF:', err);
+    }
   };
 
   const clearFilters = () => {
@@ -958,7 +1040,15 @@ export default function Analytics() {
             </div>
             <div>
               <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Logins</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalLogins}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalLogins}</p>
+                {visaoGeral.variacaoLogins !== 0 && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px', background: visaoGeral.variacaoLogins > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: visaoGeral.variacaoLogins > 0 ? '#10b981' : '#ef4444', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>
+                    {visaoGeral.variacaoLogins > 0 ? <ArrowUpRight style={{ width: '12px', height: '12px' }} /> : <ArrowDownRight style={{ width: '12px', height: '12px' }} />}
+                    {Math.abs(visaoGeral.variacaoLogins)}%
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -970,7 +1060,15 @@ export default function Analytics() {
             </div>
             <div>
               <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Peças Criadas</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalPecasCriadas}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalPecasCriadas}</p>
+                {visaoGeral.variacaoPecas !== 0 && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px', background: visaoGeral.variacaoPecas > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: visaoGeral.variacaoPecas > 0 ? '#10b981' : '#ef4444', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>
+                    {visaoGeral.variacaoPecas > 0 ? <ArrowUpRight style={{ width: '12px', height: '12px' }} /> : <ArrowDownRight style={{ width: '12px', height: '12px' }} />}
+                    {Math.abs(visaoGeral.variacaoPecas)}%
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -982,7 +1080,15 @@ export default function Analytics() {
             </div>
             <div>
               <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Uso de AI</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalUsoAI}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalUsoAI}</p>
+                {visaoGeral.variacaoAI !== 0 && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '2px', padding: '2px 6px', background: visaoGeral.variacaoAI > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: visaoGeral.variacaoAI > 0 ? '#10b981' : '#ef4444', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>
+                    {visaoGeral.variacaoAI > 0 ? <ArrowUpRight style={{ width: '12px', height: '12px' }} /> : <ArrowDownRight style={{ width: '12px', height: '12px' }} />}
+                    {Math.abs(visaoGeral.variacaoAI)}%
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -2229,6 +2335,331 @@ export default function Analytics() {
     );
   };
 
+  // ========== ABA PROBLEMAS (BUGS + TAGS) ==========
+  const renderTabProblemas = () => {
+    const PRIORIDADE_COLORS = { baixa: '#64748b', media: '#f59e0b', alta: '#f97316', critica: '#ef4444' };
+    const STATUS_BUG_COLORS = { aberto: '#ef4444', em_andamento: '#f59e0b', resolvido: '#10b981' };
+    const STATUS_BUG_LABELS = { aberto: 'Aberto', em_andamento: 'Em andamento', resolvido: 'Resolvido' };
+
+    // Agregar bugs de todos os clientes filtrados
+    const todosBugs = clientesFiltrados.flatMap(c =>
+      (c.bugs_reportados || []).map(b => ({ ...b, clienteId: c.id, clienteNome: c.nome || c.team_name }))
+    );
+    const bugsAbertos = todosBugs.filter(b => b.status !== 'resolvido');
+    const bugsCriticos = bugsAbertos.filter(b => b.prioridade === 'critica' || b.prioridade === 'alta');
+
+    // Agregar tags
+    const todasTags = clientesFiltrados.flatMap(c =>
+      (c.tags_problema || []).map(t => ({ ...t, clienteId: c.id, clienteNome: c.nome || c.team_name }))
+    );
+    const clientesComProblemas = clientesFiltrados.filter(c =>
+      (c.bugs_reportados || []).some(b => b.status !== 'resolvido') || (c.tags_problema || []).length > 0
+    ).length;
+
+    // Bugs por prioridade (PieChart)
+    const bugsPorPrioridade = ['baixa', 'media', 'alta', 'critica'].map(p => ({
+      name: p.charAt(0).toUpperCase() + p.slice(1),
+      value: todosBugs.filter(b => b.prioridade === p).length,
+      color: PRIORIDADE_COLORS[p]
+    })).filter(d => d.value > 0);
+
+    // Bugs por status (para BarChart empilhado)
+    const bugsPorPrioridadeStatus = ['baixa', 'media', 'alta', 'critica'].map(p => ({
+      name: p.charAt(0).toUpperCase() + p.slice(1),
+      aberto: todosBugs.filter(b => b.prioridade === p && b.status === 'aberto').length,
+      em_andamento: todosBugs.filter(b => b.prioridade === p && b.status === 'em_andamento').length,
+      resolvido: todosBugs.filter(b => b.prioridade === p && b.status === 'resolvido').length
+    })).filter(d => d.aberto + d.em_andamento + d.resolvido > 0);
+
+    // Tempo médio de resolução
+    const bugsResolvidos = todosBugs.filter(b => b.status === 'resolvido' && b.resolvido_em && b.data);
+    let tempoMedioResolucao = 0;
+    if (bugsResolvidos.length > 0) {
+      const totalDias = bugsResolvidos.reduce((sum, b) => {
+        const inicio = b.data?.toDate ? b.data.toDate() : new Date(b.data);
+        const fim = b.resolvido_em?.toDate ? b.resolvido_em.toDate() : new Date(b.resolvido_em);
+        return sum + Math.max(0, Math.ceil((fim - inicio) / (1000 * 60 * 60 * 24)));
+      }, 0);
+      tempoMedioResolucao = Math.round(totalDias / bugsResolvidos.length);
+    }
+
+    // Top 10 tags mais frequentes
+    const tagCounts = {};
+    todasTags.forEach(t => {
+      if (!tagCounts[t.tag]) tagCounts[t.tag] = { tag: t.tag, count: 0, cs: 0, ia: 0 };
+      tagCounts[t.tag].count++;
+      if (t.origem === 'cs') tagCounts[t.tag].cs++;
+      else tagCounts[t.tag].ia++;
+    });
+    const topTags = Object.values(tagCounts).sort((a, b) => b.count - a.count).slice(0, 10);
+    const totalTagsCS = todasTags.filter(t => t.origem === 'cs').length;
+    const totalTagsIA = todasTags.filter(t => t.origem === 'ia').length;
+
+    // Top 10 clientes mais afetados
+    const clientesAfetados = clientesFiltrados
+      .map(c => ({
+        ...c,
+        bugsAbertos: (c.bugs_reportados || []).filter(b => b.status !== 'resolvido').length,
+        totalTags: (c.tags_problema || []).length,
+        prioridadeMax: (c.bugs_reportados || []).filter(b => b.status !== 'resolvido')
+          .reduce((max, b) => {
+            const ordem = { critica: 4, alta: 3, media: 2, baixa: 1 };
+            return (ordem[b.prioridade] || 0) > (ordem[max] || 0) ? b.prioridade : max;
+          }, '')
+      }))
+      .filter(c => c.bugsAbertos > 0 || c.totalTags > 0)
+      .sort((a, b) => (b.bugsAbertos + b.totalTags) - (a.bugsAbertos + a.totalTags))
+      .slice(0, 10);
+
+    // Bugs recentes (15 mais recentes)
+    const bugsRecentes = todosBugs
+      .filter(b => b.data)
+      .sort((a, b) => {
+        const dA = a.data?.toDate ? a.data.toDate() : new Date(a.data);
+        const dB = b.data?.toDate ? b.data.toDate() : new Date(b.data);
+        return dB - dA;
+      })
+      .slice(0, 15);
+
+    const formatRelativeDate = (d) => {
+      const date = d?.toDate ? d.toDate() : new Date(d);
+      const dias = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+      if (dias === 0) return 'Hoje';
+      if (dias === 1) return 'Ontem';
+      if (dias < 7) return `${dias}d atrás`;
+      if (dias < 30) return `${Math.floor(dias / 7)}sem atrás`;
+      return date.toLocaleDateString('pt-BR');
+    };
+
+    return (
+      <>
+        {/* Seção A - Cards Resumo */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+          {[
+            { label: 'Bugs Abertos', count: bugsAbertos.length, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)', icon: Bug },
+            { label: 'Críticos/Alta', count: bugsCriticos.length, color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)', icon: AlertTriangle },
+            { label: 'Tags Problema', count: todasTags.length, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', icon: Tag },
+            { label: 'Clientes Afetados', count: clientesComProblemas, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)', icon: Users }
+          ].map(item => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} style={{
+                background: 'rgba(30, 27, 75, 0.4)',
+                border: '1px solid rgba(139, 92, 246, 0.15)',
+                borderRadius: '16px',
+                padding: '20px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: item.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon style={{ width: '22px', height: '22px', color: item.color }} />
+                  </div>
+                  <div>
+                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>{item.label}</p>
+                    <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{item.count}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Seção B - Bugs por Prioridade e Status */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 300px', gap: '24px', marginBottom: '24px' }}>
+          {/* PieChart Prioridade */}
+          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+            <h4 style={{ color: 'white', fontSize: '14px', fontWeight: '600', marginBottom: '16px', margin: '0 0 16px 0' }}>Bugs por Prioridade</h4>
+            {bugsPorPrioridade.length === 0 ? (
+              <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '40px' }}>Nenhum bug registrado</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={bugsPorPrioridade} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" paddingAngle={3}>
+                    {bugsPorPrioridade.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: '#1e1b4b', border: '1px solid #3730a3', borderRadius: '8px', color: 'white' }} />
+                  <Legend wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* BarChart Status por Prioridade */}
+          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+            <h4 style={{ color: 'white', fontSize: '14px', fontWeight: '600', marginBottom: '16px', margin: '0 0 16px 0' }}>Status por Prioridade</h4>
+            {bugsPorPrioridadeStatus.length === 0 ? (
+              <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '40px' }}>Nenhum bug registrado</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={bugsPorPrioridadeStatus}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" />
+                  <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                  <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: '#1e1b4b', border: '1px solid #3730a3', borderRadius: '8px', color: 'white' }} />
+                  <Bar dataKey="aberto" stackId="a" fill="#ef4444" name="Aberto" />
+                  <Bar dataKey="em_andamento" stackId="a" fill="#f59e0b" name="Em andamento" />
+                  <Bar dataKey="resolvido" stackId="a" fill="#10b981" name="Resolvido" radius={[4, 4, 0, 0]} />
+                  <Legend wrapperStyle={{ color: '#94a3b8', fontSize: '11px' }} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Tempo médio de resolução */}
+          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <Clock style={{ width: '32px', height: '32px', color: '#06b6d4', marginBottom: '12px' }} />
+            <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 8px 0' }}>Tempo Médio de Resolução</p>
+            <p style={{ color: 'white', fontSize: '36px', fontWeight: '700', margin: 0 }}>
+              {bugsResolvidos.length > 0 ? tempoMedioResolucao : '—'}
+            </p>
+            <p style={{ color: '#64748b', fontSize: '12px', margin: '4px 0 0 0' }}>
+              {bugsResolvidos.length > 0 ? `dias (${bugsResolvidos.length} resolvidos)` : 'Sem dados'}
+            </p>
+          </div>
+        </div>
+
+        {/* Seção C - Tags de Problema */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <h4 style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Tag style={{ width: '16px', height: '16px', color: '#f59e0b' }} />
+              Tags de Problema — Top 10
+            </h4>
+            {todasTags.length > 0 && (
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  CS: <span style={{ color: '#8b5cf6', fontWeight: '600' }}>{totalTagsCS}</span>
+                  {' '}({todasTags.length > 0 ? Math.round((totalTagsCS / todasTags.length) * 100) : 0}%)
+                </span>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  IA: <span style={{ color: '#06b6d4', fontWeight: '600' }}>{totalTagsIA}</span>
+                  {' '}({todasTags.length > 0 ? Math.round((totalTagsIA / todasTags.length) * 100) : 0}%)
+                </span>
+              </div>
+            )}
+          </div>
+          {topTags.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '24px' }}>Nenhuma tag de problema registrada</div>
+          ) : (
+            <div style={{ display: 'grid', gap: '8px' }}>
+              {topTags.map(t => {
+                const maxCount = topTags[0]?.count || 1;
+                return (
+                  <div key={t.tag} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ color: 'white', fontSize: '13px', fontWeight: '500', minWidth: '150px', textAlign: 'right' }}>{t.tag}</span>
+                    <div style={{ flex: 1, height: '24px', background: 'rgba(15, 10, 31, 0.5)', borderRadius: '6px', overflow: 'hidden', position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(t.cs / maxCount) * 100}%`, background: '#8b5cf6', transition: 'width 0.3s' }} />
+                      <div style={{ position: 'absolute', left: `${(t.cs / maxCount) * 100}%`, top: 0, bottom: 0, width: `${(t.ia / maxCount) * 100}%`, background: '#06b6d4', transition: 'width 0.3s' }} />
+                    </div>
+                    <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', minWidth: '30px' }}>{t.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Seção D - Clientes Mais Afetados */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
+          <h4 style={{ color: 'white', fontSize: '14px', fontWeight: '600', marginBottom: '16px', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Users style={{ width: '16px', height: '16px', color: '#ef4444' }} />
+            Top 10 Clientes Mais Afetados
+          </h4>
+          {clientesAfetados.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '24px' }}>Nenhum cliente com problemas</div>
+          ) : (
+            <div style={{ display: 'grid', gap: '6px' }}>
+              {clientesAfetados.map(c => (
+                <div
+                  key={c.id}
+                  onClick={() => navigate(`/clientes/${c.id}`)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '16px',
+                    padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
+                    background: 'rgba(15, 10, 31, 0.5)',
+                    border: '1px solid rgba(139, 92, 246, 0.08)'
+                  }}
+                >
+                  <span style={{ color: 'white', fontSize: '13px', fontWeight: '500', flex: 1 }}>{c.nome || c.team_name}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {c.bugsAbertos > 0 && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#ef4444' }}>
+                        <Bug style={{ width: '12px', height: '12px' }} /> {c.bugsAbertos}
+                      </span>
+                    )}
+                    {c.totalTags > 0 && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#f59e0b' }}>
+                        <Tag style={{ width: '12px', height: '12px' }} /> {c.totalTags}
+                      </span>
+                    )}
+                    {c.prioridadeMax && (
+                      <span style={{
+                        padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '600',
+                        background: `${PRIORIDADE_COLORS[c.prioridadeMax]}22`,
+                        color: PRIORIDADE_COLORS[c.prioridadeMax],
+                        textTransform: 'capitalize'
+                      }}>{c.prioridadeMax}</span>
+                    )}
+                    <ExternalLink style={{ width: '12px', height: '12px', color: '#64748b' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Seção E - Bugs Recentes */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <h4 style={{ color: 'white', fontSize: '14px', fontWeight: '600', marginBottom: '16px', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Bug style={{ width: '16px', height: '16px', color: '#ef4444' }} />
+            Bugs Recentes
+          </h4>
+          {bugsRecentes.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '24px' }}>Nenhum bug registrado</div>
+          ) : (
+            <div style={{ display: 'grid', gap: '6px', maxHeight: '350px', overflowY: 'auto' }}>
+              {bugsRecentes.map((b, i) => (
+                <div
+                  key={b.id || i}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '10px 14px', borderRadius: '10px',
+                    background: 'rgba(15, 10, 31, 0.5)',
+                    border: '1px solid rgba(139, 92, 246, 0.08)'
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: 'white', fontSize: '13px', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.titulo}</span>
+                    </div>
+                    <span style={{ color: '#64748b', fontSize: '11px' }}>{b.clienteNome}</span>
+                  </div>
+                  <span style={{
+                    padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '600',
+                    background: `${PRIORIDADE_COLORS[b.prioridade]}22`,
+                    color: PRIORIDADE_COLORS[b.prioridade],
+                    textTransform: 'capitalize', whiteSpace: 'nowrap'
+                  }}>{b.prioridade}</span>
+                  <span style={{
+                    padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '600',
+                    background: `${STATUS_BUG_COLORS[b.status]}22`,
+                    color: STATUS_BUG_COLORS[b.status],
+                    whiteSpace: 'nowrap'
+                  }}>{STATUS_BUG_LABELS[b.status] || b.status}</span>
+                  <span style={{ color: '#64748b', fontSize: '11px', whiteSpace: 'nowrap' }}>{formatRelativeDate(b.data)}</span>
+                  {b.link_clickup && (
+                    <a href={b.link_clickup} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#8b5cf6' }}>
+                      <ExternalLink style={{ width: '12px', height: '12px' }} />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
   return (
     <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
       {/* Header */}
@@ -2273,7 +2704,26 @@ export default function Analytics() {
             }}
           >
             <FileSpreadsheet style={{ width: '18px', height: '18px' }} />
-            Exportar Relatório
+            Excel
+          </button>
+          <button
+            onClick={exportToPDF}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: 'linear-gradient(135deg, #ef4444 0%, #f97316 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            <Download style={{ width: '18px', height: '18px' }} />
+            PDF
           </button>
         </div>
       </div>
@@ -2555,11 +3005,14 @@ export default function Analytics() {
       </div>
 
       {/* Conteúdo da Aba Ativa */}
-      {activeTab === 'engajamento' && renderTabEngajamento()}
-      {activeTab === 'usuarios' && renderTabUsuarios()}
-      {activeTab === 'churn' && renderTabChurn()}
-      {activeTab === 'inativos' && renderTabInativos()}
-      {activeTab === 'sazonalidade' && renderTabSazonalidade()}
+      <div ref={contentRef}>
+        {activeTab === 'engajamento' && renderTabEngajamento()}
+        {activeTab === 'usuarios' && renderTabUsuarios()}
+        {activeTab === 'churn' && renderTabChurn()}
+        {activeTab === 'inativos' && renderTabInativos()}
+        {activeTab === 'sazonalidade' && renderTabSazonalidade()}
+        {activeTab === 'problemas' && renderTabProblemas()}
+      </div>
     </div>
   );
 }

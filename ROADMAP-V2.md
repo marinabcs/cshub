@@ -239,11 +239,11 @@ SE tipo_conta == "google_gratuito":
 - [x] Comparativo: barra empilhada uso real vs esperado (ativos vs inativos em alta temporada, drill-down lista)
 
 ### 5.2 Melhorias no Analytics
-- [ ] Exportar relatórios PDF/Excel
-- [ ] Filtros por período personalizados
-- [ ] Comparativo entre períodos
-- [ ] Dashboard de bugs/problemas por cliente
-- [ ] Dashboard de tags de problema (quais mais frequentes, tendência)
+- [x] Exportar relatórios PDF/Excel (botão PDF via html2pdf.js + Excel expandido com abas Bugs e Tags Problema)
+- [x] Filtros por período personalizados (já existia: 7/15/30/60/90d + custom)
+- [x] Comparativo entre períodos (variação % em Threads, Logins, Peças e AI com badges verde/vermelho)
+- [x] Dashboard de bugs/problemas por cliente (nova aba Problemas: PieChart prioridade, BarChart status, top 10 afetados, bugs recentes)
+- [x] Dashboard de tags de problema (top 10 tags frequentes com barra CS vs IA, % origem)
 
 ---
 
@@ -470,7 +470,7 @@ SE tipo_conta == "google_gratuito":
 
 ### Sprint 5 - Inteligência
 11. ~~Análise por área + sazonalidade (5.1)~~ ✅
-12. Melhorias no Analytics (5.2)
+12. ~~Melhorias no Analytics (5.2)~~ ✅
 
 ### Sprint 6 - Performance
 13. Paginação (6.1)
