@@ -307,15 +307,20 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   const reclamacaoGrave = temReclamacaoGrave(threads);
   const engajamento = calcularEngajamento(metricas);
 
+  // Tipo de conta: google_gratuito tem thresholds mais lenientes
+  const tipoConta = cliente?.tipo_conta || 'pagante';
+  const isGratuito = tipoConta === 'google_gratuito';
+  const baseResgate = isGratuito ? 60 : 30;
+  const baseAlerta = isGratuito ? 28 : 14;
+
   // Sazonalidade
   const sazonalidade = getSazonalidadeMesAtual(cliente);
   const emBaixa = sazonalidade === 'baixa';
   const emAlta = sazonalidade === 'alta';
 
-  // Thresholds ajustados pela sazonalidade
-  // Em mês de baixa: tolerância maior para inatividade
-  const thresholdResgate = emBaixa ? 60 : 30;
-  const thresholdAlerta = emBaixa ? 28 : 14;
+  // Thresholds ajustados: tipo_conta define base, sazonalidade baixa dobra
+  const thresholdResgate = emBaixa ? baseResgate * 2 : baseResgate;
+  const thresholdAlerta = emBaixa ? baseAlerta * 2 : baseAlerta;
 
   // Flags especiais
   const emAvisoPrevio = cliente?.status === 'aviso_previo';
@@ -339,7 +344,8 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     tags_problema_count: (cliente?.tags_problema || []).length,
     bugs_abertos_count: (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length,
     dias_sem_interacao: diasSemInteracao,
-    sazonalidade_mes_atual: sazonalidade
+    sazonalidade_mes_atual: sazonalidade,
+    tipo_conta: tipoConta
   };
 
   // ============================================

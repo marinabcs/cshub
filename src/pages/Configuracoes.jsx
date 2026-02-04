@@ -76,6 +76,17 @@ export default function Configuracoes() {
     dias_periodo_analise: 30
   });
 
+  // Configurações de tipo de conta
+  const TIPO_CONTA_CONFIG_PADRAO = {
+    pagante_dias_alerta: 14,
+    pagante_dias_resgate: 30,
+    pagante_periodo_analise: 30,
+    gratuito_dias_alerta: 28,
+    gratuito_dias_resgate: 60,
+    gratuito_periodo_analise: 60
+  };
+  const [tipoContaConfig, setTipoContaConfig] = useState(TIPO_CONTA_CONFIG_PADRAO);
+
   // Verificar se usuário é admin
   useEffect(() => {
     const checkAdminRole = async () => {
@@ -130,6 +141,7 @@ export default function Configuracoes() {
           const data = configDocSnap.data();
           if (data.parametros) setParametros(data.parametros);
           if (data.segmentoConfig) setSegmentoConfig(data.segmentoConfig);
+          if (data.tipoContaConfig) setTipoContaConfig(prev => ({ ...prev, ...data.tipoContaConfig }));
         }
 
         // Fetch Alert config
@@ -210,6 +222,7 @@ export default function Configuracoes() {
   const restaurarPadroes = () => {
     setParametros(PARAMETROS_PADRAO);
     setSegmentoConfig(PARAMETROS_SEGMENTO_PADRAO);
+    setTipoContaConfig(TIPO_CONTA_CONFIG_PADRAO);
     setEmailFilterConfig(DEFAULT_EMAIL_FILTERS);
   };
 
@@ -236,7 +249,7 @@ export default function Configuracoes() {
     if (!isAdmin) return;
 
     // Validar configurações numéricas
-    const configData = { ...parametros, ...segmentoConfig };
+    const configData = { ...parametros, ...segmentoConfig, ...tipoContaConfig };
     const validationErrors = validateForm(configGeralSchema, configData);
     if (validationErrors) {
       alert('Erro de validação:\n' + Object.values(validationErrors).join('\n'));
@@ -251,6 +264,7 @@ export default function Configuracoes() {
       await setDoc(configDocRef, {
         parametros,
         segmentoConfig,
+        tipoContaConfig,
         updated_at: new Date()
       });
 
@@ -284,6 +298,10 @@ export default function Configuracoes() {
 
   const handleSegmentoConfigChange = (field, value) => {
     setSegmentoConfig(prev => ({ ...prev, [field]: Number(value) || 0 }));
+  };
+
+  const handleTipoContaConfigChange = (field, value) => {
+    setTipoContaConfig(prev => ({ ...prev, [field]: Number(value) || 0 }));
   };
 
   const handleAlertaConfigChange = (field, value) => {
@@ -1122,6 +1140,96 @@ export default function Configuracoes() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* SEÇÃO: Períodos por Tipo de Conta */}
+          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <Sliders style={{ width: '20px', height: '20px', color: '#f97316' }} />
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Períodos por Tipo de Conta</h2>
+            </div>
+
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
+              Contas gratuitas usam thresholds mais lenientes na segmentação. Meses de baixa temporada dobram esses valores automaticamente.
+            </p>
+
+            {/* Pagante */}
+            <div style={{ marginBottom: '16px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                <div style={{ width: '8px', height: '8px', background: '#8b5cf6', borderRadius: '50%' }}></div>
+                <p style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600', margin: 0, textTransform: 'uppercase' }}>Conta Pagante</p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  { key: 'pagante_dias_alerta', label: 'Dias sem uso → Alerta', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.2)' },
+                  { key: 'pagante_dias_resgate', label: 'Dias sem uso → Resgate', color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' },
+                  { key: 'pagante_periodo_analise', label: 'Período de análise', color: '#94a3b8', bgColor: 'rgba(100, 116, 139, 0.1)', borderColor: 'rgba(100, 116, 139, 0.2)' }
+                ].map(item => (
+                  <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: item.bgColor, borderRadius: '10px', border: `1px solid ${item.borderColor}` }}>
+                    <p style={{ color: item.color, fontSize: '13px', fontWeight: '500', margin: 0 }}>{item.label}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="number"
+                        min="1"
+                        value={tipoContaConfig[item.key]}
+                        onChange={(e) => handleTipoContaConfigChange(item.key, e.target.value)}
+                        disabled={!isAdmin}
+                        style={{
+                          width: '60px', padding: '6px 10px',
+                          background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                          border: `1px solid ${item.borderColor}`,
+                          borderRadius: '6px', color: isAdmin ? 'white' : '#64748b',
+                          fontSize: '13px', textAlign: 'center', outline: 'none',
+                          cursor: isAdmin ? 'text' : 'not-allowed'
+                        }}
+                      />
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Google Gratuito */}
+            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(6, 182, 212, 0.2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                <div style={{ width: '8px', height: '8px', background: '#06b6d4', borderRadius: '50%' }}></div>
+                <p style={{ color: '#06b6d4', fontSize: '13px', fontWeight: '600', margin: 0, textTransform: 'uppercase' }}>Google Gratuito</p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  { key: 'gratuito_dias_alerta', label: 'Dias sem uso → Alerta', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.2)' },
+                  { key: 'gratuito_dias_resgate', label: 'Dias sem uso → Resgate', color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' },
+                  { key: 'gratuito_periodo_analise', label: 'Período de análise', color: '#94a3b8', bgColor: 'rgba(100, 116, 139, 0.1)', borderColor: 'rgba(100, 116, 139, 0.2)' }
+                ].map(item => (
+                  <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: item.bgColor, borderRadius: '10px', border: `1px solid ${item.borderColor}` }}>
+                    <p style={{ color: item.color, fontSize: '13px', fontWeight: '500', margin: 0 }}>{item.label}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="number"
+                        min="1"
+                        value={tipoContaConfig[item.key]}
+                        onChange={(e) => handleTipoContaConfigChange(item.key, e.target.value)}
+                        disabled={!isAdmin}
+                        style={{
+                          width: '60px', padding: '6px 10px',
+                          background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                          border: `1px solid ${item.borderColor}`,
+                          borderRadius: '6px', color: isAdmin ? 'white' : '#64748b',
+                          fontSize: '13px', textAlign: 'center', outline: 'none',
+                          cursor: isAdmin ? 'text' : 'not-allowed'
+                        }}
+                      />
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p style={{ color: '#64748b', fontSize: '11px', margin: '16px 0 0 0', fontStyle: 'italic' }}>
+              Em meses de baixa temporada (sazonalidade), os thresholds de dias sem uso são automaticamente dobrados.
+            </p>
           </div>
 
           {/* SEÇÃO 5: Integrações (simplificado) */}

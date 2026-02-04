@@ -14,7 +14,13 @@ export const configGeralSchema = z.object({
   dias_ativos_regular: posInt,
   dias_ativos_irregular: posInt,
   engajamento_alto: posInt,
-  engajamento_medio: posInt
+  engajamento_medio: posInt,
+  pagante_dias_alerta: posInt.optional(),
+  pagante_dias_resgate: posInt.optional(),
+  pagante_periodo_analise: posInt.optional(),
+  gratuito_dias_alerta: posInt.optional(),
+  gratuito_dias_resgate: posInt.optional(),
+  gratuito_periodo_analise: posInt.optional()
 });
 
 export const configAlertasSchema = z.object({

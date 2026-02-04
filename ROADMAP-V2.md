@@ -175,9 +175,9 @@ SE tipo_conta == "google_gratuito":
 ```
 
 **O que fazer:**
-- [ ] Adicionar campo `tipo_conta` no ClienteForm (select: Pagante / Google Gratuito)
-- [ ] Ajustar `calcularSegmentoCS` para considerar tipo de conta nos thresholds
-- [ ] Configuração dos períodos em Configurações
+- [x] Adicionar campo `tipo_conta` no ClienteForm (select: Pagante / Google Gratuito) — feito no item 3.0
+- [x] Ajustar `calcularSegmentoCS` para considerar tipo de conta nos thresholds (pagante: 14/30d, gratuito: 28/60d, sazonalidade baixa dobra)
+- [x] Configuração dos períodos em Configurações (seção "Períodos por Tipo de Conta" com thresholds editáveis por tipo)
 
 ### 3.6 Configuração de SLA na página de Configurações
 **Reportado por:** Time (reunião 04/02)
