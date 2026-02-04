@@ -305,15 +305,13 @@ SE tipo_conta == "google_gratuito":
 - [x] `logger.error` em vez de `console.error` — sem exposição de detalhes da API
 - [x] Erro genérico para o caller: `'Não foi possível classificar a conversa'`
 
-### 7.3 Firebase Config em variáveis de ambiente
+### 7.3 Firebase Config em variáveis de ambiente ✅
 **Ref SEGURANCA.md:** #2 (CWE-798)
 **Prioridade:** MÉDIA
-**Nota:** Firebase API key no frontend é aceitável por design (protegido pelas Security Rules), mas mover para env vars é boa prática.
 
-**O que fazer:**
-- [ ] Mover config do Firebase de hardcoded para `import.meta.env.VITE_FIREBASE_*`
-- [ ] Adicionar variáveis no `.env` e `.env.example`
-- [ ] Atualizar `src/services/firebase.js`
+- [x] Config movida de hardcoded para `import.meta.env.VITE_FIREBASE_*` em `firebase.js`
+- [x] 6 variáveis adicionadas ao `.env` e `.env.example`
+- [x] Valores reais removidos do código-fonte
 
 ### 7.4 Sanitização de erros de API em produção
 **Ref SEGURANCA.md:** #12 (CWE-209)
@@ -487,6 +485,7 @@ SE tipo_conta == "google_gratuito":
 ### Sprint 7 - Segurança
 16. ~~Debug protegido (7.1)~~ ✅
 17. ~~Validação OpenAI (7.2)~~ ✅
+18. ~~Firebase env vars (7.3)~~ ✅
 
 ### On Hold (aguardando decisão do time)
 - Cloud Functions (2.1) — precisa plano Blaze
