@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Save, CheckCircle, AlertTriangle, Sliders, Activity, Clock,
   Bell, Link2, Zap, RefreshCw, XCircle, Play, Heart, CloudDownload, Lock, Eye,
-  Mail, Plus, X, EyeOff, Trash2
+  Mail, Plus, X, EyeOff, Trash2, Shield
 } from 'lucide-react';
 import { SEGMENTOS_CS } from '../utils/segmentoCS';
 import { DEFAULT_EMAIL_FILTERS } from '../utils/emailFilters';
@@ -14,7 +14,7 @@ import { isClickUpConfigured } from '../services/clickup';
 import { useSincronizarClickUp } from '../hooks/useAlertas';
 import { sincronizarPlaybooksComClickUp } from '../services/playbooks';
 import { validateForm } from '../validation';
-import { configGeralSchema } from '../validation/configuracoes';
+import { configGeralSchema, configSlaSchema } from '../validation/configuracoes';
 
 export default function Configuracoes() {
   const { user } = useAuth();
@@ -86,6 +86,17 @@ export default function Configuracoes() {
     gratuito_periodo_analise: 60
   };
   const [tipoContaConfig, setTipoContaConfig] = useState(TIPO_CONTA_CONFIG_PADRAO);
+
+  // Configurações de SLA
+  const SLA_CONFIG_PADRAO = {
+    resposta_dias_uteis: 8,
+    resposta_final_semana: 0,
+    resposta_campanha_ativa: 4,
+    resposta_bug_critico: 2,
+    horario_comercial_inicio: '09:00',
+    horario_comercial_fim: '18:00'
+  };
+  const [slaConfig, setSlaConfig] = useState(SLA_CONFIG_PADRAO);
 
   // Verificar se usuário é admin
   useEffect(() => {
@@ -159,6 +170,13 @@ export default function Configuracoes() {
           setEmailFilterConfig(prev => ({ ...prev, ...filterDocSnap.data() }));
         }
 
+        // Fetch SLA config
+        const slaDocRef = doc(db, 'config', 'sla');
+        const slaDocSnap = await getDoc(slaDocRef);
+        if (slaDocSnap.exists()) {
+          setSlaConfig(prev => ({ ...prev, ...slaDocSnap.data() }));
+        }
+
         // Check integrations status
         checkIntegrations();
 
@@ -223,6 +241,7 @@ export default function Configuracoes() {
     setParametros(PARAMETROS_PADRAO);
     setSegmentoConfig(PARAMETROS_SEGMENTO_PADRAO);
     setTipoContaConfig(TIPO_CONTA_CONFIG_PADRAO);
+    setSlaConfig(SLA_CONFIG_PADRAO);
     setEmailFilterConfig(DEFAULT_EMAIL_FILTERS);
   };
 
@@ -282,6 +301,19 @@ export default function Configuracoes() {
         updated_at: new Date()
       });
 
+      // Save SLA config
+      const slaValidation = validateForm(configSlaSchema, slaConfig);
+      if (slaValidation) {
+        alert('Erro de validação SLA:\n' + Object.values(slaValidation).join('\n'));
+        setSaving(false);
+        return;
+      }
+      const slaDocRef = doc(db, 'config', 'sla');
+      await setDoc(slaDocRef, {
+        ...slaConfig,
+        updated_at: new Date()
+      });
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
@@ -302,6 +334,10 @@ export default function Configuracoes() {
 
   const handleTipoContaConfigChange = (field, value) => {
     setTipoContaConfig(prev => ({ ...prev, [field]: Number(value) || 0 }));
+  };
+
+  const handleSlaConfigChange = (field, value) => {
+    setSlaConfig(prev => ({ ...prev, [field]: value }));
   };
 
   const handleAlertaConfigChange = (field, value) => {
@@ -825,6 +861,99 @@ export default function Configuracoes() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* SEÇÃO: SLA de Atendimento */}
+          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <Shield style={{ width: '20px', height: '20px', color: '#10b981' }} />
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>SLA de Atendimento</h2>
+            </div>
+
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
+              Defina os tempos máximos de primeira resposta para cada situação. Valor 0 = próximo dia útil.
+            </p>
+
+            {/* Horário Comercial */}
+            <div style={{ marginBottom: '16px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+              <p style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600', margin: '0 0 14px 0', textTransform: 'uppercase' }}>Horário Comercial</p>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 6px 0' }}>Início</p>
+                  <input
+                    type="time"
+                    value={slaConfig.horario_comercial_inicio}
+                    onChange={(e) => handleSlaConfigChange('horario_comercial_inicio', e.target.value)}
+                    disabled={!isAdmin}
+                    style={{
+                      width: '100%', padding: '10px 14px',
+                      background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                      border: '1px solid #3730a3', borderRadius: '10px',
+                      color: isAdmin ? 'white' : '#64748b', fontSize: '14px',
+                      outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed'
+                    }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 6px 0' }}>Fim</p>
+                  <input
+                    type="time"
+                    value={slaConfig.horario_comercial_fim}
+                    onChange={(e) => handleSlaConfigChange('horario_comercial_fim', e.target.value)}
+                    disabled={!isAdmin}
+                    style={{
+                      width: '100%', padding: '10px 14px',
+                      background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                      border: '1px solid #3730a3', borderRadius: '10px',
+                      color: isAdmin ? 'white' : '#64748b', fontSize: '14px',
+                      outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Tempos de Resposta */}
+            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+              <p style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600', margin: '0 0 14px 0', textTransform: 'uppercase' }}>Primeira Resposta</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  { key: 'resposta_dias_uteis', label: 'Dias úteis (horário comercial)', desc: 'Tempo padrão de primeira resposta', color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.2)' },
+                  { key: 'resposta_final_semana', label: 'Final de semana / fora do horário', desc: '0 = próximo dia útil', color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.1)', borderColor: 'rgba(100, 116, 139, 0.2)' },
+                  { key: 'resposta_campanha_ativa', label: 'Cliente em campanha ativa', desc: 'Prioridade maior durante campanhas', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.2)' },
+                  { key: 'resposta_bug_critico', label: 'Bug crítico / bloqueante', desc: 'Máxima urgência', color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' }
+                ].map(item => (
+                  <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: item.bgColor, borderRadius: '10px', border: `1px solid ${item.borderColor}` }}>
+                    <div>
+                      <p style={{ color: item.color, fontSize: '13px', fontWeight: '500', margin: 0 }}>{item.label}</p>
+                      <p style={{ color: '#64748b', fontSize: '11px', margin: '2px 0 0 0' }}>{item.desc}</p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        value={slaConfig[item.key]}
+                        onChange={(e) => handleSlaConfigChange(item.key, Number(e.target.value) || 0)}
+                        disabled={!isAdmin}
+                        style={{
+                          width: '60px', padding: '6px 10px',
+                          background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                          border: `1px solid ${item.borderColor}`,
+                          borderRadius: '6px', color: isAdmin ? 'white' : '#64748b',
+                          fontSize: '13px', textAlign: 'center', outline: 'none',
+                          cursor: isAdmin ? 'text' : 'not-allowed'
+                        }}
+                      />
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>horas</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p style={{ color: '#64748b', fontSize: '11px', margin: '16px 0 0 0', fontStyle: 'italic' }}>
+              Esses valores serão usados futuramente para alertas de SLA próximo de estourar.
+            </p>
           </div>
         </div>
 

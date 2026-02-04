@@ -29,6 +29,18 @@ export const configAlertasSchema = z.object({
   alerta_urgente_automatico: z.boolean()
 });
 
+const posNum = z.number().nonnegative('Deve ser zero ou positivo');
+const horaStr = z.string().regex(/^\d{2}:\d{2}$/, 'Formato inválido (HH:MM)');
+
+export const configSlaSchema = z.object({
+  resposta_dias_uteis: posNum,
+  resposta_final_semana: posNum,
+  resposta_campanha_ativa: posNum,
+  resposta_bug_critico: posNum,
+  horario_comercial_inicio: horaStr,
+  horario_comercial_fim: horaStr
+});
+
 export const configEmailFiltersSchema = z.object({
   dominios_bloqueados: z.array(z.string()),
   dominios_completos_bloqueados: z.array(z.string()),

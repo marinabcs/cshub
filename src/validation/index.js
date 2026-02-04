@@ -54,6 +54,6 @@ export { clienteSchema, stakeholderSchema } from './cliente';
 export { playbookSchema } from './playbook';
 export { documentoSchema, observacaoSchema, interacaoSchema } from './documento';
 export { classificacaoManualSchema } from './thread';
-export { configGeralSchema, configAlertasSchema, configEmailFiltersSchema } from './configuracoes';
+export { configGeralSchema, configAlertasSchema, configEmailFiltersSchema, configSlaSchema } from './configuracoes';
 export { alertaEditSchema } from './alerta';
 export { usuarioCreateSchema, usuarioEditSchema } from './usuario';

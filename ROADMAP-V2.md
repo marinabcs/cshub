@@ -194,10 +194,10 @@ SE tipo_conta == "google_gratuito":
 | Bug crítico bloqueante | 2 horas |
 
 **O que fazer:**
-- [ ] Adicionar seção "SLA de Atendimento" na página Configurações
-- [ ] Campos: tempo de resposta por situação (horas), horário comercial (início/fim)
-- [ ] Salvar na collection `config` (doc `sla`)
-- [ ] Validação Zod para os campos numéricos
+- [x] Adicionar seção "SLA de Atendimento" na página Configurações (card com Shield icon, horário comercial + tempos de resposta)
+- [x] Campos: tempo de resposta por situação (horas), horário comercial (início/fim)
+- [x] Salvar na collection `config` (doc `sla`)
+- [x] Validação Zod para os campos numéricos (`configSlaSchema`)
 - [ ] Futuro: alertas quando SLA estiver próximo de estourar (depende de 3.3 interações)
 
 ---
