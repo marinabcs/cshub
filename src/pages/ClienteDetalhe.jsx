@@ -172,6 +172,13 @@ export default function ClienteDetalhe() {
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [customTag, setCustomTag] = useState('');
 
+  // Bugs/Problemas
+  const [showBugForm, setShowBugForm] = useState(false);
+  const [bugForm, setBugForm] = useState({ titulo: '', descricao: '', prioridade: 'media', link_clickup: '' });
+  const [savingBug, setSavingBug] = useState(false);
+  const [editingBugId, setEditingBugId] = useState(null);
+  const [mostrarResolvidos, setMostrarResolvidos] = useState(false);
+
   useEffect(() => {
     const fetchCliente = async () => {
       try {
@@ -567,6 +574,91 @@ export default function ClienteDetalhe() {
     }
   };
 
+  // Bugs/Problemas - Handlers
+  const PRIORIDADES_BUG = [
+    { value: 'baixa', label: 'Baixa', color: '#64748b' },
+    { value: 'media', label: 'Média', color: '#f59e0b' },
+    { value: 'alta', label: 'Alta', color: '#f97316' },
+    { value: 'critica', label: 'Crítica', color: '#ef4444' }
+  ];
+
+  const STATUS_BUG = [
+    { value: 'aberto', label: 'Aberto', color: '#ef4444' },
+    { value: 'em_andamento', label: 'Em andamento', color: '#f59e0b' },
+    { value: 'resolvido', label: 'Resolvido', color: '#10b981' }
+  ];
+
+  const handleSaveBug = async () => {
+    if (!bugForm.titulo.trim()) return;
+    setSavingBug(true);
+    try {
+      const bugsAtuais = cliente.bugs_reportados || [];
+      let novoArray;
+      if (editingBugId) {
+        novoArray = bugsAtuais.map(b => b.id === editingBugId ? {
+          ...b,
+          titulo: bugForm.titulo.trim(),
+          descricao: bugForm.descricao.trim(),
+          prioridade: bugForm.prioridade,
+          link_clickup: bugForm.link_clickup.trim()
+        } : b);
+      } else {
+        const novoBug = {
+          id: Date.now().toString(),
+          titulo: bugForm.titulo.trim(),
+          descricao: bugForm.descricao.trim(),
+          prioridade: bugForm.prioridade,
+          status: 'aberto',
+          link_clickup: bugForm.link_clickup.trim(),
+          data: Timestamp.now(),
+          resolvido_em: null
+        };
+        novoArray = [...bugsAtuais, novoBug];
+      }
+      await updateDoc(doc(db, 'clientes', id), { bugs_reportados: novoArray });
+      setCliente(prev => ({ ...prev, bugs_reportados: novoArray }));
+      setBugForm({ titulo: '', descricao: '', prioridade: 'media', link_clickup: '' });
+      setShowBugForm(false);
+      setEditingBugId(null);
+    } catch (error) {
+      console.error('Erro ao salvar bug:', error);
+    } finally {
+      setSavingBug(false);
+    }
+  };
+
+  const handleToggleBugStatus = async (bugId, novoStatus) => {
+    const bugsAtuais = cliente.bugs_reportados || [];
+    const novoArray = bugsAtuais.map(b => b.id === bugId ? {
+      ...b,
+      status: novoStatus,
+      resolvido_em: novoStatus === 'resolvido' ? Timestamp.now() : null
+    } : b);
+    try {
+      await updateDoc(doc(db, 'clientes', id), { bugs_reportados: novoArray });
+      setCliente(prev => ({ ...prev, bugs_reportados: novoArray }));
+    } catch (error) {
+      console.error('Erro ao atualizar status do bug:', error);
+    }
+  };
+
+  const handleDeleteBug = async (bugId) => {
+    if (!confirm('Excluir este bug?')) return;
+    const novoArray = (cliente.bugs_reportados || []).filter(b => b.id !== bugId);
+    try {
+      await updateDoc(doc(db, 'clientes', id), { bugs_reportados: novoArray });
+      setCliente(prev => ({ ...prev, bugs_reportados: novoArray }));
+    } catch (error) {
+      console.error('Erro ao excluir bug:', error);
+    }
+  };
+
+  const handleEditBug = (bug) => {
+    setBugForm({ titulo: bug.titulo, descricao: bug.descricao || '', prioridade: bug.prioridade, link_clickup: bug.link_clickup || '' });
+    setEditingBugId(bug.id);
+    setShowBugForm(true);
+  };
+
   // Carregar documentos quando a aba for selecionada
   useEffect(() => {
     if (activeTab === 'documentos' && documentos.length === 0) {
@@ -848,6 +940,7 @@ export default function ClienteDetalhe() {
           { id: 'playbook', label: 'Playbooks', icon: FileText },
           { id: 'documentos', label: 'Documentos', icon: FolderOpen },
           { id: 'observacoes', label: 'Observações', icon: ClipboardList },
+          { id: 'bugs', label: 'Bugs', icon: Bug, count: (cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length },
           { id: 'pessoas', label: 'Pessoas', icon: Users, count: usuarios.length }
         ].map(tab => {
           const TabIcon = tab.icon;
@@ -1824,6 +1917,210 @@ export default function ClienteDetalhe() {
               <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Adicione notas e contexto após calls ou reuniões com o cliente</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab Content: Bugs/Problemas */}
+      {activeTab === 'bugs' && (
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Bug style={{ width: '20px', height: '20px', color: '#ef4444' }} />
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Bugs/Problemas Reportados</h2>
+              <span style={{ padding: '4px 12px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
+                {(cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length} {(cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length === 1 ? 'aberto' : 'abertos'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => setMostrarResolvidos(!mostrarResolvidos)}
+                style={{ padding: '8px 14px', background: mostrarResolvidos ? 'rgba(16, 185, 129, 0.15)' : 'rgba(30, 27, 75, 0.6)', border: `1px solid ${mostrarResolvidos ? 'rgba(16, 185, 129, 0.3)' : 'rgba(139, 92, 246, 0.2)'}`, borderRadius: '10px', color: mostrarResolvidos ? '#10b981' : '#94a3b8', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}
+              >
+                {mostrarResolvidos ? 'Ocultar resolvidos' : 'Mostrar resolvidos'}
+              </button>
+              <button
+                onClick={() => { setShowBugForm(!showBugForm); setEditingBugId(null); setBugForm({ titulo: '', descricao: '', prioridade: 'media', link_clickup: '' }); }}
+                style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Plus style={{ width: '16px', height: '16px' }} />
+                Novo Bug
+              </button>
+            </div>
+          </div>
+
+          {/* Formulário de Bug */}
+          {showBugForm && (
+            <div style={{ background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Título *</label>
+                  <input
+                    type="text"
+                    value={bugForm.titulo}
+                    onChange={e => setBugForm(prev => ({ ...prev, titulo: e.target.value }))}
+                    placeholder="Ex: Erro ao exportar relatório..."
+                    style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Descrição</label>
+                  <textarea
+                    value={bugForm.descricao}
+                    onChange={e => setBugForm(prev => ({ ...prev, descricao: e.target.value }))}
+                    placeholder="Detalhes do bug..."
+                    rows={3}
+                    style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Prioridade</label>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {PRIORIDADES_BUG.map(p => (
+                        <button
+                          key={p.value}
+                          onClick={() => setBugForm(prev => ({ ...prev, prioridade: p.value }))}
+                          style={{
+                            flex: 1, padding: '8px', border: `1px solid ${bugForm.prioridade === p.value ? p.color : 'rgba(139, 92, 246, 0.2)'}`,
+                            background: bugForm.prioridade === p.value ? `${p.color}20` : 'transparent',
+                            borderRadius: '8px', color: bugForm.prioridade === p.value ? p.color : '#64748b',
+                            fontSize: '12px', fontWeight: '500', cursor: 'pointer'
+                          }}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Link ClickUp / Jira</label>
+                    <input
+                      type="text"
+                      value={bugForm.link_clickup}
+                      onChange={e => setBugForm(prev => ({ ...prev, link_clickup: e.target.value }))}
+                      placeholder="https://app.clickup.com/..."
+                      style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button
+                    onClick={() => { setShowBugForm(false); setEditingBugId(null); }}
+                    style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#94a3b8', fontSize: '13px', cursor: 'pointer' }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveBug}
+                    disabled={savingBug || !bugForm.titulo.trim()}
+                    style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', opacity: savingBug || !bugForm.titulo.trim() ? 0.5 : 1 }}
+                  >
+                    {savingBug ? 'Salvando...' : editingBugId ? 'Atualizar' : 'Adicionar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Lista de Bugs */}
+          {(() => {
+            const bugsAll = cliente.bugs_reportados || [];
+            const bugsFiltrados = mostrarResolvidos ? bugsAll : bugsAll.filter(b => b.status !== 'resolvido');
+            const bugsSorted = [...bugsFiltrados].sort((a, b) => {
+              const prioOrder = { critica: 1, alta: 2, media: 3, baixa: 4 };
+              const statusOrder = { aberto: 1, em_andamento: 2, resolvido: 3 };
+              if (a.status !== b.status) return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4);
+              return (prioOrder[a.prioridade] || 5) - (prioOrder[b.prioridade] || 5);
+            });
+
+            if (bugsSorted.length === 0) {
+              return (
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <Bug style={{ width: '40px', height: '40px', color: '#3730a3', margin: '0 auto 12px' }} />
+                  <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
+                    {bugsAll.length === 0 ? 'Nenhum bug reportado' : 'Nenhum bug aberto'}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {bugsSorted.map(bug => {
+                  const prioInfo = PRIORIDADES_BUG.find(p => p.value === bug.prioridade) || PRIORIDADES_BUG[1];
+                  const statusInfo = STATUS_BUG.find(s => s.value === bug.status) || STATUS_BUG[0];
+                  const dataBug = bug.data?.toDate ? bug.data.toDate() : new Date(bug.data);
+                  return (
+                    <div key={bug.id} style={{ background: 'rgba(15, 10, 31, 0.4)', border: `1px solid ${bug.status === 'resolvido' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}`, borderRadius: '12px', padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ padding: '2px 8px', background: `${prioInfo.color}20`, color: prioInfo.color, borderRadius: '6px', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
+                              {prioInfo.label}
+                            </span>
+                            <span style={{ padding: '2px 8px', background: `${statusInfo.color}20`, color: statusInfo.color, borderRadius: '6px', fontSize: '11px', fontWeight: '500' }}>
+                              {statusInfo.label}
+                            </span>
+                            <span style={{ color: '#475569', fontSize: '11px' }}>
+                              {dataBug.toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          <p style={{ color: bug.status === 'resolvido' ? '#64748b' : 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 4px 0', textDecoration: bug.status === 'resolvido' ? 'line-through' : 'none' }}>
+                            {bug.titulo}
+                          </p>
+                          {bug.descricao && (
+                            <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 6px 0', lineHeight: '1.4' }}>
+                              {bug.descricao}
+                            </p>
+                          )}
+                          {bug.link_clickup && (
+                            <a href={bug.link_clickup} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}>
+                              <ExternalLink style={{ width: '12px', height: '12px' }} />
+                              Ver no ClickUp
+                            </a>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                          {bug.status !== 'resolvido' && (
+                            <button
+                              onClick={() => handleToggleBugStatus(bug.id, bug.status === 'aberto' ? 'em_andamento' : 'resolvido')}
+                              title={bug.status === 'aberto' ? 'Marcar em andamento' : 'Marcar resolvido'}
+                              style={{ width: '30px', height: '30px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <CheckCircle2 style={{ width: '14px', height: '14px' }} />
+                            </button>
+                          )}
+                          {bug.status === 'resolvido' && (
+                            <button
+                              onClick={() => handleToggleBugStatus(bug.id, 'aberto')}
+                              title="Reabrir"
+                              style={{ width: '30px', height: '30px', background: 'rgba(249, 115, 22, 0.1)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '8px', color: '#f97316', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <RotateCcw style={{ width: '14px', height: '14px' }} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleEditBug(bug)}
+                            title="Editar"
+                            style={{ width: '30px', height: '30px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Pencil style={{ width: '14px', height: '14px' }} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBug(bug.id)}
+                            title="Excluir"
+                            style={{ width: '30px', height: '30px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Trash2 style={{ width: '14px', height: '14px' }} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

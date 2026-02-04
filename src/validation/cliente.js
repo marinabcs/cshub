@@ -48,5 +48,15 @@ export const clienteSchema = z.object({
     origem: z.enum(['cs', 'ia']),
     data: z.any(),
     thread_id: z.string().optional().default('')
+  })).optional().default([]),
+  bugs_reportados: z.array(z.object({
+    id: z.string().min(1),
+    titulo: z.string().min(1),
+    descricao: z.string().optional().default(''),
+    prioridade: z.enum(['baixa', 'media', 'alta', 'critica']),
+    status: z.enum(['aberto', 'em_andamento', 'resolvido']),
+    link_clickup: z.string().optional().default(''),
+    data: z.any(),
+    resolvido_em: z.any().optional().nullable()
   })).optional().default([])
 });

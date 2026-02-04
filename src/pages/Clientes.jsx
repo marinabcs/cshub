@@ -3,7 +3,7 @@ import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch, query, wher
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam, getThreadsByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from 'lucide-react';
+import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw, Bug } from 'lucide-react';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge } from '../components/UI/SegmentoBadge';
@@ -1453,8 +1453,14 @@ export default function Clientes() {
                         </span>
                       )}
                     </div>
-                    {(cliente.tags_problema || []).length > 0 && (
+                    {((cliente.tags_problema || []).length > 0 || (cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length > 0) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        {(cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length > 0 && (
+                          <span style={{ padding: '1px 6px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '6px', color: '#ef4444', fontSize: '10px', fontWeight: '600', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <Bug style={{ width: '10px', height: '10px' }} />
+                            {(cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length}
+                          </span>
+                        )}
                         {(cliente.tags_problema || []).slice(0, 3).map((t, idx) => (
                           <span key={idx} style={{ padding: '1px 6px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '6px', color: '#ef4444', fontSize: '10px', fontWeight: '500', whiteSpace: 'nowrap' }}>
                             {t.tag}

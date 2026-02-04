@@ -310,7 +310,8 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     engajamento: engajamento,
     em_aviso_previo: emAvisoPrevio,
     champion_saiu: championSaiu,
-    tags_problema_count: (cliente?.tags_problema || []).length
+    tags_problema_count: (cliente?.tags_problema || []).length,
+    bugs_abertos_count: (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length
   };
 
   // ============================================
@@ -350,6 +351,10 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   if ((cliente?.tags_problema || []).some(t => t.tag === 'Risco de Churn')) {
     return { segmento: 'ALERTA', motivo: 'Tag "Risco de Churn" ativa', fatores };
   }
+  const bugsAbertos = (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length;
+  if (bugsAbertos >= 3) {
+    return { segmento: 'ALERTA', motivo: `${bugsAbertos} bugs abertos`, fatores };
+  }
 
   // 2.5 GUARDA: Zero producao real nao pode ser ESTAVEL ou CRESCIMENTO
   // Cliente pode ter logins mas nao produz nada na plataforma
@@ -360,12 +365,13 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     return { segmento: 'ALERTA', motivo: 'Login sem producao (0 pecas, 0 downloads, 0 AI)', fatores };
   }
 
-  // 3. CRESCIMENTO - Potencial de expansao (sem tags de problema)
+  // 3. CRESCIMENTO - Potencial de expansao (sem tags de problema e sem bugs)
   const temTagsProblema = (cliente?.tags_problema || []).length > 0;
-  if (frequenciaUso === 'frequente' && engajamento === 'alto' && !reclamacoesRecentes && !temTagsProblema) {
+  const temBugsAbertos = bugsAbertos > 0;
+  if (frequenciaUso === 'frequente' && engajamento === 'alto' && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos) {
     return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + alto engajamento', fatores };
   }
-  if (frequenciaUso === 'frequente' && engajamento === 'medio' && !reclamacoesRecentes && !temTagsProblema) {
+  if (frequenciaUso === 'frequente' && engajamento === 'medio' && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos) {
     return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + bom engajamento', fatores };
   }
 
