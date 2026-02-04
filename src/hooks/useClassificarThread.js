@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { doc, updateDoc, addDoc, collection, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, addDoc, collection, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { classificarThread, isOpenAIConfigured } from '../services/openai';
 import { validateForm } from '../validation';
@@ -48,6 +48,9 @@ export function useClassificarThread() {
 
       // Criar alertas se necessário
       await criarAlertasSeNecessario(resultado, teamId, threadId, threadData);
+
+      // Criar tags de problema se necessário
+      await criarTagsSeNecessario(resultado, threadId, threadData);
 
       return { success: true, resultado };
     } catch (error) {
@@ -152,5 +155,39 @@ async function criarAlertasSeNecessario(resultado, teamId, threadId, threadData)
     } catch (e) {
       console.error('Erro ao criar alerta:', e);
     }
+  }
+}
+
+// Criar tags de problema automaticamente baseado na classificação
+async function criarTagsSeNecessario(resultado, threadId, threadData) {
+  if (!threadData.cliente_id) return;
+
+  const tagsParaAdicionar = [];
+
+  if (resultado.categoria === 'erro_bug') tagsParaAdicionar.push('Bug Reportado');
+  if (resultado.categoria === 'reclamacao') tagsParaAdicionar.push('Insatisfeito');
+  if (resultado.categoria === 'problema') tagsParaAdicionar.push('Problema Ativo');
+  if (resultado.sentimento === 'urgente') tagsParaAdicionar.push('Risco de Churn');
+  if (resultado.sentimento === 'negativo' && resultado.categoria !== 'reclamacao') {
+    tagsParaAdicionar.push('Problema Ativo');
+  }
+
+  if (tagsParaAdicionar.length === 0) return;
+
+  try {
+    const clienteRef = doc(db, 'clientes', threadData.cliente_id);
+    const clienteSnap = await getDoc(clienteRef);
+    if (!clienteSnap.exists()) return;
+
+    const tagsAtuais = clienteSnap.data().tags_problema || [];
+    const tagsNovas = tagsParaAdicionar
+      .filter(tag => !tagsAtuais.some(t => t.tag === tag))
+      .map(tag => ({ tag, origem: 'ia', data: Timestamp.now(), thread_id: threadId }));
+
+    if (tagsNovas.length === 0) return;
+
+    await updateDoc(clienteRef, { tags_problema: [...tagsAtuais, ...tagsNovas] });
+  } catch (e) {
+    console.error('Erro ao criar tags de problema:', e);
   }
 }

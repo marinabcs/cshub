@@ -168,6 +168,10 @@ export default function ClienteDetalhe() {
   const [savingObs, setSavingObs] = useState(false);
   const [mostrarResolvidas, setMostrarResolvidas] = useState(false);
 
+  // Tags de Problema
+  const [showTagDropdown, setShowTagDropdown] = useState(false);
+  const [customTag, setCustomTag] = useState('');
+
   useEffect(() => {
     const fetchCliente = async () => {
       try {
@@ -532,6 +536,34 @@ export default function ClienteDetalhe() {
       setObservacoes(prev => prev.filter(o => o.id !== obs.id));
     } catch (error) {
       console.error('Erro ao excluir observação:', error);
+    }
+  };
+
+  // Tags de Problema - Handlers
+  const TAGS_PREDEFINIDAS = ['Problema Ativo', 'Bug Reportado', 'Insatisfeito', 'Risco de Churn', 'Aguardando Resolução'];
+
+  const handleAddTag = async (tagName, origem = 'cs', threadId = '') => {
+    const tagsAtuais = cliente.tags_problema || [];
+    if (tagsAtuais.some(t => t.tag === tagName)) return;
+    const novaTag = { tag: tagName, origem, data: Timestamp.now(), thread_id: threadId };
+    const novoArray = [...tagsAtuais, novaTag];
+    try {
+      await updateDoc(doc(db, 'clientes', id), { tags_problema: novoArray });
+      setCliente(prev => ({ ...prev, tags_problema: novoArray }));
+      setShowTagDropdown(false);
+      setCustomTag('');
+    } catch (error) {
+      console.error('Erro ao adicionar tag:', error);
+    }
+  };
+
+  const handleRemoveTag = async (tagName) => {
+    const novoArray = (cliente.tags_problema || []).filter(t => t.tag !== tagName);
+    try {
+      await updateDoc(doc(db, 'clientes', id), { tags_problema: novoArray });
+      setCliente(prev => ({ ...prev, tags_problema: novoArray }));
+    } catch (error) {
+      console.error('Erro ao remover tag:', error);
     }
   };
 
@@ -996,6 +1028,195 @@ export default function ClienteDetalhe() {
             </>
           );
         })()}
+      </div>
+      )}
+
+      {/* Onboarding e Produto */}
+      {cliente.status !== 'inativo' && (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+        {/* Card: Conta e Onboarding */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '12px' }}>Conta e Onboarding</p>
+
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            {/* Tipo de conta */}
+            <span style={{
+              padding: '4px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
+              background: cliente.tipo_conta === 'google_gratuito' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(139, 92, 246, 0.15)',
+              color: cliente.tipo_conta === 'google_gratuito' ? '#f59e0b' : '#a78bfa'
+            }}>
+              {cliente.tipo_conta === 'google_gratuito' ? 'Google Gratuito' : 'Pagante'}
+            </span>
+
+            {/* Pessoa Video */}
+            <span style={{
+              padding: '4px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '500',
+              background: cliente.pessoa_video ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+              color: cliente.pessoa_video ? '#10b981' : '#64748b'
+            }}>
+              {cliente.pessoa_video ? 'Motion: Sim' : 'Motion: Nao'}
+            </span>
+          </div>
+
+          {/* Módulos Concluídos */}
+          <div style={{ marginBottom: '12px' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', marginBottom: '6px' }}>Módulos concluídos</p>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {['estatico', 'ai', 'motion'].map(mod => {
+                const concluido = (cliente.modulos_concluidos || []).includes(mod);
+                return (
+                  <span key={mod} style={{
+                    padding: '4px 10px', borderRadius: '8px', fontSize: '12px',
+                    background: concluido ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.1)',
+                    color: concluido ? '#10b981' : '#475569'
+                  }}>
+                    {concluido ? '\u2713 ' : ''}{mod === 'estatico' ? 'Estático' : mod === 'ai' ? 'AI' : 'Motion'}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* First Value */}
+          {cliente.first_value_atingido && Object.values(cliente.first_value_atingido).some(v => v) && (
+            <div>
+              <p style={{ color: '#64748b', fontSize: '11px', marginBottom: '6px' }}>First Value</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {['estatico', 'ai', 'motion'].map(mod => {
+                  const data = cliente.first_value_atingido?.[mod];
+                  if (!data) return null;
+                  return (
+                    <div key={mod} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: '#94a3b8', fontSize: '12px', width: '55px' }}>
+                        {mod === 'estatico' ? 'Estático' : mod === 'ai' ? 'AI' : 'Motion'}
+                      </span>
+                      <span style={{ color: 'white', fontSize: '12px' }}>{data}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Card: Tags de Problema */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertTriangle style={{ width: '14px', height: '14px', color: '#ef4444' }} />
+              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', margin: 0 }}>Tags de Problema</p>
+              {(cliente.tags_problema || []).length > 0 && (
+                <span style={{ padding: '2px 8px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', borderRadius: '10px', fontSize: '11px', fontWeight: '500' }}>
+                  {(cliente.tags_problema || []).length}
+                </span>
+              )}
+            </div>
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowTagDropdown(!showTagDropdown)}
+                style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}
+              >
+                <Plus style={{ width: '14px', height: '14px' }} />
+              </button>
+              {showTagDropdown && (
+                <div style={{ position: 'absolute', top: '36px', right: 0, background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '12px', padding: '8px', zIndex: 50, minWidth: '220px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+                  {TAGS_PREDEFINIDAS.filter(t => !(cliente.tags_problema || []).some(tp => tp.tag === t)).map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => handleAddTag(tag)}
+                      style={{ display: 'block', width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '13px', textAlign: 'left', cursor: 'pointer', borderRadius: '8px' }}
+                      onMouseEnter={e => { e.target.style.background = 'rgba(139, 92, 246, 0.15)'; e.target.style.color = 'white'; }}
+                      onMouseLeave={e => { e.target.style.background = 'transparent'; e.target.style.color = '#94a3b8'; }}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                  <div style={{ borderTop: '1px solid rgba(139, 92, 246, 0.15)', marginTop: '4px', paddingTop: '8px', display: 'flex', gap: '6px' }}>
+                    <input
+                      type="text"
+                      value={customTag}
+                      onChange={e => setCustomTag(e.target.value)}
+                      placeholder="Tag customizada..."
+                      style={{ flex: 1, padding: '6px 10px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '8px', color: 'white', fontSize: '12px', outline: 'none' }}
+                      onKeyDown={e => { if (e.key === 'Enter' && customTag.trim()) handleAddTag(customTag.trim()); }}
+                    />
+                    <button
+                      onClick={() => { if (customTag.trim()) handleAddTag(customTag.trim()); }}
+                      style={{ padding: '6px 10px', background: 'rgba(139, 92, 246, 0.3)', border: 'none', borderRadius: '8px', color: '#a78bfa', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      Adicionar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          {(cliente.tags_problema || []).length === 0 ? (
+            <p style={{ color: '#475569', fontSize: '13px', margin: 0 }}>Nenhuma tag de problema</p>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {(cliente.tags_problema || []).map((t, idx) => {
+                const isIA = t.origem === 'ia';
+                const cor = isIA ? '#06b6d4' : '#8b5cf6';
+                return (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: isIA ? 'rgba(6, 182, 212, 0.15)' : 'rgba(139, 92, 246, 0.15)', border: `1px solid ${isIA ? 'rgba(6, 182, 212, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`, borderRadius: '8px' }}>
+                    <span style={{ color: cor, fontSize: '12px', fontWeight: '500' }}>{t.tag}</span>
+                    <span style={{ color: '#475569', fontSize: '10px' }}>{isIA ? 'IA' : 'CS'}</span>
+                    <button
+                      onClick={() => handleRemoveTag(t.tag)}
+                      style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={e => { e.target.style.color = '#ef4444'; }}
+                      onMouseLeave={e => { e.target.style.color = '#475569'; }}
+                    >
+                      <X style={{ width: '12px', height: '12px' }} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Card: Sazonalidade */}
+        {cliente.calendario_campanhas && (
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '12px' }}>Sazonalidade</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '6px' }}>
+            {[
+              { key: 'jan', label: 'J' }, { key: 'fev', label: 'F' }, { key: 'mar', label: 'M' }, { key: 'abr', label: 'A' },
+              { key: 'mai', label: 'M' }, { key: 'jun', label: 'J' }, { key: 'jul', label: 'J' }, { key: 'ago', label: 'A' },
+              { key: 'set', label: 'S' }, { key: 'out', label: 'O' }, { key: 'nov', label: 'N' }, { key: 'dez', label: 'D' }
+            ].map(mes => {
+              const valor = cliente.calendario_campanhas[mes.key] || 'normal';
+              const cores = { alta: '#10b981', normal: '#334155', baixa: '#f59e0b' };
+              return (
+                <div key={mes.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: '#64748b', fontSize: '10px' }}>{mes.label}</span>
+                  <div style={{
+                    width: '28px', height: '28px', borderRadius: '6px',
+                    background: cores[valor],
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '10px', color: 'white', fontWeight: '600'
+                  }}>
+                    {valor[0].toUpperCase()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '10px' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#64748b' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#10b981' }}></span> Alta
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#64748b' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#334155' }}></span> Normal
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#64748b' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#f59e0b' }}></span> Baixa
+            </span>
+          </div>
+        </div>
+        )}
       </div>
       )}
 

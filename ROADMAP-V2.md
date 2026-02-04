@@ -76,10 +76,11 @@
 | `tags_problema` | Array de `{tag, origem, data, thread_id?}` | Tags de problema (manual ou automática) |
 
 **O que fazer:**
-- [ ] Adicionar campos no ClienteForm.jsx (seção nova "Onboarding e Produto")
-- [ ] Criar schema Zod para os novos campos
-- [ ] Exibir no ClienteDetalhe → Resumo
-- [ ] Migrar clientes existentes (valores padrão: null/vazio)
+- [x] Adicionar campos no ClienteForm.jsx (seção "Onboarding e Produto" + "Calendário de Campanhas")
+- [x] Criar schema Zod para os novos campos (tipo_conta, pessoa_video, modulos_concluidos, first_value_atingido, calendario_campanhas)
+- [x] Exibir no ClienteDetalhe → Resumo (cards "Conta e Onboarding" + "Sazonalidade")
+- [x] Migrar clientes existentes (valores padrão automáticos via || nos loads)
+- **Nota:** `bugs_reportados` e `tags_problema` implementados nos itens 3.2 e 3.1 respectivamente
 
 ### 3.1 Sistema de Tags de Problema (manual + automático)
 **Reportado por:** Marina

@@ -57,6 +57,14 @@ export default function ClienteForm() {
   const [senhaPadrao, setSenhaPadrao] = useState('');
   const [showSenha, setShowSenha] = useState(false);
   const [areaAtuacao, setAreaAtuacao] = useState('');
+  const [tipoConta, setTipoConta] = useState('pagante');
+  const [pessoaVideo, setPessoaVideo] = useState(false);
+  const [modulosConcluidos, setModulosConcluidos] = useState([]);
+  const [firstValue, setFirstValue] = useState({ estatico: '', ai: '', motion: '' });
+  const [calendarioCampanhas, setCalendarioCampanhas] = useState({
+    jan: 'normal', fev: 'normal', mar: 'normal', abr: 'normal', mai: 'normal', jun: 'normal',
+    jul: 'normal', ago: 'normal', set: 'normal', out: 'normal', nov: 'normal', dez: 'normal'
+  });
   const [errors, setErrors] = useState({});
 
   // Filter state for teams
@@ -112,6 +120,14 @@ export default function ClienteForm() {
             setStakeholders(data.stakeholders || []);
             setSenhaPadrao(data.senha_padrao || '');
             setAreaAtuacao(data.area_atuacao || '');
+            setTipoConta(data.tipo_conta || 'pagante');
+            setPessoaVideo(data.pessoa_video || false);
+            setModulosConcluidos(data.modulos_concluidos || []);
+            setFirstValue(data.first_value_atingido || { estatico: '', ai: '', motion: '' });
+            setCalendarioCampanhas(data.calendario_campanhas || {
+              jan: 'normal', fev: 'normal', mar: 'normal', abr: 'normal', mai: 'normal', jun: 'normal',
+              jul: 'normal', ago: 'normal', set: 'normal', out: 'normal', nov: 'normal', dez: 'normal'
+            });
           }
         }
       } catch (error) {
@@ -247,7 +263,12 @@ export default function ClienteForm() {
       team_type: getTeamTypes().join(', '),
       stakeholders,
       senha_padrao: senhaPadrao,
-      area_atuacao: areaAtuacao || null
+      area_atuacao: areaAtuacao || null,
+      tipo_conta: tipoConta,
+      pessoa_video: pessoaVideo,
+      modulos_concluidos: modulosConcluidos,
+      first_value_atingido: firstValue,
+      calendario_campanhas: calendarioCampanhas
     };
 
     const validationErrors = validateForm(clienteSchema, formData);
@@ -294,6 +315,11 @@ export default function ClienteForm() {
         stakeholders,
         senha_padrao: senhaPadrao,
         area_atuacao: areaAtuacao || null,
+        tipo_conta: tipoConta,
+        pessoa_video: pessoaVideo,
+        modulos_concluidos: modulosConcluidos,
+        first_value_atingido: firstValue,
+        calendario_campanhas: calendarioCampanhas,
         updated_at: new Date()
       };
 
@@ -522,6 +548,68 @@ export default function ClienteForm() {
                 </select>
               </div>
 
+              {/* Tipo de Conta */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
+                  Tipo de Conta
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[{ value: 'pagante', label: 'Pagante' }, { value: 'google_gratuito', label: 'Google Gratuito' }].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setTipoConta(opt.value)}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        background: tipoConta === opt.value ? 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' : 'rgba(15, 10, 31, 0.6)',
+                        border: tipoConta === opt.value ? 'none' : '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '12px',
+                        color: 'white',
+                        fontSize: '13px',
+                        fontWeight: tipoConta === opt.value ? '600' : '400',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pessoa para Video (Motion) */}
+              <div style={{ marginBottom: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPessoaVideo(!pessoaVideo)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: pessoaVideo ? 'rgba(16, 185, 129, 0.15)' : 'rgba(15, 10, 31, 0.6)',
+                    border: pessoaVideo ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '12px',
+                    color: pessoaVideo ? '#10b981' : '#94a3b8',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    textAlign: 'left'
+                  }}
+                >
+                  <div style={{
+                    width: '20px', height: '20px', borderRadius: '6px',
+                    background: pessoaVideo ? '#10b981' : 'transparent',
+                    border: pessoaVideo ? 'none' : '2px solid #64748b',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    {pessoaVideo && <Check style={{ width: '14px', height: '14px', color: 'white' }} />}
+                  </div>
+                  Tem pessoa capacitada para Motion (Video)
+                </button>
+              </div>
+
               <div>
                 <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
                   Team Type (automático)
@@ -607,6 +695,80 @@ export default function ClienteForm() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Onboarding e Produto */}
+            <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px' }}>
+              <h2 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Onboarding e Produto</h2>
+
+              {/* Módulos Concluídos */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
+                  Módulos Concluídos
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[{ value: 'estatico', label: 'Estático' }, { value: 'ai', label: 'AI' }, { value: 'motion', label: 'Motion' }].map(mod => {
+                    const isSelected = modulosConcluidos.includes(mod.value);
+                    return (
+                      <button
+                        key={mod.value}
+                        type="button"
+                        onClick={() => setModulosConcluidos(prev =>
+                          prev.includes(mod.value) ? prev.filter(m => m !== mod.value) : [...prev, mod.value]
+                        )}
+                        style={{
+                          flex: 1,
+                          padding: '10px 16px',
+                          background: isSelected ? 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' : 'rgba(15, 10, 31, 0.6)',
+                          border: isSelected ? 'none' : '1px solid rgba(139, 92, 246, 0.3)',
+                          borderRadius: '12px',
+                          color: 'white',
+                          fontSize: '13px',
+                          fontWeight: isSelected ? '600' : '400',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {isSelected && <Check style={{ width: '14px', height: '14px', marginRight: '6px', display: 'inline', verticalAlign: 'middle' }} />}
+                        {mod.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* First Value Atingido */}
+              {modulosConcluidos.length > 0 && (
+                <div>
+                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
+                    First Value Atingido (data por módulo)
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {modulosConcluidos.map(mod => (
+                      <div key={mod} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ color: '#94a3b8', fontSize: '13px', width: '70px' }}>
+                          {mod === 'estatico' ? 'Estático' : mod === 'ai' ? 'AI' : 'Motion'}
+                        </span>
+                        <input
+                          type="date"
+                          value={firstValue[mod] || ''}
+                          onChange={(e) => setFirstValue(prev => ({ ...prev, [mod]: e.target.value }))}
+                          style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            background: '#0f0a1f',
+                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                            borderRadius: '12px',
+                            color: 'white',
+                            fontSize: '13px',
+                            outline: 'none',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Stakeholders */}
@@ -852,6 +1014,62 @@ export default function ClienteForm() {
                     <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>Nenhum time encontrado</p>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Calendário de Campanhas */}
+            <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px' }}>
+              <h2 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Calendário de Campanhas</h2>
+              <p style={{ color: '#64748b', fontSize: '12px', marginBottom: '16px' }}>
+                Defina a sazonalidade esperada por mês (alta, normal ou baixa demanda)
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                {[
+                  { key: 'jan', label: 'Jan' }, { key: 'fev', label: 'Fev' }, { key: 'mar', label: 'Mar' }, { key: 'abr', label: 'Abr' },
+                  { key: 'mai', label: 'Mai' }, { key: 'jun', label: 'Jun' }, { key: 'jul', label: 'Jul' }, { key: 'ago', label: 'Ago' },
+                  { key: 'set', label: 'Set' }, { key: 'out', label: 'Out' }, { key: 'nov', label: 'Nov' }, { key: 'dez', label: 'Dez' }
+                ].map(mes => {
+                  const valor = calendarioCampanhas[mes.key] || 'normal';
+                  const cores = { alta: '#10b981', normal: '#64748b', baixa: '#f59e0b' };
+                  return (
+                    <div key={mes.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600' }}>{mes.label}</span>
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        {['alta', 'normal', 'baixa'].map(nivel => (
+                          <button
+                            key={nivel}
+                            type="button"
+                            onClick={() => setCalendarioCampanhas(prev => ({ ...prev, [mes.key]: nivel }))}
+                            style={{
+                              width: '24px', height: '24px', borderRadius: '6px',
+                              background: valor === nivel ? cores[nivel] : 'rgba(15, 10, 31, 0.6)',
+                              border: valor === nivel ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                              cursor: 'pointer',
+                              fontSize: '9px',
+                              color: valor === nivel ? 'white' : '#64748b',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              padding: 0
+                            }}
+                            title={`${mes.label}: ${nivel}`}
+                          >
+                            {nivel[0].toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '12px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#10b981' }}></span> Alta
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#64748b' }}></span> Normal
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#f59e0b' }}></span> Baixa
+                </span>
               </div>
             </div>
 

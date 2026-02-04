@@ -75,6 +75,7 @@ export default function Clientes() {
     return saved?.areaAtuacao && Array.isArray(saved.areaAtuacao) ? saved.areaAtuacao : [];
   });
 
+  const [filterProblemas, setFilterProblemas] = useState(false);
   const [showOrphanModal, setShowOrphanModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [clienteToDelete, setClienteToDelete] = useState(null);
@@ -420,7 +421,8 @@ export default function Clientes() {
       // Filtro de segmento CS
       const matchesSegmento = filterSegmento.length === 0 || filterSegmento.includes(getClienteSegmento(cliente));
       const matchesArea = filterAreaAtuacao.length === 0 || filterAreaAtuacao.includes(cliente.area_atuacao);
-      return matchesSearch && matchesClienteStatus && matchesType && matchesSegmento && matchesArea;
+      const matchesProblemas = !filterProblemas || (cliente.tags_problema || []).length > 0;
+      return matchesSearch && matchesClienteStatus && matchesType && matchesSegmento && matchesArea && matchesProblemas;
     })
     .sort((a, b) => {
       // Ordem de prioridade dos segmentos: RESGATE > ALERTA > ESTAVEL > CRESCIMENTO
@@ -1288,14 +1290,39 @@ export default function Clientes() {
           );
         })}
 
+        {/* Filtro: Com problemas */}
+        <button
+          onClick={() => setFilterProblemas(!filterProblemas)}
+          style={{
+            padding: '6px 12px',
+            background: filterProblemas ? 'rgba(239, 68, 68, 0.2)' : 'rgba(30, 27, 75, 0.6)',
+            border: `1px solid ${filterProblemas ? '#ef4444' : 'rgba(139, 92, 246, 0.2)'}`,
+            borderRadius: '16px',
+            color: filterProblemas ? '#ef4444' : '#94a3b8',
+            fontSize: '12px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <AlertTriangle style={{ width: '12px', height: '12px' }} />
+          Com problemas
+          <span style={{ opacity: 0.7 }}>
+            ({clientes.filter(c => (c.tags_problema || []).length > 0).length})
+          </span>
+        </button>
+
         {/* Botão limpar todos os filtros */}
-        {(searchTerm || filterSegmento.length > 0 || filterType.length > 0 || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
+        {(searchTerm || filterSegmento.length > 0 || filterType.length > 0 || filterProblemas || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
           <button
             onClick={() => {
               setSearchTerm('');
               setFilterSegmento([]);
               setFilterType([]);
               setFilterClienteStatus(DEFAULT_VISIBLE_STATUS);
+              setFilterProblemas(false);
               localStorage.removeItem(FILTERS_STORAGE_KEY);
             }}
             style={{
@@ -1426,6 +1453,20 @@ export default function Clientes() {
                         </span>
                       )}
                     </div>
+                    {(cliente.tags_problema || []).length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        {(cliente.tags_problema || []).slice(0, 3).map((t, idx) => (
+                          <span key={idx} style={{ padding: '1px 6px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '6px', color: '#ef4444', fontSize: '10px', fontWeight: '500', whiteSpace: 'nowrap' }}>
+                            {t.tag}
+                          </span>
+                        ))}
+                        {(cliente.tags_problema || []).length > 3 && (
+                          <span style={{ color: '#ef4444', fontSize: '10px', fontWeight: '500' }}>
+                            +{(cliente.tags_problema || []).length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <SegmentoBadge segmento={getClienteSegmento(cliente)} size="sm" />

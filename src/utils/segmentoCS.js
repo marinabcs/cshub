@@ -309,7 +309,8 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     reclamacao_grave: reclamacaoGrave,
     engajamento: engajamento,
     em_aviso_previo: emAvisoPrevio,
-    champion_saiu: championSaiu
+    champion_saiu: championSaiu,
+    tags_problema_count: (cliente?.tags_problema || []).length
   };
 
   // ============================================
@@ -346,6 +347,9 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   if (frequenciaUso === 'irregular') {
     return { segmento: 'ALERTA', motivo: 'Uso irregular', fatores };
   }
+  if ((cliente?.tags_problema || []).some(t => t.tag === 'Risco de Churn')) {
+    return { segmento: 'ALERTA', motivo: 'Tag "Risco de Churn" ativa', fatores };
+  }
 
   // 2.5 GUARDA: Zero producao real nao pode ser ESTAVEL ou CRESCIMENTO
   // Cliente pode ter logins mas nao produz nada na plataforma
@@ -356,11 +360,12 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     return { segmento: 'ALERTA', motivo: 'Login sem producao (0 pecas, 0 downloads, 0 AI)', fatores };
   }
 
-  // 3. CRESCIMENTO - Potencial de expansao
-  if (frequenciaUso === 'frequente' && engajamento === 'alto' && !reclamacoesRecentes) {
+  // 3. CRESCIMENTO - Potencial de expansao (sem tags de problema)
+  const temTagsProblema = (cliente?.tags_problema || []).length > 0;
+  if (frequenciaUso === 'frequente' && engajamento === 'alto' && !reclamacoesRecentes && !temTagsProblema) {
     return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + alto engajamento', fatores };
   }
-  if (frequenciaUso === 'frequente' && engajamento === 'medio' && !reclamacoesRecentes) {
+  if (frequenciaUso === 'frequente' && engajamento === 'medio' && !reclamacoesRecentes && !temTagsProblema) {
     return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + bom engajamento', fatores };
   }
 
