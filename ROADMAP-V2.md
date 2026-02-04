@@ -368,16 +368,15 @@ SE tipo_conta == "google_gratuito":
 - [x] Indicador visual de força: barra de progresso + checklist de 5 requisitos em tempo real
 - [x] Placeholder corrigido: "Mínimo 6 caracteres" → "Mínimo 8 caracteres"
 
-### 7.9 Atualizar dependências vulneráveis (npm audit)
+### 7.9 ~~Atualizar dependências vulneráveis (npm audit)~~ ⚠️ PARCIAL
 **Prioridade:** ALTA
-**Risco:** `jspdf` tem vulnerabilidade HIGH (CVE: PDF Injection + DoS via BMP)
 
-**O que fazer:**
-- [ ] Executar `npm audit` e avaliar todas as vulnerabilidades
-- [ ] Atualizar `jspdf` para versão sem vulnerabilidades conhecidas (se disponível)
-- [ ] Se não houver fix: avaliar alternativa (ex: `pdf-lib`, `react-pdf`)
-- [ ] Configurar `npm audit` no CI/CD para alertar sobre novas vulnerabilidades
-- [ ] Revisar e atualizar outras dependências desatualizadas
+**O que foi feito:**
+- [x] `jspdf` atualizado 4.0.0 → 4.1.0 (4 CVEs corrigidas: PDF Injection, DoS via BMP, XMP Injection, Race Condition)
+- [x] `xlsx@0.18.5` analisado — sem fix disponível (SheetJS abandonou versão open-source)
+  - Uso atual é **apenas escrita/exportação** (`json_to_sheet`, `writeFile`) em `Analytics.jsx`
+  - Vulnerabilidades (Prototype Pollution, ReDoS) afetam **parsing de input**, não escrita — risco mitigado
+  - Avaliar substituição por alternativa em V3 se necessário
 
 ### 7.10 Segurança que depende de Cloud Functions (On Hold)
 
@@ -480,6 +479,7 @@ SE tipo_conta == "google_gratuito":
 21. ~~parseInt radix 10 (7.6)~~ ✅
 22. ~~Limpeza Git (7.7)~~ ⚠️ parcial — ClickUp key requer ação manual
 23. ~~Política de senha (7.8)~~ ✅
+24. ~~npm audit (7.9)~~ ⚠️ parcial — jspdf corrigido, xlsx sem fix (uso write-only mitiga risco)
 
 ### On Hold (aguardando decisão do time)
 - Cloud Functions (2.1) — precisa plano Blaze
