@@ -264,8 +264,10 @@ SE tipo_conta == "google_gratuito":
 - [x] Invalidação automática em mutations (Clientes: batch update, delete)
 - [x] Zero dependências externas — solução customizada leve
 
-### 6.3 Lazy Loading
-- [ ] `React.lazy()` + `Suspense` por rota
+### 6.3 Lazy Loading ✅
+- [x] `React.lazy()` + `Suspense` em App.jsx — 15 páginas lazy, Login+Dashboard eager
+- [x] Bundle principal reduzido de 1.940KB → 649KB (66% menor)
+- [x] Cada página gera chunk separado (Analytics 749KB, ClienteDetalhe 133KB, etc.)
 
 ---
 
@@ -482,7 +484,7 @@ SE tipo_conta == "google_gratuito":
 ### Sprint 6 - Performance
 13. ~~Paginação (6.1)~~ ✅
 14. ~~Cache (6.2)~~ ✅
-15. Lazy Loading (6.3)
+15. ~~Lazy Loading (6.3)~~ ✅
 
 ### On Hold (aguardando decisão do time)
 - Cloud Functions (2.1) — precisa plano Blaze

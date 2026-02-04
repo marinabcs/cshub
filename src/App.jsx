@@ -1,27 +1,31 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { Layout } from './components/Layout'
 import { LoadingPage } from './components/UI/Loading'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from './services/firebase'
+
+// Eager — páginas críticas (primeiro load)
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
-import Clientes from './pages/Clientes'
-import ClienteDetalhe from './pages/ClienteDetalhe'
-import Configuracoes from './pages/Configuracoes'
-import Analytics from './pages/Analytics'
-import Alertas from './pages/Alertas'
-import ClienteForm from './pages/ClienteForm'
-import Usuarios from './pages/Usuarios'
-import Auditoria from './pages/Auditoria'
-import DebugFirestore from './pages/DebugFirestore'
-import Playbooks from './pages/Playbooks'
-import PlaybookDetalhe from './pages/PlaybookDetalhe'
-import PlaybookForm from './pages/PlaybookForm'
-import MinhaCarteira from './pages/MinhaCarteira'
-import Documentos from './pages/Documentos'
-import ResumoExecutivo from './pages/ResumoExecutivo'
+
+// Lazy — carregamento sob demanda
+const Clientes = lazy(() => import('./pages/Clientes'))
+const ClienteDetalhe = lazy(() => import('./pages/ClienteDetalhe'))
+const ClienteForm = lazy(() => import('./pages/ClienteForm'))
+const Analytics = lazy(() => import('./pages/Analytics'))
+const Alertas = lazy(() => import('./pages/Alertas'))
+const Configuracoes = lazy(() => import('./pages/Configuracoes'))
+const Usuarios = lazy(() => import('./pages/Usuarios'))
+const Auditoria = lazy(() => import('./pages/Auditoria'))
+const Playbooks = lazy(() => import('./pages/Playbooks'))
+const PlaybookDetalhe = lazy(() => import('./pages/PlaybookDetalhe'))
+const PlaybookForm = lazy(() => import('./pages/PlaybookForm'))
+const MinhaCarteira = lazy(() => import('./pages/MinhaCarteira'))
+const Documentos = lazy(() => import('./pages/Documentos'))
+const ResumoExecutivo = lazy(() => import('./pages/ResumoExecutivo'))
+const DebugFirestore = lazy(() => import('./pages/DebugFirestore'))
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -157,7 +161,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <Suspense fallback={<LoadingPage />}>
+          <AppRoutes />
+        </Suspense>
       </AuthProvider>
     </BrowserRouter>
   )
