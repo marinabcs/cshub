@@ -23,6 +23,13 @@ export const ALERTA_TIPOS = {
     icon: 'Frown',
     color: '#dc2626', // vermelho escuro
   },
+  sazonalidade_alta_inativo: {
+    value: 'sazonalidade_alta_inativo',
+    label: 'Inativo em Alta Temporada',
+    description: 'Cliente deveria estar ativo (mês de alta temporada) mas não está usando a plataforma',
+    icon: 'Calendar',
+    color: '#f97316', // laranja
+  },
   // DESATIVADOS TEMPORARIAMENTE:
   // resposta_pendente: aguardando resposta da equipe
   // creditos_baixos: créditos AI baixos
@@ -458,6 +465,61 @@ export function gerarAlertasCreditosBaixos(clientes, alertasExistentes, limiteCr
   return alertas;
 }
 
+// Gerar alertas de sazonalidade (mês de alta temporada mas cliente inativo)
+export function gerarAlertasSazonalidade(clientes, metricas, alertasExistentes) {
+  const alertas = [];
+  const mesKey = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][new Date().getMonth()];
+  const MESES_LABELS = { jan: 'Janeiro', fev: 'Fevereiro', mar: 'Março', abr: 'Abril', mai: 'Maio', jun: 'Junho', jul: 'Julho', ago: 'Agosto', set: 'Setembro', out: 'Outubro', nov: 'Novembro', dez: 'Dezembro' };
+
+  // Criar mapa de métricas recentes por team_id
+  const metricasMap = {};
+  const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  for (const m of metricas) {
+    const d = m.data?.toDate?.() || new Date(m.data);
+    if (d >= trintaDiasAtras && m.team_id) {
+      if (!metricasMap[m.team_id]) metricasMap[m.team_id] = 0;
+      metricasMap[m.team_id] += (m.logins || 0);
+    }
+  }
+
+  for (const cliente of clientes) {
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') continue;
+
+    const calendario = cliente.calendario_campanhas;
+    if (!calendario || calendario[mesKey] !== 'alta') continue;
+
+    // Verificar se cliente está inativo (sem logins nos últimos 30d)
+    const possiveisIds = [cliente.id, cliente.team_id, ...(cliente.times || [])].filter(Boolean);
+    const temAtividade = possiveisIds.some(tid => (metricasMap[tid] || 0) > 0);
+    if (temAtividade) continue;
+
+    // Verificar se já existe alerta
+    const jaExiste = alertasExistentes.some(a =>
+      a.tipo === 'sazonalidade_alta_inativo' &&
+      a.cliente_id === cliente.id &&
+      a.status === 'pendente'
+    );
+    if (jaExiste) continue;
+
+    alertas.push({
+      tipo: 'sazonalidade_alta_inativo',
+      titulo: `${cliente.team_name || cliente.nome}: inativo em mês de alta (${MESES_LABELS[mesKey]})`,
+      mensagem: `Este cliente marcou ${MESES_LABELS[mesKey]} como mês de alta temporada, mas não tem atividade nos últimos 30 dias.`,
+      prioridade: 'alta',
+      status: 'pendente',
+      time_id: cliente.team_id || cliente.times?.[0] || null,
+      time_name: cliente.team_name || null,
+      cliente_id: cliente.id,
+      cliente_nome: cliente.team_name || cliente.nome,
+      thread_id: null,
+      responsavel_email: cliente.responsavel_email || (cliente.responsaveis?.[0]?.email) || null,
+      responsavel_nome: cliente.responsavel_nome || (cliente.responsaveis?.[0]?.nome) || null,
+    });
+  }
+
+  return alertas;
+}
+
 // Executar todas as verificações
 export function verificarTodosAlertas(clientes, threads, alertasExistentes, metricas = [], filterConfig = null) {
   console.log(`[Alertas] ========== INICIO VERIFICACAO ==========`);
@@ -556,6 +618,7 @@ export function verificarTodosAlertas(clientes, threads, alertasExistentes, metr
     ...gerarAlertasSemUso(clientes, metricas, alertasExistentes, threadsMap),
     ...gerarAlertasProblemaReclamacao(threadsRelevantes, alertasExistentes, clientesMap),
     ...gerarAlertasSentimentoNegativo(threadsRelevantes, alertasExistentes, clientesMap),
+    ...gerarAlertasSazonalidade(clientes, metricas, alertasExistentes),
     // DESATIVADOS TEMPORARIAMENTE:
     // ...gerarAlertasRespostaPendente(threads, alertasExistentes),
     // ...gerarAlertasCreditosBaixos(clientes, alertasExistentes),

@@ -3,7 +3,7 @@ import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch, query, wher
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam, getThreadsByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw, Bug, Phone } from 'lucide-react';
+import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw, Bug, Phone, Calendar } from 'lucide-react';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge } from '../components/UI/SegmentoBadge';
@@ -76,6 +76,10 @@ export default function Clientes() {
   });
 
   const [filterProblemas, setFilterProblemas] = useState(false);
+  const [batchCalendario, setBatchCalendario] = useState({
+    jan: 'normal', fev: 'normal', mar: 'normal', abr: 'normal', mai: 'normal', jun: 'normal',
+    jul: 'normal', ago: 'normal', set: 'normal', out: 'normal', nov: 'normal', dez: 'normal'
+  });
   const [showOrphanModal, setShowOrphanModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [clienteToDelete, setClienteToDelete] = useState(null);
@@ -250,6 +254,8 @@ export default function Clientes() {
         updates.team_type = batchValue;
       } else if (batchField === 'area_atuacao') {
         updates.area_atuacao = batchValue;
+      } else if (batchField === 'sazonalidade') {
+        updates.calendario_campanhas = batchCalendario;
       }
 
       // Aplicar updates em todos os clientes selecionados
@@ -728,6 +734,25 @@ export default function Clientes() {
             >
               <Building2 style={{ width: '14px', height: '14px' }} />
               Alterar Área
+            </button>
+            <button
+              onClick={() => { setBatchField('sazonalidade'); setShowBatchModal(true); }}
+              style={{
+                padding: '8px 16px',
+                background: 'rgba(249, 115, 22, 0.2)',
+                border: '1px solid rgba(249, 115, 22, 0.4)',
+                borderRadius: '8px',
+                color: '#f97316',
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Calendar style={{ width: '14px', height: '14px' }} />
+              Definir Sazonalidade
             </button>
           </div>
         </div>
@@ -1826,6 +1851,7 @@ export default function Clientes() {
                 {batchField === 'responsavel' && 'Novo Responsável'}
                 {batchField === 'team_type' && 'Novo Tipo'}
                 {batchField === 'area_atuacao' && 'Nova Área de Atuação'}
+                {batchField === 'sazonalidade' && 'Calendário de Sazonalidade'}
               </label>
 
               {batchField === 'status' && (
@@ -1923,6 +1949,48 @@ export default function Clientes() {
                   ))}
                 </select>
               )}
+
+              {batchField === 'sazonalidade' && (
+                <div>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                    <button onClick={() => setBatchCalendario(Object.fromEntries(['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'].map(m => [m, 'alta'])))} style={{ padding: '4px 10px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '11px', cursor: 'pointer' }}>Todos Alta</button>
+                    <button onClick={() => setBatchCalendario(Object.fromEntries(['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'].map(m => [m, 'normal'])))} style={{ padding: '4px 10px', background: 'rgba(100, 116, 139, 0.15)', border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '6px', color: '#94a3b8', fontSize: '11px', cursor: 'pointer' }}>Todos Normal</button>
+                    <button onClick={() => setBatchCalendario(Object.fromEntries(['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'].map(m => [m, 'baixa'])))} style={{ padding: '4px 10px', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '11px', cursor: 'pointer' }}>Todos Baixa</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                    {[
+                      { key: 'jan', label: 'Jan' }, { key: 'fev', label: 'Fev' }, { key: 'mar', label: 'Mar' }, { key: 'abr', label: 'Abr' },
+                      { key: 'mai', label: 'Mai' }, { key: 'jun', label: 'Jun' }, { key: 'jul', label: 'Jul' }, { key: 'ago', label: 'Ago' },
+                      { key: 'set', label: 'Set' }, { key: 'out', label: 'Out' }, { key: 'nov', label: 'Nov' }, { key: 'dez', label: 'Dez' }
+                    ].map(mes => {
+                      const val = batchCalendario[mes.key];
+                      const cores = { alta: '#10b981', normal: '#64748b', baixa: '#f59e0b' };
+                      return (
+                        <div key={mes.key} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '500' }}>{mes.label}</span>
+                          <div style={{ display: 'flex', gap: '2px' }}>
+                            {['alta', 'normal', 'baixa'].map(nivel => (
+                              <button
+                                key={nivel}
+                                onClick={() => setBatchCalendario(prev => ({ ...prev, [mes.key]: nivel }))}
+                                style={{
+                                  flex: 1, padding: '4px 0', fontSize: '10px', fontWeight: '500',
+                                  background: val === nivel ? `${cores[nivel]}30` : 'transparent',
+                                  border: `1px solid ${val === nivel ? cores[nivel] : 'rgba(139, 92, 246, 0.15)'}`,
+                                  borderRadius: '4px', color: val === nivel ? cores[nivel] : '#475569',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {nivel === 'alta' ? 'A' : nivel === 'normal' ? 'N' : 'B'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ padding: '12px 16px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', marginBottom: '20px' }}>
@@ -1949,16 +2017,16 @@ export default function Clientes() {
               </button>
               <button
                 onClick={handleBatchUpdate}
-                disabled={!batchValue || batchUpdating}
+                disabled={(batchField !== 'sazonalidade' && !batchValue) || batchUpdating}
                 style={{
                   padding: '12px 20px',
-                  background: !batchValue || batchUpdating ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                  background: (batchField !== 'sazonalidade' && !batchValue) || batchUpdating ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
                   border: 'none',
                   borderRadius: '12px',
                   color: 'white',
                   fontSize: '14px',
                   fontWeight: '600',
-                  cursor: !batchValue || batchUpdating ? 'not-allowed' : 'pointer',
+                  cursor: (batchField !== 'sazonalidade' && !batchValue) || batchUpdating ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px'

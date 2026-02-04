@@ -153,11 +153,11 @@
 **Problema:** Cliente pode ter mês sem campanha e parecer "em risco"
 
 **O que fazer:**
-- [ ] Interface visual de calendário 12 meses no ClienteForm (jan-dez, cada um: alta/normal/baixa)
-- [ ] Exibir no ClienteDetalhe → Resumo como mini calendário visual
-- [ ] Ajustar segmentação: se mês atual = "baixa", aplicar fator 0.5 no peso de inatividade
-- [ ] Alerta inteligente: "Cliente deveria estar ativo (mês de alta) mas não está"
-- [ ] Permitir edição em lote por área de atuação (ex: todos de Varejo = alta em nov-dez)
+- [x] Interface visual de calendário 12 meses no ClienteForm (grid 4x3, Alta/Normal/Baixa) — feito no item 3.0
+- [x] Exibir no ClienteDetalhe → Resumo como mini calendário visual (card Sazonalidade) — feito no item 3.0
+- [x] Ajustar segmentação: mês "baixa" → thresholds dobrados (RESGATE: 30→60d, ALERTA: 14→28d)
+- [x] Alerta inteligente: "Inativo em Alta Temporada" gerado automaticamente em verificarTodosAlertas
+- [x] Edição em lote de sazonalidade (botão "Definir Sazonalidade" na barra de lote, grid 4x3 com presets)
 
 ### 3.5 Tipo de conta e período de análise diferenciado
 **Reportado por:** Valeria

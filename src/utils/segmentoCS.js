@@ -289,6 +289,16 @@ function calcularEngajamento(metricas) {
  * @param {number} totalUsers - Total de usuarios
  * @returns {Object} { segmento, motivo, fatores }
  */
+// Mapa mês JS (0-11) → chave do calendário de campanhas
+const MESES_KEYS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+export function getSazonalidadeMesAtual(cliente) {
+  const calendario = cliente?.calendario_campanhas;
+  if (!calendario) return 'normal';
+  const mesKey = MESES_KEYS[new Date().getMonth()];
+  return calendario[mesKey] || 'normal';
+}
+
 export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUsers = 1) {
   // Calcular fatores
   const diasSemUso = calcularDiasSemUso(cliente, metricas);
@@ -296,6 +306,16 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   const reclamacoesRecentes = temReclamacoesRecentes(threads);
   const reclamacaoGrave = temReclamacaoGrave(threads);
   const engajamento = calcularEngajamento(metricas);
+
+  // Sazonalidade
+  const sazonalidade = getSazonalidadeMesAtual(cliente);
+  const emBaixa = sazonalidade === 'baixa';
+  const emAlta = sazonalidade === 'alta';
+
+  // Thresholds ajustados pela sazonalidade
+  // Em mês de baixa: tolerância maior para inatividade
+  const thresholdResgate = emBaixa ? 60 : 30;
+  const thresholdAlerta = emBaixa ? 28 : 14;
 
   // Flags especiais
   const emAvisoPrevio = cliente?.status === 'aviso_previo';
@@ -318,7 +338,8 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     champion_saiu: championSaiu,
     tags_problema_count: (cliente?.tags_problema || []).length,
     bugs_abertos_count: (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length,
-    dias_sem_interacao: diasSemInteracao
+    dias_sem_interacao: diasSemInteracao,
+    sazonalidade_mes_atual: sazonalidade
   };
 
   // ============================================
@@ -329,8 +350,8 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   if (emAvisoPrevio) {
     return { segmento: 'RESGATE', motivo: 'Em aviso previo', fatores };
   }
-  if (diasSemUso >= 30) {
-    return { segmento: 'RESGATE', motivo: `${diasSemUso} dias sem uso`, fatores };
+  if (diasSemUso >= thresholdResgate) {
+    return { segmento: 'RESGATE', motivo: `${diasSemUso} dias sem uso${emBaixa ? ' (mês de baixa, threshold ajustado)' : ''}`, fatores };
   }
   if (reclamacaoGrave) {
     return { segmento: 'RESGATE', motivo: 'Reclamacao grave recente', fatores };
@@ -340,8 +361,8 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   }
 
   // 2. ALERTA - Atencao
-  if (diasSemUso >= 14) {
-    return { segmento: 'ALERTA', motivo: `${diasSemUso} dias sem uso`, fatores };
+  if (diasSemUso >= thresholdAlerta) {
+    return { segmento: 'ALERTA', motivo: `${diasSemUso} dias sem uso${emBaixa ? ' (mês de baixa, threshold ajustado)' : ''}`, fatores };
   }
   if (reclamacoesRecentes) {
     return { segmento: 'ALERTA', motivo: 'Reclamacoes recentes', fatores };
@@ -361,6 +382,10 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   const bugsAbertos = (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length;
   if (bugsAbertos >= 3) {
     return { segmento: 'ALERTA', motivo: `${bugsAbertos} bugs abertos`, fatores };
+  }
+  // Mês de alta mas cliente inativo → alerta
+  if (emAlta && diasSemUso >= 7 && (frequenciaUso === 'raro' || frequenciaUso === 'irregular' || frequenciaUso === 'sem_uso')) {
+    return { segmento: 'ALERTA', motivo: 'Mês de alta temporada mas cliente inativo', fatores };
   }
 
   // 2.5 GUARDA: Zero producao real nao pode ser ESTAVEL ou CRESCIMENTO
