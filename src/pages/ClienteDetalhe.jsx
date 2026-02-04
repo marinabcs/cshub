@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin, GraduationCap } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SEGMENTOS_CS, getSegmentoInfo, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge, SegmentoCard } from '../components/UI/SegmentoBadge';
 import { useClassificarThread } from '../hooks/useClassificarThread';
 import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../services/openai';
 import PlaybooksSection from '../components/Cliente/PlaybooksSection';
+import OnboardingSection from '../components/Cliente/OnboardingSection';
 import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
 import HeavyUsersCard from '../components/Cliente/HeavyUsersCard';
 import { useEmailFilters } from '../hooks/useEmailFilters';
@@ -1123,6 +1124,7 @@ export default function ClienteDetalhe() {
           { id: 'resumo', label: 'Resumo', icon: Activity },
           { id: 'conversas', label: 'Conversas', icon: MessageSquare, count: threads.length },
           { id: 'playbook', label: 'Playbooks', icon: FileText },
+          { id: 'onboarding', label: 'Onboarding', icon: GraduationCap },
           { id: 'documentos', label: 'Documentos', icon: FolderOpen },
           { id: 'observacoes', label: 'Observações', icon: ClipboardList },
           { id: 'bugs', label: 'Bugs', icon: Bug, count: (cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length },
@@ -1647,6 +1649,11 @@ export default function ClienteDetalhe() {
       {/* Tab Content: Playbooks */}
       {activeTab === 'playbook' && (
         <PlaybooksSection clienteId={id} />
+      )}
+
+      {/* Tab Content: Onboarding */}
+      {activeTab === 'onboarding' && (
+        <OnboardingSection clienteId={id} />
       )}
 
       {/* Tab Content: Documentos */}

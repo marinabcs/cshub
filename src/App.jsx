@@ -25,6 +25,7 @@ const PlaybookForm = lazy(() => import('./pages/PlaybookForm'))
 const MinhaCarteira = lazy(() => import('./pages/MinhaCarteira'))
 const Documentos = lazy(() => import('./pages/Documentos'))
 const ResumoExecutivo = lazy(() => import('./pages/ResumoExecutivo'))
+const OnboardingCalculadora = lazy(() => import('./pages/OnboardingCalculadora'))
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -147,6 +148,8 @@ function AppRoutes() {
         <Route path="/documentos" element={<Documentos />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/resumo-executivo" element={<ResumoExecutivo />} />
+        <Route path="/onboarding" element={<OnboardingCalculadora />} />
+        <Route path="/onboarding/:clienteId" element={<OnboardingCalculadora />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/configuracoes/usuarios" element={<Usuarios />} />

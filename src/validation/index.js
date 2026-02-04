@@ -57,3 +57,4 @@ export { classificacaoManualSchema } from './thread';
 export { configGeralSchema, configAlertasSchema, configEmailFiltersSchema, configSlaSchema } from './configuracoes';
 export { alertaEditSchema } from './alerta';
 export { usuarioCreateSchema, usuarioEditSchema } from './usuario';
+export { onboardingRespostasSchema, onboardingAjusteSchema } from './onboarding';
