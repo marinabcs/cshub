@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
-const senhaSchema = z.string()
+export const senhaSchema = z.string()
   .min(8, 'Mínimo 8 caracteres')
   .regex(/[A-Z]/, 'Deve conter uma letra maiúscula')
   .regex(/[a-z]/, 'Deve conter uma letra minúscula')
-  .regex(/[0-9]/, 'Deve conter um número');
+  .regex(/[0-9]/, 'Deve conter um número')
+  .regex(/[^A-Za-z0-9]/, 'Deve conter um caractere especial (!@#$...)');
 
 export const usuarioCreateSchema = z.object({
   nome: z.string().min(1, 'Nome é obrigatório'),

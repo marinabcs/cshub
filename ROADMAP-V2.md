@@ -344,29 +344,29 @@ SE tipo_conta == "google_gratuito":
 - [x] `Number()` revisado — 4 usos em Configuracoes.jsx já tinham `|| 0`
 - [x] Util `safeParseInt` não necessário (todos os usos são simples)
 
-### 7.7 Limpeza do histórico Git (API keys)
+### 7.7 ~~Limpeza do histórico Git (API keys)~~ ⚠️ PARCIAL
 **Ref SEGURANCA.md:** #1 (CWE-798)
 **Prioridade:** ALTA
-**Risco:** Chaves antigas podem estar no histórico do Git mesmo com `.env` no `.gitignore`
 
-**O que fazer:**
-- [ ] Verificar se `.env` aparece no histórico Git (`git log --all --full-history -- .env`)
-- [ ] Se sim: usar BFG Repo-Cleaner para remover do histórico
-- [ ] Revogar e regenerar TODAS as API keys (OpenAI, ClickUp)
-- [ ] Gerar novas chaves nos dashboards respectivos
-- [ ] Atualizar `.env` local com novas chaves
+**Diagnóstico realizado:**
+- [x] `.env` nunca foi commitado (`.gitignore` protegeu)
+- [x] OpenAI key: apenas placeholder `sk-proj-xxxxx...` no histórico (chave real nunca exposta)
+- [x] Firebase key: pública por design, protegida por Security Rules — sem ação
+- [ ] ClickUp key `pk_43150128_...` hardcoded em 3 commits — **requer ação manual:**
+  1. Revogar e regenerar no dashboard ClickUp
+  2. `firebase functions:secrets:set CLICKUP_API_KEY` com nova chave
+  3. `firebase deploy --only functions`
+  4. (Opcional) BFG Repo-Cleaner: `bfg --replace-text <(echo 'pk_43150128_J7V5F0JC0VC3QQS1TJP2D53F5Q7TFKBE') .`
 
-### 7.8 Política de senha mais forte
+### 7.8 ~~Política de senha mais forte~~ ✅ CONCLUÍDO
 **Ref SEGURANCA.md:** #10 (CWE-521)
 **Prioridade:** MÉDIA
-**Risco:** Senhas fracas podem ser descobertas por brute-force
 
-**Situação atual:** Zod em `src/validation/usuario.js` já tem `senhaSchema` com regex, mas a validação original em `Usuarios.jsx` exigia apenas 6 caracteres.
-
-**O que fazer:**
-- [ ] Verificar e reforçar `senhaSchema` no Zod: mínimo 8 chars, maiúscula, minúscula, número, especial
-- [ ] Exibir indicador de força da senha no formulário de criação de usuário
-- [ ] Mensagens claras em português sobre cada requisito não atendido
+**O que foi feito:**
+- [x] `senhaSchema` reforçado: adicionado regex de caractere especial (`/[^A-Za-z0-9]/`)
+- [x] Schema exportado e reutilizado em `Usuarios.jsx` (removida função `validatePassword` duplicada)
+- [x] Indicador visual de força: barra de progresso + checklist de 5 requisitos em tempo real
+- [x] Placeholder corrigido: "Mínimo 6 caracteres" → "Mínimo 8 caracteres"
 
 ### 7.9 Atualizar dependências vulneráveis (npm audit)
 **Prioridade:** ALTA
@@ -478,6 +478,8 @@ SE tipo_conta == "google_gratuito":
 19. ~~Sanitização de erros (7.4)~~ ✅
 20. ~~API Keys → Cloud Functions (7.5)~~ ✅ CRÍTICO
 21. ~~parseInt radix 10 (7.6)~~ ✅
+22. ~~Limpeza Git (7.7)~~ ⚠️ parcial — ClickUp key requer ação manual
+23. ~~Política de senha (7.8)~~ ✅
 
 ### On Hold (aguardando decisão do time)
 - Cloud Functions (2.1) — precisa plano Blaze

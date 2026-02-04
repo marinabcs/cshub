@@ -8,6 +8,7 @@ import { getAuth } from 'firebase/auth';
 import { db, auth, firebaseConfig } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { logAction } from '../utils/audit';
+import { senhaSchema } from '../validation/usuario';
 import {
   ArrowLeft, Users, Plus, Pencil, Trash2, Key, Shield, ShieldCheck, Eye, X,
   AlertTriangle, Check, Briefcase, Search, UserCheck
@@ -24,23 +25,14 @@ const ROLES = {
 // Super admin email - usar variável de ambiente em produção
 const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL || '';
 
-// Validação de senha mais rigorosa
-const validatePassword = (password) => {
-  const errors = [];
-  if (password.length < 8) {
-    errors.push('mínimo 8 caracteres');
-  }
-  if (!/[A-Z]/.test(password)) {
-    errors.push('uma letra maiúscula');
-  }
-  if (!/[a-z]/.test(password)) {
-    errors.push('uma letra minúscula');
-  }
-  if (!/[0-9]/.test(password)) {
-    errors.push('um número');
-  }
-  return errors;
-};
+// Requisitos de senha para indicador visual
+const SENHA_REQUISITOS = [
+  { label: 'Mínimo 8 caracteres', test: (s) => s.length >= 8 },
+  { label: 'Uma letra maiúscula', test: (s) => /[A-Z]/.test(s) },
+  { label: 'Uma letra minúscula', test: (s) => /[a-z]/.test(s) },
+  { label: 'Um número', test: (s) => /[0-9]/.test(s) },
+  { label: 'Um caractere especial (!@#$...)', test: (s) => /[^A-Za-z0-9]/.test(s) },
+];
 
 export default function Usuarios() {
   const navigate = useNavigate();
@@ -242,9 +234,10 @@ export default function Usuarios() {
           return;
         }
 
-        const passwordErrors = validatePassword(formData.senha);
-        if (passwordErrors.length > 0) {
-          setFormError(`A senha deve ter: ${passwordErrors.join(', ')}`);
+        const senhaResult = senhaSchema.safeParse(formData.senha);
+        if (!senhaResult.success) {
+          const erros = senhaResult.error.issues.map(i => i.message).join(', ');
+          setFormError(`Senha inválida: ${erros}`);
           setFormLoading(false);
           return;
         }
@@ -886,7 +879,7 @@ export default function Usuarios() {
                     type="password"
                     value={formData.senha}
                     onChange={(e) => setFormData({ ...formData, senha: e.target.value })}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Mínimo 8 caracteres"
                     style={{
                       width: '100%',
                       padding: '12px 16px',
@@ -899,6 +892,46 @@ export default function Usuarios() {
                       boxSizing: 'border-box'
                     }}
                   />
+                  {/* Indicador de força da senha */}
+                  {formData.senha && (() => {
+                    const atendidos = SENHA_REQUISITOS.filter(r => r.test(formData.senha)).length;
+                    const total = SENHA_REQUISITOS.length;
+                    const pct = (atendidos / total) * 100;
+                    const barColor = pct <= 40 ? '#ef4444' : pct <= 80 ? '#f59e0b' : '#10b981';
+                    return (
+                      <div style={{ marginTop: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          <div style={{
+                            flex: 1, height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden'
+                          }}>
+                            <div style={{
+                              width: `${pct}%`, height: '100%', background: barColor, borderRadius: '2px',
+                              transition: 'width 0.3s, background 0.3s'
+                            }} />
+                          </div>
+                          <span style={{ color: barColor, fontSize: '11px', fontWeight: '600', minWidth: '32px' }}>
+                            {atendidos}/{total}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {SENHA_REQUISITOS.map((req, i) => {
+                            const ok = req.test(formData.senha);
+                            return (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {ok
+                                  ? <Check style={{ width: '12px', height: '12px', color: '#10b981' }} />
+                                  : <X style={{ width: '12px', height: '12px', color: '#64748b' }} />
+                                }
+                                <span style={{ fontSize: '11px', color: ok ? '#10b981' : '#64748b' }}>
+                                  {req.label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
