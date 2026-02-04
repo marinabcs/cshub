@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SEGMENTOS_CS, getSegmentoInfo, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge, SegmentoCard } from '../components/UI/SegmentoBadge';
@@ -14,7 +14,7 @@ import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
 import HeavyUsersCard from '../components/Cliente/HeavyUsersCard';
 import { useEmailFilters } from '../hooks/useEmailFilters';
 import { validateForm } from '../validation';
-import { documentoSchema, observacaoSchema } from '../validation/documento';
+import { documentoSchema, observacaoSchema, interacaoSchema } from '../validation/documento';
 import { ErrorMessage } from '../components/UI/ErrorMessage';
 import { useUserActivityStatus } from '../hooks/useUserActivityStatus';
 import { UserActivityDot } from '../components/UserActivityBadge';
@@ -178,6 +178,14 @@ export default function ClienteDetalhe() {
   const [savingBug, setSavingBug] = useState(false);
   const [editingBugId, setEditingBugId] = useState(null);
   const [mostrarResolvidos, setMostrarResolvidos] = useState(false);
+
+  // Interações
+  const [interacoes, setInteracoes] = useState([]);
+  const [loadingInteracoes, setLoadingInteracoes] = useState(false);
+  const [showInteracaoForm, setShowInteracaoForm] = useState(false);
+  const [interacaoForm, setInteracaoForm] = useState({ tipo: 'feedback', data: '', participantes: '', notas: '', duracao: '', link_gravacao: '' });
+  const [savingInteracao, setSavingInteracao] = useState(false);
+  const [editingInteracaoId, setEditingInteracaoId] = useState(null);
 
   useEffect(() => {
     const fetchCliente = async () => {
@@ -659,6 +667,105 @@ export default function ClienteDetalhe() {
     setShowBugForm(true);
   };
 
+  // Interações - Handlers
+  const TIPOS_INTERACAO = [
+    { value: 'onboarding', label: 'Onboarding', color: '#8b5cf6' },
+    { value: 'feedback', label: 'Feedback', color: '#06b6d4' },
+    { value: 'suporte', label: 'Suporte', color: '#f59e0b' },
+    { value: 'treinamento', label: 'Treinamento', color: '#10b981' },
+    { value: 'qbr', label: 'QBR', color: '#f97316' },
+    { value: 'outro', label: 'Outro', color: '#64748b' }
+  ];
+
+  const fetchInteracoes = async () => {
+    setLoadingInteracoes(true);
+    try {
+      const snap = await getDocs(query(
+        collection(db, 'interacoes'),
+        where('cliente_id', '==', id)
+      ));
+      const data = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => {
+          const dateA = a.data_interacao?.toDate?.() || new Date(a.data_interacao || 0);
+          const dateB = b.data_interacao?.toDate?.() || new Date(b.data_interacao || 0);
+          return dateB - dateA;
+        });
+      setInteracoes(data);
+    } catch (error) {
+      console.error('Erro ao buscar interações:', error);
+    } finally {
+      setLoadingInteracoes(false);
+    }
+  };
+
+  const handleSaveInteracao = async () => {
+    if (!interacaoForm.tipo || !interacaoForm.data) return;
+    setSavingInteracao(true);
+    try {
+      const docData = {
+        cliente_id: id,
+        tipo: interacaoForm.tipo,
+        data_interacao: Timestamp.fromDate(new Date(interacaoForm.data + 'T12:00:00')),
+        participantes: interacaoForm.participantes.trim(),
+        notas: interacaoForm.notas.trim(),
+        duracao: parseInt(interacaoForm.duracao) || 0,
+        link_gravacao: interacaoForm.link_gravacao.trim(),
+        updated_at: Timestamp.now()
+      };
+
+      if (editingInteracaoId) {
+        await updateDoc(doc(db, 'interacoes', editingInteracaoId), docData);
+      } else {
+        docData.created_at = Timestamp.now();
+        docData.created_by = 'CS';
+        await addDoc(collection(db, 'interacoes'), docData);
+      }
+
+      // Atualizar ultima_interacao no cliente para exibir na listagem
+      await updateDoc(doc(db, 'clientes', id), {
+        ultima_interacao_data: docData.data_interacao,
+        ultima_interacao_tipo: docData.tipo
+      });
+      setCliente(prev => ({ ...prev, ultima_interacao_data: docData.data_interacao, ultima_interacao_tipo: docData.tipo }));
+
+      setInteracaoForm({ tipo: 'feedback', data: '', participantes: '', notas: '', duracao: '', link_gravacao: '' });
+      setShowInteracaoForm(false);
+      setEditingInteracaoId(null);
+      fetchInteracoes();
+    } catch (error) {
+      console.error('Erro ao salvar interação:', error);
+    } finally {
+      setSavingInteracao(false);
+    }
+  };
+
+  const handleEditInteracao = (inter) => {
+    const dataStr = inter.data_interacao?.toDate
+      ? inter.data_interacao.toDate().toISOString().split('T')[0]
+      : '';
+    setInteracaoForm({
+      tipo: inter.tipo,
+      data: dataStr,
+      participantes: inter.participantes || '',
+      notas: inter.notas || '',
+      duracao: inter.duracao ? String(inter.duracao) : '',
+      link_gravacao: inter.link_gravacao || ''
+    });
+    setEditingInteracaoId(inter.id);
+    setShowInteracaoForm(true);
+  };
+
+  const handleDeleteInteracao = async (interId) => {
+    if (!confirm('Excluir esta interação?')) return;
+    try {
+      await deleteDoc(doc(db, 'interacoes', interId));
+      setInteracoes(prev => prev.filter(i => i.id !== interId));
+    } catch (error) {
+      console.error('Erro ao excluir interação:', error);
+    }
+  };
+
   // Carregar documentos quando a aba for selecionada
   useEffect(() => {
     if (activeTab === 'documentos' && documentos.length === 0) {
@@ -670,6 +777,13 @@ export default function ClienteDetalhe() {
   useEffect(() => {
     if ((activeTab === 'observacoes' || activeTab === 'conversas') && observacoes.length === 0) {
       fetchObservacoes();
+    }
+  }, [activeTab]);
+
+  // Carregar interações quando a aba for selecionada
+  useEffect(() => {
+    if (activeTab === 'interacoes' && interacoes.length === 0) {
+      fetchInteracoes();
     }
   }, [activeTab]);
 
@@ -941,6 +1055,7 @@ export default function ClienteDetalhe() {
           { id: 'documentos', label: 'Documentos', icon: FolderOpen },
           { id: 'observacoes', label: 'Observações', icon: ClipboardList },
           { id: 'bugs', label: 'Bugs', icon: Bug, count: (cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length },
+          { id: 'interacoes', label: 'Interações', icon: Phone, count: interacoes.length },
           { id: 'pessoas', label: 'Pessoas', icon: Users, count: usuarios.length }
         ].map(tab => {
           const TabIcon = tab.icon;
@@ -2121,6 +2236,242 @@ export default function ClienteDetalhe() {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* Tab Content: Interações */}
+      {activeTab === 'interacoes' && (
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Phone style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Interações</h2>
+              <span style={{ padding: '4px 12px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
+                {interacoes.length} {interacoes.length === 1 ? 'registro' : 'registros'}
+              </span>
+            </div>
+            <button
+              onClick={() => { setShowInteracaoForm(!showInteracaoForm); setEditingInteracaoId(null); setInteracaoForm({ tipo: 'feedback', data: '', participantes: '', notas: '', duracao: '', link_gravacao: '' }); }}
+              style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Plus style={{ width: '16px', height: '16px' }} />
+              Nova Interação
+            </button>
+          </div>
+
+          {/* Métricas rápidas */}
+          {interacoes.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
+              {(() => {
+                const agora = new Date();
+                const trintaDiasAtras = new Date(agora.getTime() - 30 * 24 * 60 * 60 * 1000);
+                const ultimas30d = interacoes.filter(i => {
+                  const d = i.data_interacao?.toDate?.() || new Date(i.data_interacao || 0);
+                  return d >= trintaDiasAtras;
+                });
+                const ultimaData = interacoes[0]?.data_interacao?.toDate?.() || new Date(interacoes[0]?.data_interacao || 0);
+                const diasDesdeUltima = Math.floor((agora - ultimaData) / (1000 * 60 * 60 * 24));
+                const duracaoTotal = interacoes.reduce((sum, i) => sum + (i.duracao || 0), 0);
+                return (
+                  <>
+                    <div style={{ background: 'rgba(15, 10, 31, 0.4)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                      <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Últimos 30d</p>
+                      <p style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{ultimas30d.length}</p>
+                    </div>
+                    <div style={{ background: 'rgba(15, 10, 31, 0.4)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                      <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Última interação</p>
+                      <p style={{ color: diasDesdeUltima > 30 ? '#f59e0b' : 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{diasDesdeUltima}d</p>
+                    </div>
+                    <div style={{ background: 'rgba(15, 10, 31, 0.4)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                      <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Horas totais</p>
+                      <p style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{Math.round(duracaoTotal / 60 * 10) / 10}h</p>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Formulário */}
+          {showInteracaoForm && (
+            <div style={{ background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Tipo *</label>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      {TIPOS_INTERACAO.map(t => (
+                        <button
+                          key={t.value}
+                          onClick={() => setInteracaoForm(prev => ({ ...prev, tipo: t.value }))}
+                          style={{
+                            padding: '6px 10px',
+                            border: `1px solid ${interacaoForm.tipo === t.value ? t.color : 'rgba(139, 92, 246, 0.2)'}`,
+                            background: interacaoForm.tipo === t.value ? `${t.color}20` : 'transparent',
+                            borderRadius: '8px',
+                            color: interacaoForm.tipo === t.value ? t.color : '#64748b',
+                            fontSize: '12px', fontWeight: '500', cursor: 'pointer'
+                          }}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Data *</label>
+                    <input
+                      type="date"
+                      value={interacaoForm.data}
+                      onChange={e => setInteracaoForm(prev => ({ ...prev, data: e.target.value }))}
+                      style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Participantes</label>
+                    <input
+                      type="text"
+                      value={interacaoForm.participantes}
+                      onChange={e => setInteracaoForm(prev => ({ ...prev, participantes: e.target.value }))}
+                      placeholder="Nomes separados por vírgula..."
+                      style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Duração (min)</label>
+                      <input
+                        type="number"
+                        value={interacaoForm.duracao}
+                        onChange={e => setInteracaoForm(prev => ({ ...prev, duracao: e.target.value }))}
+                        placeholder="30"
+                        min="0"
+                        style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Link gravação</label>
+                      <input
+                        type="text"
+                        value={interacaoForm.link_gravacao}
+                        onChange={e => setInteracaoForm(prev => ({ ...prev, link_gravacao: e.target.value }))}
+                        placeholder="URL..."
+                        style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Notas</label>
+                  <textarea
+                    value={interacaoForm.notas}
+                    onChange={e => setInteracaoForm(prev => ({ ...prev, notas: e.target.value }))}
+                    placeholder="Resumo da interação..."
+                    rows={3}
+                    style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button
+                    onClick={() => { setShowInteracaoForm(false); setEditingInteracaoId(null); }}
+                    style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#94a3b8', fontSize: '13px', cursor: 'pointer' }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveInteracao}
+                    disabled={savingInteracao || !interacaoForm.data}
+                    style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', opacity: savingInteracao || !interacaoForm.data ? 0.5 : 1 }}
+                  >
+                    {savingInteracao ? 'Salvando...' : editingInteracaoId ? 'Atualizar' : 'Registrar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Timeline de Interações */}
+          {loadingInteracoes ? (
+            <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Carregando...</p>
+          ) : interacoes.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+              <Phone style={{ width: '40px', height: '40px', color: '#3730a3', margin: '0 auto 12px' }} />
+              <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Nenhuma interação registrada</p>
+            </div>
+          ) : (
+            <div style={{ position: 'relative', paddingLeft: '24px' }}>
+              {/* Linha vertical da timeline */}
+              <div style={{ position: 'absolute', left: '8px', top: '8px', bottom: '8px', width: '2px', background: 'rgba(139, 92, 246, 0.15)' }} />
+
+              {interacoes.map((inter, idx) => {
+                const tipoInfo = TIPOS_INTERACAO.find(t => t.value === inter.tipo) || TIPOS_INTERACAO[5];
+                const dataInter = inter.data_interacao?.toDate ? inter.data_interacao.toDate() : new Date(inter.data_interacao || 0);
+                return (
+                  <div key={inter.id} style={{ position: 'relative', marginBottom: idx < interacoes.length - 1 ? '16px' : 0 }}>
+                    {/* Dot na timeline */}
+                    <div style={{ position: 'absolute', left: '-20px', top: '14px', width: '12px', height: '12px', borderRadius: '50%', background: tipoInfo.color, border: '2px solid #0f0a1f' }} />
+
+                    <div style={{ background: 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(139, 92, 246, 0.1)', borderRadius: '12px', padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ padding: '2px 8px', background: `${tipoInfo.color}20`, color: tipoInfo.color, borderRadius: '6px', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
+                              {tipoInfo.label}
+                            </span>
+                            <span style={{ color: '#94a3b8', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Calendar style={{ width: '11px', height: '11px' }} />
+                              {dataInter.toLocaleDateString('pt-BR')}
+                            </span>
+                            {inter.duracao > 0 && (
+                              <span style={{ color: '#64748b', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Clock style={{ width: '11px', height: '11px' }} />
+                                {inter.duracao}min
+                              </span>
+                            )}
+                          </div>
+                          {inter.participantes && (
+                            <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Users style={{ width: '11px', height: '11px', flexShrink: 0 }} />
+                              {inter.participantes}
+                            </p>
+                          )}
+                          {inter.notas && (
+                            <p style={{ color: '#e2e8f0', fontSize: '13px', margin: '0 0 6px 0', lineHeight: '1.4' }}>
+                              {inter.notas}
+                            </p>
+                          )}
+                          {inter.link_gravacao && (
+                            <a href={inter.link_gravacao} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}>
+                              <Video style={{ width: '12px', height: '12px' }} />
+                              Ver gravação
+                            </a>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                          <button
+                            onClick={() => handleEditInteracao(inter)}
+                            title="Editar"
+                            style={{ width: '30px', height: '30px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Pencil style={{ width: '14px', height: '14px' }} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteInteracao(inter.id)}
+                            title="Excluir"
+                            style={{ width: '30px', height: '30px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Trash2 style={{ width: '14px', height: '14px' }} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

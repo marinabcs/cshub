@@ -3,7 +3,7 @@ import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch, query, wher
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam, getThreadsByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw, Bug } from 'lucide-react';
+import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw, Bug, Phone } from 'lucide-react';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge } from '../components/UI/SegmentoBadge';
@@ -1488,6 +1488,18 @@ export default function Clientes() {
                       : cliente.responsavel_nome?.split(' ')[0] || 'Sem resp.'}
                   </span>
                 </div>
+                {cliente.ultima_interacao_data && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Phone style={{ width: '12px', height: '12px', color: '#64748b', flexShrink: 0 }} />
+                    <span style={{ color: '#64748b', fontSize: '11px' }}>
+                      {(() => {
+                        const d = cliente.ultima_interacao_data?.toDate ? cliente.ultima_interacao_data.toDate() : new Date(cliente.ultima_interacao_data);
+                        const dias = Math.floor((new Date() - d) / (1000 * 60 * 60 * 24));
+                        return dias === 0 ? 'Hoje' : `${dias}d`;
+                      })()}
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleSelectCliente(cliente.id); }}

@@ -301,6 +301,12 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   const emAvisoPrevio = cliente?.status === 'aviso_previo';
   const championSaiu = cliente?.champion_saiu === true;
 
+  // Dias sem interação CS
+  const ultimaInteracao = cliente?.ultima_interacao_data;
+  const diasSemInteracao = ultimaInteracao
+    ? Math.floor((Date.now() - (ultimaInteracao.toDate ? ultimaInteracao.toDate() : new Date(ultimaInteracao)).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
   // Montar objeto de fatores
   const fatores = {
     dias_sem_uso: diasSemUso,
@@ -311,7 +317,8 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     em_aviso_previo: emAvisoPrevio,
     champion_saiu: championSaiu,
     tags_problema_count: (cliente?.tags_problema || []).length,
-    bugs_abertos_count: (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length
+    bugs_abertos_count: (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length,
+    dias_sem_interacao: diasSemInteracao
   };
 
   // ============================================
@@ -365,13 +372,14 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     return { segmento: 'ALERTA', motivo: 'Login sem producao (0 pecas, 0 downloads, 0 AI)', fatores };
   }
 
-  // 3. CRESCIMENTO - Potencial de expansao (sem tags de problema e sem bugs)
+  // 3. CRESCIMENTO - Potencial de expansao (sem tags de problema, sem bugs, com contato recente)
   const temTagsProblema = (cliente?.tags_problema || []).length > 0;
   const temBugsAbertos = bugsAbertos > 0;
-  if (frequenciaUso === 'frequente' && engajamento === 'alto' && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos) {
+  const semContatoRecente = diasSemInteracao !== null && diasSemInteracao > 60;
+  if (frequenciaUso === 'frequente' && engajamento === 'alto' && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos && !semContatoRecente) {
     return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + alto engajamento', fatores };
   }
-  if (frequenciaUso === 'frequente' && engajamento === 'medio' && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos) {
+  if (frequenciaUso === 'frequente' && engajamento === 'medio' && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos && !semContatoRecente) {
     return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + bom engajamento', fatores };
   }
 

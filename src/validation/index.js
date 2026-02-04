@@ -52,7 +52,7 @@ export function validateForm(schema, data) {
 export { z };
 export { clienteSchema, stakeholderSchema } from './cliente';
 export { playbookSchema } from './playbook';
-export { documentoSchema, observacaoSchema } from './documento';
+export { documentoSchema, observacaoSchema, interacaoSchema } from './documento';
 export { classificacaoManualSchema } from './thread';
 export { configGeralSchema, configAlertasSchema, configEmailFiltersSchema } from './configuracoes';
 export { alertaEditSchema } from './alerta';

@@ -106,13 +106,13 @@
 - Contador de tags ativas no dashboard/analytics
 
 **O que fazer:**
-- [ ] Adicionar campo `tags_problema` na collection `clientes` (array de objetos)
-- [ ] Interface de tags no ClienteDetalhe (adicionar/remover, chips visuais)
-- [ ] Tags pré-definidas + campo de tag customizada
-- [ ] Integrar com `useClassificarThread.js`: ao classificar como problema/bug/negativo, auto-adicionar tag
-- [ ] Exibir tags no card da lista de clientes (Clientes.jsx)
-- [ ] Filtro "Clientes com problemas" na lista
-- [ ] Incluir contagem de tags ativas como fator na segmentação CS
+- [x] Adicionar campo `tags_problema` na collection `clientes` (array de objetos com tag, origem, data, thread_id)
+- [x] Interface de tags no ClienteDetalhe (card no Resumo com chips coloridos, add/remove)
+- [x] Tags pré-definidas (5) + campo de tag customizada
+- [x] Integrar com `useClassificarThread.js`: auto-tag para erro_bug, reclamacao, problema, sentimento negativo/urgente
+- [x] Exibir tags no card da lista de clientes (mini chips vermelhos, max 3 + "+N")
+- [x] Filtro "Com problemas" na lista (botão toggle com contagem)
+- [x] Tags como fator na segmentação CS (Risco de Churn → ALERTA, qualquer tag → bloqueia CRESCIMENTO)
 
 ### 3.2 Registro de bugs/problemas por cliente
 **Reportado por:** Valeria, Nathalia Montiel
@@ -120,11 +120,11 @@
 **Exemplo:** "EPA já reportou 5 bugs — isso contextualiza risco de churn"
 
 **O que fazer:**
-- [ ] Criar aba "Bugs/Problemas" no ClienteDetalhe (ou adicionar na aba Observações)
-- [ ] CRUD: título, descrição, prioridade, status (aberto/em_andamento/resolvido), link ClickUp/Jira
-- [ ] Vincular com tarefas ClickUp automaticamente
-- [ ] Contagem de bugs ativos visível no card da lista de clientes
-- [ ] Incluir `bugs_abertos_count` como fator na segmentação CS (muitos bugs = risco)
+- [x] Criar aba "Bugs" no ClienteDetalhe com CRUD completo (título, descrição, prioridade 4 níveis, status 3 estados, link ClickUp)
+- [x] Formulário de edição/criação com toggle de prioridade visual
+- [ ] Vincular com tarefas ClickUp automaticamente (futuro)
+- [x] Contagem de bugs ativos visível no card da lista (ícone Bug + número)
+- [x] `bugs_abertos_count` como fator na segmentação CS (>=3 → ALERTA, qualquer → bloqueia CRESCIMENTO)
 
 ### 3.3 Registro de TODAS as interações (calls, reuniões, touchpoints)
 **Reportado por:** Valeria, Nathalia Montiel
@@ -138,12 +138,13 @@
 - Qualquer touchpoint relevante
 
 **O que fazer:**
-- [ ] Criar collection `interacoes` (cliente_id, tipo, data, participantes, notas, duracao, link_gravacao)
-- [ ] Tipos: `onboarding`, `feedback`, `suporte`, `treinamento`, `qbr`, `outro`
-- [ ] Formulário rápido no ClienteDetalhe → aba "Interações"
-- [ ] Timeline cronológica de todas interações
-- [ ] Métricas: total interações (30d), tempo desde última interação
-- [ ] Incluir contagem de interações no cálculo de segmentação CS
+- [x] Criar collection `interacoes` (cliente_id, tipo, data_interacao, participantes, notas, duracao, link_gravacao)
+- [x] Tipos: `onboarding`, `feedback`, `suporte`, `treinamento`, `qbr`, `outro`
+- [x] Aba "Interações" no ClienteDetalhe com formulário rápido (tipo, data, participantes, duração, notas, link gravação)
+- [x] Timeline cronológica com dots coloridos por tipo
+- [x] Métricas: total interações (30d), dias desde última interação, horas totais
+- [x] `dias_sem_interacao` como fator na segmentação CS (>60d sem contato → bloqueia CRESCIMENTO)
+- [x] Campo `ultima_interacao_data` no doc do cliente para exibir na listagem sem queries extras
 - [ ] Futuro: integrar com Google Drive para puxar gravações automaticamente
 
 ### 3.4 Sazonalidade por cliente (calendário de campanhas)
