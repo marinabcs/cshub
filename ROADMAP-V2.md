@@ -286,15 +286,14 @@ SE tipo_conta == "google_gratuito":
 | Validação de inputs com Zod (2.2) | ✅ Concluído |
 | `.env` no `.gitignore` | ✅ Concluído |
 
-### 7.1 Remover/proteger página de Debug em produção
+### 7.1 Remover/proteger página de Debug em produção ✅
 **Ref SEGURANCA.md:** #7 (CWE-489)
 **Prioridade:** ALTA
-**Risco:** Página `/debug` permite destruição total do banco de dados
 
-**O que fazer:**
-- [ ] Condicionar rota `/debug` a `import.meta.env.DEV` no App.jsx
-- [ ] Ou remover completamente o arquivo `DebugFirestore.jsx` e a rota
-- [ ] Verificar se existem outras rotas/funcionalidades de debug expostas
+- [x] Rota `/debug` condicionada a `import.meta.env.DEV` (já existia)
+- [x] Lazy import movido para dentro do componente `DevDebugPage` — DebugFirestore.jsx + seedData.js excluídos do bundle de produção
+- [x] Sidebar não expõe link para `/debug`
+- [x] Nenhuma outra rota/funcionalidade de debug encontrada
 
 ### 7.2 Validação de schema nas respostas da OpenAI
 **Ref SEGURANCA.md:** #11 (CWE-502)
@@ -485,6 +484,9 @@ SE tipo_conta == "google_gratuito":
 13. ~~Paginação (6.1)~~ ✅
 14. ~~Cache (6.2)~~ ✅
 15. ~~Lazy Loading (6.3)~~ ✅
+
+### Sprint 7 - Segurança
+16. ~~Debug protegido (7.1)~~ ✅
 
 ### On Hold (aguardando decisão do time)
 - Cloud Functions (2.1) — precisa plano Blaze

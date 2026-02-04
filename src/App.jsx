@@ -25,7 +25,6 @@ const PlaybookForm = lazy(() => import('./pages/PlaybookForm'))
 const MinhaCarteira = lazy(() => import('./pages/MinhaCarteira'))
 const Documentos = lazy(() => import('./pages/Documentos'))
 const ResumoExecutivo = lazy(() => import('./pages/ResumoExecutivo'))
-const DebugFirestore = lazy(() => import('./pages/DebugFirestore'))
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -112,6 +111,11 @@ function AdminRoute({ children }) {
   return children
 }
 
+function DevDebugPage() {
+  const DebugFirestore = lazy(() => import('./pages/DebugFirestore'))
+  return <DebugFirestore />
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -147,9 +151,9 @@ function AppRoutes() {
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/configuracoes/usuarios" element={<Usuarios />} />
         <Route path="/configuracoes/auditoria" element={<AdminRoute><Auditoria /></AdminRoute>} />
-        {/* Debug page - apenas em desenvolvimento */}
+        {/* Debug page - excluída do bundle de produção */}
         {import.meta.env.DEV && (
-          <Route path="/debug" element={<DebugFirestore />} />
+          <Route path="/debug" element={<DevDebugPage />} />
         )}
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
