@@ -1,4 +1,7 @@
 // ClickUp API Integration
+import { logger } from '../utils/logger';
+import { sanitizeError } from '../utils/sanitizeError';
+
 const CLICKUP_API_KEY = import.meta.env.VITE_CLICKUP_API_KEY || '';
 const CLICKUP_LIST_ID = import.meta.env.VITE_CLICKUP_LIST_ID || '';
 const CLICKUP_TEAM_ID = import.meta.env.VITE_CLICKUP_TEAM_ID || '';
@@ -87,8 +90,8 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
 
   if (!response.ok) {
     const error = await response.json();
-    console.error('Erro ClickUp:', error);
-    throw new Error(error.err || 'Erro ao criar tarefa no ClickUp');
+    logger.error('Erro ao criar tarefa ClickUp', sanitizeError(error));
+    throw new Error('Erro ao criar tarefa no ClickUp');
   }
 
   const tarefa = await response.json();
@@ -159,7 +162,7 @@ export async function buscarUsuariosClickUpPorEmails(emails) {
  */
 export async function criarTarefaPlaybook(etapa, playbook, cliente, opcoes = {}) {
   if (!isClickUpConfigured()) {
-    console.warn('ClickUp não configurado - pulando criação de tarefa');
+    logger.warn('ClickUp não configurado - pulando criação de tarefa');
     return null;
   }
 
@@ -211,7 +214,7 @@ _Criado automaticamente pelo CS Hub - Playbooks_
 
     return result;
   } catch (error) {
-    console.error(`Erro ao criar tarefa ClickUp para etapa ${etapa.ordem}:`, error);
+    logger.error('Erro ao criar tarefa ClickUp para playbook', sanitizeError(error));
     return null;
   }
 }
@@ -259,7 +262,7 @@ _Criado automaticamente pelo CS Hub_
 export async function buscarMembrosClickUp() {
   // Se TEAM_ID não estiver configurado, retornar lista vazia
   if (!CLICKUP_API_KEY || !CLICKUP_TEAM_ID) {
-    console.warn('ClickUp TEAM_ID não configurado. Lista de membros indisponível.');
+    logger.warn('ClickUp TEAM_ID não configurado. Lista de membros indisponível.');
     return [];
   }
 
@@ -272,7 +275,7 @@ export async function buscarMembrosClickUp() {
 
     if (!response.ok) {
       const error = await response.json();
-      console.error('Erro ao buscar membros:', error);
+      logger.error('Erro ao buscar membros ClickUp', sanitizeError(error));
       return [];
     }
 
@@ -286,7 +289,7 @@ export async function buscarMembrosClickUp() {
       avatar: m.user.profilePicture
     }));
   } catch (error) {
-    console.error('Erro ao buscar membros do ClickUp:', error);
+    logger.error('Erro ao buscar membros ClickUp', sanitizeError(error));
     return [];
   }
 }
@@ -307,7 +310,7 @@ export async function buscarTarefaClickUp(taskId) {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.err || 'Erro ao buscar tarefa no ClickUp');
+    throw new Error('Erro ao buscar tarefa no ClickUp');
   }
 
   return await response.json();
@@ -336,7 +339,7 @@ export async function atualizarStatusTarefaClickUp(taskId, status) {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.err || 'Erro ao atualizar tarefa no ClickUp');
+    throw new Error('Erro ao atualizar tarefa no ClickUp');
   }
 
   return await response.json();

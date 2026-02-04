@@ -313,16 +313,14 @@ SE tipo_conta == "google_gratuito":
 - [x] 6 variáveis adicionadas ao `.env` e `.env.example`
 - [x] Valores reais removidos do código-fonte
 
-### 7.4 Sanitização de erros de API em produção
+### 7.4 Sanitização de erros de API em produção ✅
 **Ref SEGURANCA.md:** #12 (CWE-209)
 **Prioridade:** MÉDIA
-**Risco:** Erros da OpenAI/ClickUp expõem detalhes internos
 
-**O que fazer:**
-- [ ] Criar função `sanitizeError(error)` em `src/utils/`
-- [ ] Em produção: retornar mensagem genérica sem detalhes técnicos
-- [ ] Em dev: manter erro completo para debugging
-- [ ] Aplicar em `src/services/openai.js` e `src/services/clickup.js`
+- [x] `sanitizeError()` criada em `src/utils/sanitizeError.js` — dev: erro completo, prod: mensagem genérica
+- [x] `clickup.js`: 6 `console.error/warn` → `logger.error/warn` + `sanitizeError`
+- [x] `clickup.js`: 3 `throw new Error(error.err)` → mensagens genéricas sem detalhes da API
+- [x] `openai.js`: já sanitizado no 7.2
 
 ### 7.5 API Keys expostas no bundle de produção (CRÍTICO)
 **Ref SEGURANCA.md:** #3 (CWE-200)
@@ -486,6 +484,7 @@ SE tipo_conta == "google_gratuito":
 16. ~~Debug protegido (7.1)~~ ✅
 17. ~~Validação OpenAI (7.2)~~ ✅
 18. ~~Firebase env vars (7.3)~~ ✅
+19. ~~Sanitização de erros (7.4)~~ ✅
 
 ### On Hold (aguardando decisão do time)
 - Cloud Functions (2.1) — precisa plano Blaze
