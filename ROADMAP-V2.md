@@ -250,8 +250,11 @@ SE tipo_conta == "google_gratuito":
 ## ⚪ SPRINT 6 - PERFORMANCE
 
 ### 6.1 Paginação em listas grandes
-- [ ] Lista de Clientes, Analytics, Alertas, Threads
-- [ ] `startAfter` do Firestore, 20-50 itens/página
+- [x] Componente reutilizável `Pagination.jsx` (primeira/anterior/números/próxima/última, tema escuro)
+- [x] Clientes: paginação de exibição (30/página), reset ao mudar filtros, seleção em lote mantida
+- [x] Alertas: paginação de exibição (30/página), reset ao mudar filtros
+- [x] Auditoria: paginação de exibição (50/página)
+- [x] Analytics: safety limits `limit(1000)` nas queries de threads e alertas
 
 ### 6.2 Cache client-side
 - [ ] React Query ou SWR
@@ -473,7 +476,7 @@ SE tipo_conta == "google_gratuito":
 12. ~~Melhorias no Analytics (5.2)~~ ✅
 
 ### Sprint 6 - Performance
-13. Paginação (6.1)
+13. ~~Paginação (6.1)~~ ✅
 14. Cache (6.2)
 15. Lazy Loading (6.3)
 

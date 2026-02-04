@@ -5,6 +5,7 @@ import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, History, Search, Filter, X, ChevronDown, ChevronRight, User, FileText, Users, Settings, MessageSquare, Calendar, RefreshCw, Download } from 'lucide-react';
 import { getActionLabel, getEntityLabel, getActionColor, formatValue } from '../utils/audit';
+import { Pagination } from '../components/UI/Pagination';
 
 const ENTITIES = [
   { value: 'cliente', label: 'Cliente', icon: Users },
@@ -28,6 +29,7 @@ export default function Auditoria() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedLog, setExpandedLog] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -121,6 +123,13 @@ export default function Auditoria() {
       return true;
     });
   }, [logs, searchTerm, selectedEntity, selectedAction, selectedUser, startDate, endDate]);
+
+  // Paginação de exibição
+  const totalPages = Math.ceil(filteredLogs.length / PAGE_SIZE);
+  const logsPaginados = filteredLogs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Resetar página ao mudar filtros
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedEntity, selectedAction, selectedUser, startDate, endDate]);
 
   const hasFilters = searchTerm || selectedEntity !== 'todos' || selectedAction !== 'todos' || selectedUser !== 'todos' || startDate || endDate;
 
@@ -491,9 +500,9 @@ export default function Auditoria() {
         borderRadius: '20px',
         overflow: 'hidden'
       }}>
-        {filteredLogs.length > 0 ? (
+        {logsPaginados.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {filteredLogs.map((log, index) => {
+            {logsPaginados.map((log, index) => {
               const EntityIcon = getEntityIcon(log.entity);
               const isExpanded = expandedLog === log.id;
               const hasChanges = log.changes && Object.keys(log.changes).length > 0;
@@ -503,7 +512,7 @@ export default function Auditoria() {
                   key={log.id}
                   style={{
                     padding: '16px 24px',
-                    borderBottom: index < filteredLogs.length - 1 ? '1px solid rgba(139, 92, 246, 0.1)' : 'none',
+                    borderBottom: index < logsPaginados.length - 1 ? '1px solid rgba(139, 92, 246, 0.1)' : 'none',
                     background: isExpanded ? 'rgba(139, 92, 246, 0.05)' : 'transparent'
                   }}
                 >
@@ -612,6 +621,14 @@ export default function Auditoria() {
           </div>
         )}
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        totalItems={filteredLogs.length}
+        pageSize={PAGE_SIZE}
+      />
     </div>
   );
 }

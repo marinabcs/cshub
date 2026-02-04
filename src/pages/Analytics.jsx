@@ -1,7 +1,7 @@
 // Analytics - Dashboard Gerencial Completo com Abas
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import * as XLSX from 'xlsx';
 import {
@@ -106,9 +106,9 @@ export default function Analytics() {
         metricasSnapshot
       ] = await Promise.all([
         getDocs(collection(db, 'clientes')),
-        getDocs(collection(db, 'alertas')),
+        getDocs(query(collection(db, 'alertas'), limit(1000))),
         // Usar collection raiz 'threads' ao invés de subcollections (muito mais rápido!)
-        getDocs(query(collection(db, 'threads'), orderBy('updated_at', 'desc'))),
+        getDocs(query(collection(db, 'threads'), orderBy('updated_at', 'desc'), limit(1000))),
         getDocs(collection(db, 'usuarios_sistema')),
         // Limitar metricas aos últimos 90 dias
         getDocs(query(collection(db, 'metricas_diarias'), where('data', '>=', dataLimite)))

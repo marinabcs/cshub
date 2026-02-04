@@ -7,6 +7,7 @@ import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Down
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge } from '../components/UI/SegmentoBadge';
+import { Pagination } from '../components/UI/Pagination';
 import { AREAS_ATUACAO, getAreaLabel } from '../utils/areasAtuacao';
 
 // Chave para localStorage
@@ -76,6 +77,8 @@ export default function Clientes() {
   });
 
   const [filterProblemas, setFilterProblemas] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 30;
   const [batchCalendario, setBatchCalendario] = useState({
     jan: 'normal', fev: 'normal', mar: 'normal', abr: 'normal', mai: 'normal', jun: 'normal',
     jul: 'normal', ago: 'normal', set: 'normal', out: 'normal', nov: 'normal', dez: 'normal'
@@ -446,6 +449,13 @@ export default function Clientes() {
           return (a.team_name || '').localeCompare(b.team_name || '', 'pt-BR');
       }
     });
+
+  // Paginação
+  const totalPages = Math.ceil(filteredClientes.length / PAGE_SIZE);
+  const clientesPaginados = filteredClientes.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Resetar página ao mudar filtros
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, filterClienteStatus, filterType, filterSegmento, filterAreaAtuacao, filterProblemas, sortOption]);
 
   const exportToCSV = () => {
     const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Status', 'Segmento CS', 'Área de Atuação', 'Qtd Times'];
@@ -1407,7 +1417,7 @@ export default function Clientes() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '12px' }}>
-        {filteredClientes.length > 0 ? filteredClientes.map((cliente) => {
+        {clientesPaginados.length > 0 ? clientesPaginados.map((cliente) => {
           const isInativo = cliente.status === 'inativo';
           const isSelected = selectedClientes.has(cliente.id);
 
@@ -1576,6 +1586,14 @@ export default function Clientes() {
           </div>
         )}
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        totalItems={filteredClientes.length}
+        pageSize={PAGE_SIZE}
+      />
 
       {/* Modal de Times Órfãos */}
       {showOrphanModal && (

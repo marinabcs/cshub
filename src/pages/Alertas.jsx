@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Clock, AlertTriangle, RefreshCw, Check, ChevronRight, ChevronDown, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye } from 'lucide-react';
 import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas, useSincronizarClickUp } from '../hooks/useAlertas';
@@ -14,6 +14,7 @@ import {
 import { isClickUpConfigured, criarTarefaClickUp, buscarMembrosClickUp, PRIORIDADES_CLICKUP } from '../services/clickup';
 import { doc, updateDoc, collection, getDocs, deleteDoc, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { Pagination } from '../components/UI/Pagination';
 
 // Mapeamento de ícones por tipo
 const TIPO_ICONS = {
@@ -54,6 +55,10 @@ export default function Alertas() {
   const [clickUpMembros, setClickUpMembros] = useState([]);
   const [criandoTarefa, setCriandoTarefa] = useState(false);
   const [loadingMembros, setLoadingMembros] = useState(false);
+
+  // Paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 30;
 
   // Estado para seleção múltipla
   const [selectedAlertas, setSelectedAlertas] = useState(new Set());
@@ -135,6 +140,13 @@ export default function Alertas() {
     const matchTeamType = filtroTeamType.length === 0 || filtroTeamType.includes(a.team_type);
     return matchResponsavel && matchTeamType;
   });
+
+  // Paginação de exibição
+  const totalPages = Math.ceil(alertasFiltrados.length / PAGE_SIZE);
+  const alertasPaginados = alertasFiltrados.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Resetar página ao mudar filtros
+  useEffect(() => { setCurrentPage(1); }, [filtroTipos, filtroPrioridades, filtroStatus, filtroResponsavel, filtroTeamType]);
 
   // Contagens filtradas
   const countPendentes = alertasFiltrados.filter(a => a.status === 'pendente').length;
@@ -1038,7 +1050,7 @@ export default function Alertas() {
 
       {/* Lista de Alertas */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {alertasFiltrados.length > 0 ? alertasFiltrados.map(alerta => {
+        {alertasPaginados.length > 0 ? alertasPaginados.map(alerta => {
           const tipoInfo = getTipoInfo(alerta.tipo);
           const prioridadeInfo = getPrioridadeInfo(alerta.prioridade);
           const statusInfo = getStatusInfo(alerta.status);
@@ -1337,6 +1349,14 @@ export default function Alertas() {
           </div>
         )}
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        totalItems={alertasFiltrados.length}
+        pageSize={PAGE_SIZE}
+      />
 
       {/* Modal de criação de tarefa no ClickUp */}
       {showClickUpModal && selectedAlerta && (
