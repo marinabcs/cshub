@@ -256,9 +256,13 @@ SE tipo_conta == "google_gratuito":
 - [x] Auditoria: paginação de exibição (50/página)
 - [x] Analytics: safety limits `limit(1000)` nas queries de threads e alertas
 
-### 6.2 Cache client-side
-- [ ] React Query ou SWR
-- [ ] Tempo de expiração por tipo de dado
+### 6.2 Cache client-side ✅
+- [x] Módulo `src/services/cache.js` — Map em memória com TTL, `cachedGetDocs`, `invalidateCache`, `invalidateCachePrefix`
+- [x] Hook `src/hooks/useCachedQuery.js` — hook React genérico com cache (para uso futuro)
+- [x] Cache aplicado: `clientes` (5min), `usuarios_sistema` (10min), `metricas_diarias` (5min)
+- [x] Páginas otimizadas: Dashboard, Clientes, Analytics, MinhaCarteira, useAlertas
+- [x] Invalidação automática em mutations (Clientes: batch update, delete)
+- [x] Zero dependências externas — solução customizada leve
 
 ### 6.3 Lazy Loading
 - [ ] `React.lazy()` + `Suspense` por rota
@@ -477,7 +481,7 @@ SE tipo_conta == "google_gratuito":
 
 ### Sprint 6 - Performance
 13. ~~Paginação (6.1)~~ ✅
-14. Cache (6.2)
+14. ~~Cache (6.2)~~ ✅
 15. Lazy Loading (6.3)
 
 ### On Hold (aguardando decisão do time)

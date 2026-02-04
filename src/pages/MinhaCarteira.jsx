@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { cachedGetDocs } from '../services/cache';
 import { useAuth } from '../contexts/AuthContext';
 import { getThreadsByTeam } from '../services/api';
 import {
@@ -38,8 +39,8 @@ export default function MinhaCarteira() {
     const fetchResponsaveis = async () => {
       try {
         const usuariosRef = collection(db, 'usuarios_sistema');
-        const snapshot = await getDocs(usuariosRef);
-        const usuarios = snapshot.docs
+        const docs = await cachedGetDocs('usuarios_sistema', usuariosRef, 600000);
+        const usuarios = docs
           .map(doc => ({ id: doc.id, ...doc.data() }))
           .filter(u => u.ativo !== false && (u.role === 'cs' || u.role === 'gestor' || u.role === 'admin' || u.role === 'super_admin'))
           .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));

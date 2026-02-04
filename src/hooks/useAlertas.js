@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { cachedGetDocs } from '../services/cache';
 import { verificarTodosAlertas, ordenarAlertas } from '../utils/alertas';
 import { isClickUpConfigured, criarTarefaClickUp, buscarTarefaClickUp, buscarUsuariosClickUpPorEmails } from '../services/clickup';
 
@@ -18,16 +19,16 @@ export function useAlertas(filtros = {}) {
     setError(null);
 
     try {
-      // Buscar alertas e clientes em paralelo
-      const [alertasSnap, clientesSnap] = await Promise.all([
+      // Buscar alertas e clientes em paralelo (clientes com cache)
+      const [alertasSnap, clientesDocs] = await Promise.all([
         getDocs(collection(db, 'alertas')),
-        getDocs(collection(db, 'clientes'))
+        cachedGetDocs('clientes', collection(db, 'clientes'), 300000)
       ]);
 
       // Criar mapas de clientes
       const clientesInativos = new Set();
       const clientesMap = new Map();
-      clientesSnap.docs.forEach(doc => {
+      clientesDocs.forEach(doc => {
         const data = doc.data();
         clientesMap.set(doc.id, data);
         if (data.status === 'inativo' || data.status === 'cancelado') {
@@ -99,15 +100,15 @@ export function useAlertasCount() {
       try {
         // Buscar apenas alertas ativos (pendentes ou em_andamento) + clientes em paralelo
         const alertasRef = collection(db, 'alertas');
-        const [pendentesSnap, emAndamentoSnap, clientesSnap] = await Promise.all([
+        const [pendentesSnap, emAndamentoSnap, clientesDocs] = await Promise.all([
           getDocs(query(alertasRef, where('status', '==', 'pendente'))),
           getDocs(query(alertasRef, where('status', '==', 'em_andamento'))),
-          getDocs(collection(db, 'clientes'))
+          cachedGetDocs('clientes', collection(db, 'clientes'), 300000)
         ]);
 
         // Criar mapa de clientes inativos/cancelados
         const clientesInativos = new Set();
-        clientesSnap.docs.forEach(d => {
+        clientesDocs.forEach(d => {
           const data = d.data();
           if (data.status === 'inativo' || data.status === 'cancelado') {
             clientesInativos.add(d.id);

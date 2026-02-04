@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { cachedGetDocs, invalidateCache } from '../services/cache';
 import { getUsuariosCountByTeam, getThreadsByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw, Bug, Phone, Calendar } from 'lucide-react';
@@ -134,13 +135,13 @@ export default function Clientes() {
 
   const fetchData = async () => {
     try {
-      // OTIMIZAÇÃO: Executar queries em PARALELO
-      const [clientesSnapshot, timesSnapshot] = await Promise.all([
-        getDocs(collection(db, 'clientes')),
+      // OTIMIZAÇÃO: Executar queries em PARALELO (com cache para clientes)
+      const [clientesDocs, timesSnapshot] = await Promise.all([
+        cachedGetDocs('clientes', collection(db, 'clientes'), 300000),
         getDocs(collection(db, 'times'))
       ]);
 
-      const clientesData = clientesSnapshot.docs.map(doc => ({
+      const clientesData = clientesDocs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
@@ -268,6 +269,7 @@ export default function Clientes() {
       }
 
       await batch.commit();
+      invalidateCache('clientes');
 
       // Recarregar dados
       await fetchData();
@@ -495,6 +497,7 @@ export default function Clientes() {
     setDeleting(true);
     try {
       await deleteDoc(doc(db, 'clientes', clienteToDelete.id));
+      invalidateCache('clientes');
       // Refresh data
       await fetchData();
       setShowDeleteModal(false);

@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { cachedGetDocs } from '../services/cache';
 import * as XLSX from 'xlsx';
 import {
   BarChart3, Users, TrendingUp, AlertTriangle, MessageSquare,
@@ -97,25 +98,25 @@ export default function Analytics() {
       const dataLimite = new Date();
       dataLimite.setDate(dataLimite.getDate() - 90);
 
-      // OTIMIZAÇÃO: Executar queries principais em PARALELO
+      // OTIMIZAÇÃO: Executar queries principais em PARALELO (com cache)
       const [
-        clientesSnapshot,
+        clientesDocs,
         alertasSnapshot,
         threadsSnapshot,
-        usuariosSnapshot,
-        metricasSnapshot
+        usuariosDocs,
+        metricasDocs
       ] = await Promise.all([
-        getDocs(collection(db, 'clientes')),
+        cachedGetDocs('clientes', collection(db, 'clientes'), 300000),
         getDocs(query(collection(db, 'alertas'), limit(1000))),
         // Usar collection raiz 'threads' ao invés de subcollections (muito mais rápido!)
         getDocs(query(collection(db, 'threads'), orderBy('updated_at', 'desc'), limit(1000))),
-        getDocs(collection(db, 'usuarios_sistema')),
+        cachedGetDocs('usuarios_sistema', collection(db, 'usuarios_sistema'), 600000),
         // Limitar metricas aos últimos 90 dias
-        getDocs(query(collection(db, 'metricas_diarias'), where('data', '>=', dataLimite)))
+        cachedGetDocs('metricas_diarias', query(collection(db, 'metricas_diarias'), where('data', '>=', dataLimite)), 300000)
       ]);
 
       // Processar clientes
-      const clientesData = clientesSnapshot.docs.map(d => ({
+      const clientesData = clientesDocs.map(d => ({
         id: d.id,
         ...d.data()
       }));
@@ -152,14 +153,14 @@ export default function Analytics() {
       setThreads(allThreads);
 
       // Processar usuarios
-      const usuariosData = usuariosSnapshot.docs.map(d => ({
+      const usuariosData = usuariosDocs.map(d => ({
         id: d.id,
         ...d.data()
       }));
       setUsuarios(usuariosData);
 
       // Processar metricas
-      const metricasData = metricasSnapshot.docs.map(d => ({
+      const metricasData = metricasDocs.map(d => ({
         id: d.id,
         ...d.data()
       }));

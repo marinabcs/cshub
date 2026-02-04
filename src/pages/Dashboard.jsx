@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { cachedGetDocs } from '../services/cache';
 import { useNavigate } from 'react-router-dom';
 import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, ChevronRight, Circle, Bell, Frown, Briefcase } from 'lucide-react';
 import { STATUS_OPTIONS } from '../utils/clienteStatus';
@@ -26,8 +27,8 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchClientes = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'clientes'));
-        const clientesData = querySnapshot.docs.map(doc => ({
+        const docs = await cachedGetDocs('clientes', collection(db, 'clientes'), 300000);
+        const clientesData = docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
