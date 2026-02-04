@@ -9,14 +9,15 @@ import {
   Download, Filter, X, ChevronDown, Activity, Clock,
   ExternalLink, FileSpreadsheet, RefreshCw, Monitor, UserCheck,
   DollarSign, ShieldAlert, Star, Zap, Award, Target, ArrowUpRight,
-  ArrowDownRight, Mail, Phone
+  ArrowDownRight, Mail, Phone, Calendar, Building2
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line, Area, AreaChart
 } from 'recharts';
-import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
+import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel, getSazonalidadeMesAtual, MESES_KEYS } from '../utils/segmentoCS';
+import { AREAS_ATUACAO, getAreaLabel } from '../utils/areasAtuacao';
 import { SegmentoBadge } from '../components/UI/SegmentoBadge';
 
 const CATEGORIA_COLORS = {
@@ -56,7 +57,8 @@ const TABS = [
   { id: 'engajamento', label: 'Engajamento', icon: Activity },
   { id: 'usuarios', label: 'Usuários', icon: Users },
   { id: 'churn', label: 'Prevenção de Churn', icon: ShieldAlert },
-  { id: 'inativos', label: 'Inativos', icon: Clock }
+  { id: 'inativos', label: 'Inativos', icon: Clock },
+  { id: 'sazonalidade', label: 'Sazonalidade', icon: Calendar }
 ];
 
 export default function Analytics() {
@@ -76,7 +78,8 @@ export default function Analytics() {
   const [periodoCustom, setPeriodoCustom] = useState({ inicio: '', fim: '' });
   const [responsaveis, setResponsaveisFilter] = useState([]); // multiselect
   const [teamTypes, setTeamTypesFilter] = useState([]); // multiselect
-  const [showFilters, setShowFilters] = useState(null); // 'resp' | 'type' | null
+  const [filterArea, setFilterArea] = useState([]); // multiselect áreas de atuação
+  const [showFilters, setShowFilters] = useState(null); // 'resp' | 'type' | 'area' | null
 
   // Dados de tendência
   const [tendenciaData, setTendenciaData] = useState([]);
@@ -254,9 +257,10 @@ export default function Analytics() {
       if (c.status === 'inativo' || c.status === 'cancelado') return false;
       const matchesResponsavel = responsaveis.length === 0 || responsaveis.includes(c.responsavel_nome);
       const matchesType = clienteMatchesTipos(c.team_type, teamTypes);
-      return matchesResponsavel && matchesType;
+      const matchesArea = filterArea.length === 0 || filterArea.includes(c.area_atuacao);
+      return matchesResponsavel && matchesType && matchesArea;
     });
-  }, [clientes, responsaveis, teamTypes]);
+  }, [clientes, responsaveis, teamTypes, filterArea]);
 
   // Clientes inativos/cancelados COM atividade (para aba Inativos)
   const clientesInativos = useMemo(() => {
@@ -303,9 +307,10 @@ export default function Analytics() {
       if (cliente?.status === 'inativo' || cliente?.status === 'cancelado') return false;
       const matchesResponsavel = responsaveis.length === 0 || responsaveis.includes(cliente?.responsavel_nome);
       const matchesType = clienteMatchesTipos(cliente?.team_type, teamTypes);
-      return matchesPeriodo && matchesResponsavel && matchesType;
+      const matchesArea = filterArea.length === 0 || filterArea.includes(cliente?.area_atuacao);
+      return matchesPeriodo && matchesResponsavel && matchesType && matchesArea;
     });
-  }, [threads, clientes, periodo, periodoCustom, responsaveis, teamTypes]);
+  }, [threads, clientes, periodo, periodoCustom, responsaveis, teamTypes, filterArea]);
 
   // Threads do período anterior (para comparativo)
   const threadsPeriodoAnterior = useMemo(() => {
@@ -331,9 +336,10 @@ export default function Analytics() {
       if (cliente?.status === 'inativo' || cliente?.status === 'cancelado') return false;
       const matchesResponsavel = responsaveis.length === 0 || responsaveis.includes(cliente?.responsavel_nome);
       const matchesType = clienteMatchesTipos(cliente?.team_type, teamTypes);
-      return matchesPeriodo && matchesResponsavel && matchesType;
+      const matchesArea = filterArea.length === 0 || filterArea.includes(cliente?.area_atuacao);
+      return matchesPeriodo && matchesResponsavel && matchesType && matchesArea;
     });
-  }, [alertas, clientes, periodo, periodoCustom, responsaveis, teamTypes]);
+  }, [alertas, clientes, periodo, periodoCustom, responsaveis, teamTypes, filterArea]);
 
   // Lista de responsáveis disponíveis
   const responsaveisDisponiveis = useMemo(() => {
@@ -355,6 +361,15 @@ export default function Analytics() {
         }
       });
     return [...allTypes].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [clientes]);
+
+  // Lista de áreas de atuação disponíveis (apenas áreas que têm clientes)
+  const areasDisponiveis = useMemo(() => {
+    const areas = new Set();
+    clientes
+      .filter(c => c.status !== 'inativo' && c.status !== 'cancelado')
+      .forEach(c => { if (c.area_atuacao) areas.add(c.area_atuacao); });
+    return AREAS_ATUACAO.filter(a => areas.has(a.value));
   }, [clientes]);
 
   // ========== SEÇÃO 1: VISÃO GERAL (com comparativos) ==========
@@ -892,6 +907,12 @@ export default function Analytics() {
   const toggleTeamType = (type) => {
     setTeamTypesFilter(prev =>
       prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
+  const toggleArea = (area) => {
+    setFilterArea(prev =>
+      prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]
     );
   };
 
@@ -1842,6 +1863,372 @@ export default function Analytics() {
     </>
   );
 
+  // ========== ABA SAZONALIDADE ==========
+  const renderTabSazonalidade = () => {
+    const MESES_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const mesAtualIdx = new Date().getMonth();
+    const mesAtualKey = MESES_KEYS[mesAtualIdx];
+
+    // Seção A - Visão Geral do Mês Atual
+    const contagens = { alta: 0, normal: 0, baixa: 0 };
+    clientesFiltrados.forEach(c => {
+      const saz = getSazonalidadeMesAtual(c);
+      contagens[saz] = (contagens[saz] || 0) + 1;
+    });
+
+    // Seção B - Mapa de Calor: Áreas × Meses
+    // Agrupar clientes por área
+    const clientesPorArea = {};
+    clientesFiltrados.forEach(c => {
+      const area = c.area_atuacao || 'outro';
+      if (!clientesPorArea[area]) clientesPorArea[area] = [];
+      clientesPorArea[area].push(c);
+    });
+
+    const areasComClientes = Object.keys(clientesPorArea).sort((a, b) =>
+      getAreaLabel(a).localeCompare(getAreaLabel(b), 'pt-BR')
+    );
+
+    // Para cada área e mês, contar clientes em 'alta'
+    const heatmapData = areasComClientes.map(area => {
+      const row = { area, label: getAreaLabel(area) };
+      MESES_KEYS.forEach((mes, i) => {
+        row[mes] = clientesPorArea[area].filter(c =>
+          c.calendario_campanhas && c.calendario_campanhas[mes] === 'alta'
+        ).length;
+      });
+      return row;
+    });
+
+    // Encontrar o maior valor para intensidade
+    const maxHeatVal = Math.max(1, ...heatmapData.flatMap(r => MESES_KEYS.map(m => r[m])));
+
+    // Seção C - Janela de Abordagem Ideal
+    const janelaAbordagem = areasComClientes.map(area => {
+      let maxCount = 0;
+      let mesPico = 0;
+      MESES_KEYS.forEach((mes, i) => {
+        const count = clientesPorArea[area].filter(c =>
+          c.calendario_campanhas && c.calendario_campanhas[mes] === 'alta'
+        ).length;
+        if (count > maxCount) { maxCount = count; mesPico = i; }
+      });
+      // Mês de abordagem ideal: 1 mês antes do pico
+      const mesAbordagem = mesPico === 0 ? 11 : mesPico - 1;
+      // Distância do mês atual até o pico
+      const distancia = mesPico >= mesAtualIdx ? mesPico - mesAtualIdx : 12 - mesAtualIdx + mesPico;
+      return {
+        area,
+        label: getAreaLabel(area),
+        mesPico,
+        mesPicoLabel: MESES_LABELS[mesPico],
+        mesAbordagem,
+        mesAbordagemLabel: MESES_LABELS[mesAbordagem],
+        clientesPico: maxCount,
+        distancia
+      };
+    }).filter(j => j.clientesPico > 0).sort((a, b) => a.distancia - b.distancia);
+
+    // Seção D - Uso Real vs Esperado (mês atual)
+    const clientesEmAlta = clientesFiltrados.filter(c => getSazonalidadeMesAtual(c) === 'alta');
+    const ativosEmAlta = clientesEmAlta.filter(c => c.status === 'ativo' || c.status === 'onboarding');
+    const inativosEmAlta = clientesEmAlta.filter(c => c.status !== 'ativo' && c.status !== 'onboarding');
+
+    // Seção E - Alertas de Sazonalidade
+    const alertasSazonalidade = alertas.filter(a =>
+      a.tipo === 'sazonalidade_alta_inativo' && a.status === 'pendente'
+    );
+
+    return (
+      <>
+        {/* Seção A - Visão Geral do Mês Atual */}
+        <div style={{ marginBottom: '24px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Calendar style={{ width: '18px', height: '18px', color: '#8b5cf6' }} />
+            Sazonalidade — {MESES_LABELS[mesAtualIdx]} {new Date().getFullYear()}
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+            {[
+              { label: 'Clientes em Alta', count: contagens.alta, color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+              { label: 'Clientes em Normal', count: contagens.normal, color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)' },
+              { label: 'Clientes em Baixa', count: contagens.baixa, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' }
+            ].map(item => (
+              <div key={item.label} style={{
+                background: 'rgba(30, 27, 75, 0.4)',
+                border: '1px solid rgba(139, 92, 246, 0.15)',
+                borderRadius: '16px',
+                padding: '20px',
+                textAlign: 'center'
+              }}>
+                <div style={{
+                  width: '48px', height: '48px', borderRadius: '12px',
+                  background: item.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  margin: '0 auto 12px'
+                }}>
+                  <span style={{ fontSize: '20px', fontWeight: '700', color: item.color }}>{item.count}</span>
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '13px' }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Seção B - Mapa de Calor: Áreas × Meses */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '16px',
+          padding: '20px',
+          marginBottom: '24px',
+          overflowX: 'auto'
+        }}>
+          <h4 style={{ color: 'white', fontSize: '14px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Building2 style={{ width: '16px', height: '16px', color: '#06b6d4' }} />
+            Mapa de Calor — Clientes em Alta por Área e Mês
+          </h4>
+          {areasComClientes.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '24px' }}>Nenhum cliente com área de atuação definida</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', color: '#94a3b8', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.15)' }}>Área</th>
+                  {MESES_LABELS.map((m, i) => (
+                    <th key={m} style={{
+                      textAlign: 'center', padding: '8px 6px', fontWeight: '500',
+                      color: i === mesAtualIdx ? '#8b5cf6' : '#94a3b8',
+                      borderBottom: '1px solid rgba(139, 92, 246, 0.15)',
+                      background: i === mesAtualIdx ? 'rgba(139, 92, 246, 0.08)' : 'transparent'
+                    }}>{m}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {heatmapData.map(row => (
+                  <tr key={row.area}>
+                    <td style={{ padding: '8px 12px', color: 'white', fontWeight: '500', borderBottom: '1px solid rgba(139, 92, 246, 0.08)', whiteSpace: 'nowrap' }}>
+                      {row.label}
+                      <span style={{ color: '#64748b', fontSize: '11px', marginLeft: '6px' }}>({clientesPorArea[row.area].length})</span>
+                    </td>
+                    {MESES_KEYS.map((mes, i) => {
+                      const val = row[mes];
+                      const intensity = val / maxHeatVal;
+                      return (
+                        <td key={mes} style={{
+                          textAlign: 'center', padding: '8px 6px',
+                          borderBottom: '1px solid rgba(139, 92, 246, 0.08)',
+                          background: i === mesAtualIdx
+                            ? `rgba(139, 92, 246, ${0.08 + intensity * 0.15})`
+                            : val > 0 ? `rgba(16, 185, 129, ${0.1 + intensity * 0.5})` : 'transparent'
+                        }}>
+                          <span style={{
+                            color: val > 0 ? 'white' : '#3730a3',
+                            fontWeight: val > 0 ? '600' : '400',
+                            fontSize: '12px'
+                          }}>
+                            {val}
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Seção C - Janela de Abordagem Ideal */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '16px',
+          padding: '20px',
+          marginBottom: '24px'
+        }}>
+          <h4 style={{ color: 'white', fontSize: '14px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Target style={{ width: '16px', height: '16px', color: '#f59e0b' }} />
+            Janela de Abordagem Ideal
+          </h4>
+          {janelaAbordagem.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '24px' }}>Nenhuma área com pico identificado</div>
+          ) : (
+            <div style={{ display: 'grid', gap: '8px' }}>
+              {janelaAbordagem.map(j => (
+                <div key={j.area} style={{
+                  display: 'flex', alignItems: 'center', gap: '16px',
+                  padding: '12px 16px', borderRadius: '10px',
+                  background: j.distancia <= 1 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(15, 10, 31, 0.5)',
+                  border: j.distancia <= 1 ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(139, 92, 246, 0.08)'
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ color: 'white', fontWeight: '500', fontSize: '13px' }}>{j.label}</span>
+                  </div>
+                  <div style={{ textAlign: 'center', minWidth: '70px' }}>
+                    <div style={{ color: '#10b981', fontSize: '13px', fontWeight: '600' }}>{j.mesPicoLabel}</div>
+                    <div style={{ color: '#64748b', fontSize: '10px' }}>Pico</div>
+                  </div>
+                  <div style={{ textAlign: 'center', minWidth: '70px' }}>
+                    <div style={{ color: '#f59e0b', fontSize: '13px', fontWeight: '600' }}>{j.mesAbordagemLabel}</div>
+                    <div style={{ color: '#64748b', fontSize: '10px' }}>Abordar</div>
+                  </div>
+                  <div style={{ textAlign: 'center', minWidth: '50px' }}>
+                    <div style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600' }}>{j.clientesPico}</div>
+                    <div style={{ color: '#64748b', fontSize: '10px' }}>Clientes</div>
+                  </div>
+                  {j.distancia <= 1 && (
+                    <span style={{
+                      padding: '3px 8px', borderRadius: '8px', fontSize: '10px', fontWeight: '600',
+                      background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b'
+                    }}>
+                      {j.distancia === 0 ? 'AGORA' : 'PRÓXIMO'}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Seção D - Uso Real vs Esperado */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '16px',
+          padding: '20px',
+          marginBottom: '24px'
+        }}>
+          <h4 style={{ color: 'white', fontSize: '14px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Activity style={{ width: '16px', height: '16px', color: '#06b6d4' }} />
+            Uso Real vs Esperado — Clientes em Alta ({MESES_LABELS[mesAtualIdx]})
+          </h4>
+          {clientesEmAlta.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '24px' }}>Nenhum cliente em temporada alta neste mês</div>
+          ) : (
+            <>
+              {/* Barra empilhada */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                    {ativosEmAlta.length} ativos de {clientesEmAlta.length} em alta
+                  </span>
+                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                    {clientesEmAlta.length > 0 ? Math.round((ativosEmAlta.length / clientesEmAlta.length) * 100) : 0}%
+                  </span>
+                </div>
+                <div style={{ height: '24px', borderRadius: '12px', overflow: 'hidden', display: 'flex', background: 'rgba(15, 10, 31, 0.5)' }}>
+                  {ativosEmAlta.length > 0 && (
+                    <div style={{
+                      width: `${(ativosEmAlta.length / clientesEmAlta.length) * 100}%`,
+                      background: 'linear-gradient(90deg, #10b981, #06b6d4)',
+                      transition: 'width 0.3s'
+                    }} />
+                  )}
+                  {inativosEmAlta.length > 0 && (
+                    <div style={{
+                      width: `${(inativosEmAlta.length / clientesEmAlta.length) * 100}%`,
+                      background: '#ef4444',
+                      transition: 'width 0.3s'
+                    }} />
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '16px', marginTop: '8px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#94a3b8' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} /> Ativos ({ativosEmAlta.length})
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#94a3b8' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} /> Inativos ({inativosEmAlta.length})
+                  </span>
+                </div>
+              </div>
+
+              {/* Lista de inativos em alta temporada */}
+              {inativosEmAlta.length > 0 && (
+                <div>
+                  <div style={{ color: '#ef4444', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>
+                    Inativos em temporada alta ({inativosEmAlta.length})
+                  </div>
+                  <div style={{ display: 'grid', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                    {inativosEmAlta.map(c => (
+                      <div
+                        key={c.id}
+                        onClick={() => navigate(`/clientes/${c.id}`)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
+                          background: 'rgba(239, 68, 68, 0.08)',
+                          border: '1px solid rgba(239, 68, 68, 0.15)'
+                        }}
+                      >
+                        <span style={{ color: 'white', fontSize: '13px' }}>{c.nome}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: '#64748b', fontSize: '11px' }}>{getAreaLabel(c.area_atuacao)}</span>
+                          <span style={{
+                            padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '600',
+                            background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', textTransform: 'capitalize'
+                          }}>{c.status}</span>
+                          <ExternalLink style={{ width: '12px', height: '12px', color: '#64748b' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Seção E - Alertas de Sazonalidade */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '16px',
+          padding: '20px'
+        }}>
+          <h4 style={{ color: 'white', fontSize: '14px', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertTriangle style={{ width: '16px', height: '16px', color: '#f97316' }} />
+            Alertas de Sazonalidade Pendentes
+            {alertasSazonalidade.length > 0 && (
+              <span style={{
+                padding: '2px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: '600',
+                background: 'rgba(249, 115, 22, 0.2)', color: '#f97316'
+              }}>{alertasSazonalidade.length}</span>
+            )}
+          </h4>
+          {alertasSazonalidade.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '24px' }}>
+              Nenhum alerta de sazonalidade pendente
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '6px', maxHeight: '250px', overflowY: 'auto' }}>
+              {alertasSazonalidade.map(a => {
+                const cliente = clientes.find(c => c.id === a.cliente_id);
+                return (
+                  <div
+                    key={a.id}
+                    onClick={() => cliente && navigate(`/clientes/${cliente.id}`)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
+                      background: 'rgba(249, 115, 22, 0.06)',
+                      border: '1px solid rgba(249, 115, 22, 0.15)'
+                    }}
+                  >
+                    <div>
+                      <div style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>{cliente?.nome || 'Cliente'}</div>
+                      <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>{a.mensagem || 'Em alta temporada mas inativo'}</div>
+                    </div>
+                    <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b', flexShrink: 0 }} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
   return (
     <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
       {/* Header */}
@@ -2101,6 +2488,69 @@ export default function Analytics() {
               </div>
             )}
           </div>
+
+          {/* Área de Atuação - Dropdown Multiselect */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>
+              Área {filterArea.length > 0 && <span style={{ color: '#10b981' }}>({filterArea.length})</span>}
+            </label>
+            <div
+              onClick={() => setShowFilters(showFilters === 'area' ? false : 'area')}
+              style={{
+                padding: '10px 14px',
+                background: '#0f0a1f',
+                border: '1px solid #3730a3',
+                borderRadius: '10px',
+                color: filterArea.length > 0 ? 'white' : '#64748b',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {filterArea.length === 0 ? 'Todas' : filterArea.length === 1 ? getAreaLabel(filterArea[0]) : `${filterArea.length} selecionadas`}
+              </span>
+              <ChevronDown style={{ width: '16px', height: '16px', color: '#64748b', flexShrink: 0 }} />
+            </div>
+            {showFilters === 'area' && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#1e1b4b', border: '1px solid #3730a3', borderRadius: '10px', zIndex: 50, maxHeight: '200px', overflowY: 'auto' }}>
+                {areasDisponiveis.map(a => (
+                  <div
+                    key={a.value}
+                    onClick={(e) => { e.stopPropagation(); toggleArea(a.value); }}
+                    style={{
+                      padding: '10px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      background: filterArea.includes(a.value) ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+                      borderBottom: '1px solid rgba(139, 92, 246, 0.1)'
+                    }}
+                  >
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '4px',
+                      border: filterArea.includes(a.value) ? '2px solid #10b981' : '2px solid #64748b',
+                      background: filterArea.includes(a.value) ? '#10b981' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {filterArea.includes(a.value) && <span style={{ color: 'white', fontSize: '10px', fontWeight: 'bold' }}>✓</span>}
+                    </div>
+                    <span style={{ color: 'white', fontSize: '13px' }}>{a.label}</span>
+                  </div>
+                ))}
+                {areasDisponiveis.length === 0 && (
+                  <div style={{ padding: '10px 14px', color: '#64748b', fontSize: '13px' }}>Nenhuma área</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2109,6 +2559,7 @@ export default function Analytics() {
       {activeTab === 'usuarios' && renderTabUsuarios()}
       {activeTab === 'churn' && renderTabChurn()}
       {activeTab === 'inativos' && renderTabInativos()}
+      {activeTab === 'sazonalidade' && renderTabSazonalidade()}
     </div>
   );
 }

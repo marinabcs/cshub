@@ -290,7 +290,7 @@ function calcularEngajamento(metricas) {
  * @returns {Object} { segmento, motivo, fatores }
  */
 // Mapa mês JS (0-11) → chave do calendário de campanhas
-const MESES_KEYS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+export const MESES_KEYS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 export function getSazonalidadeMesAtual(cliente) {
   const calendario = cliente?.calendario_campanhas;

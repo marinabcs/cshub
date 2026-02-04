@@ -231,12 +231,12 @@ SE tipo_conta == "google_gratuito":
 **Dependência:** 1.3 ✅ (já concluído) + 3.4 (calendário)
 
 **O que fazer:**
-- [ ] Filtro por área em todas as abas do Analytics
-- [ ] Dashboard de sazonalidade: uso ao longo do ano por área
-- [ ] Detectar padrões (Educação = pico jan-mar, Varejo = nov-dez)
-- [ ] Calcular "janela de abordagem ideal" (X dias antes do pico)
-- [ ] Alertas: "Cliente [nome] (Varejo) - sazonalidade em 30 dias"
-- [ ] Comparativo: uso real vs. esperado
+- [x] Filtro por área em todas as abas do Analytics (dropdown multiselect global, filtra clientesFiltrados, threadsFiltradas, alertasFiltrados)
+- [x] Dashboard de sazonalidade: nova aba "Sazonalidade" com visão geral do mês atual (Alta/Normal/Baixa)
+- [x] Detectar padrões: Mapa de calor Áreas × Meses (12 colunas, intensidade por contagem de clientes em alta)
+- [x] Calcular "janela de abordagem ideal" (1 mês antes do pico, ordenado por proximidade, badges AGORA/PRÓXIMO)
+- [x] Alertas: seção de alertas de sazonalidade pendentes (`sazonalidade_alta_inativo`) com link para cliente
+- [x] Comparativo: barra empilhada uso real vs esperado (ativos vs inativos em alta temporada, drill-down lista)
 
 ### 5.2 Melhorias no Analytics
 - [ ] Exportar relatórios PDF/Excel
@@ -469,7 +469,7 @@ SE tipo_conta == "google_gratuito":
 10. Busca de perfil online dos contatos (4.1)
 
 ### Sprint 5 - Inteligência
-11. Análise por área + sazonalidade (5.1)
+11. ~~Análise por área + sazonalidade (5.1)~~ ✅
 12. Melhorias no Analytics (5.2)
 
 ### Sprint 6 - Performance
