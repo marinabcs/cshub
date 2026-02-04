@@ -2936,7 +2936,7 @@ export default function ClienteDetalhe() {
 
               {!isOpenAIConfigured() && (
                 <p style={{ color: '#f59e0b', fontSize: '12px', margin: '8px 0 0 0' }}>
-                  Configure VITE_OPENAI_API_KEY no .env para usar classificação por IA
+                  Classificação por IA indisponível no momento.
                 </p>
               )}
 

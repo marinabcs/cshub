@@ -1,8 +1,9 @@
+import { httpsCallable } from 'firebase/functions';
 import { classificacaoIASchema } from '../validation/thread';
 import { logger } from '../utils/logger';
+import { functions } from './firebase';
 
-// API Key - Carregada via vite.config.js do arquivo .env
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
+const classifyThreadFn = httpsCallable(functions, 'classifyThread');
 
 // Categorias de thread
 export const THREAD_CATEGORIAS = {
@@ -88,88 +89,19 @@ export function getSentimentoInfo(sentimento) {
   return THREAD_SENTIMENTOS[sentimento] || THREAD_SENTIMENTOS.neutro;
 }
 
-// Classificar thread com IA
+// Classificar thread com IA (via Cloud Function)
 export async function classificarThread(conversa, contextoCliente = '') {
-  if (!OPENAI_API_KEY) {
-    throw new Error('VITE_OPENAI_API_KEY não configurada. Adicione no arquivo .env');
-  }
-
-  const prompt = `Analise a seguinte conversa entre uma equipe de Customer Success e um cliente.
-
-CONVERSA:
-${conversa}
-${contextoCliente ? `\nCONTEXTO DO CLIENTE (observações do CS):\n${contextoCliente}\n\nConsidere estas observações ao avaliar sentimento e categoria.\n` : ''}
-Retorne APENAS um JSON válido (sem markdown, sem explicações) com:
-{
-  "categoria": "erro_bug" | "reclamacao" | "problema_tecnico" | "feedback" | "duvida_pergunta" | "solicitacao" | "outro",
-  "sentimento": "positivo" | "neutro" | "negativo" | "urgente",
-  "resumo": "Resumo em 1-2 frases do que foi discutido"
-}
-
-Critérios para CATEGORIA (escolha a mais adequada):
-- erro_bug = cliente reportou erro, bug ou falha no sistema
-- reclamacao = cliente está reclamando ou insatisfeito com o serviço/produto
-- problema_tecnico = dificuldade técnica ou de configuração (não é bug)
-- feedback = sugestão, elogio ou crítica construtiva sobre o produto
-- duvida_pergunta = pergunta sobre como usar uma funcionalidade
-- solicitacao = pedido de feature, recurso ou ajuda específica
-- outro = não se encaixa nas anteriores
-
-Critérios para SENTIMENTO:
-- positivo = cliente satisfeito, agradecendo ou elogiando
-- neutro = conversa normal, sem emoção forte detectada
-- negativo = cliente insatisfeito, frustrado ou reclamando
-- urgente = problema crítico que impede o uso ou precisa atenção imediata`;
-
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'Você é um assistente que classifica conversas de suporte. Responda APENAS com JSON válido.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.3
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error?.message || 'Erro na API da OpenAI');
-    }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-
-    // Parse do JSON (remove possíveis backticks)
-    const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonStr);
-    } catch {
-      logger.warn('Resposta da IA não é JSON válido');
-      return {
-        categoria: 'outro',
-        sentimento: 'neutro',
-        resumo: 'Não foi possível classificar esta conversa.'
-      };
-    }
-
+    const result = await classifyThreadFn({ conversa, contextoCliente });
     // Validar com Zod — campos inválidos recebem fallback automático
-    const resultado = classificacaoIASchema.parse(parsed);
-    return resultado;
+    return classificacaoIASchema.parse(result.data);
   } catch (error) {
     logger.error('Falha na classificação de thread');
     throw new Error('Não foi possível classificar a conversa. Tente novamente.');
   }
 }
 
-// Verificar se a API está configurada
+// Cloud Function sempre disponível quando autenticado
 export function isOpenAIConfigured() {
-  return !!OPENAI_API_KEY;
+  return true;
 }

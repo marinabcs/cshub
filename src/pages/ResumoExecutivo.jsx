@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
-import { db } from '../services/firebase';
-import { isOpenAIConfigured } from '../services/openai';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../services/firebase';
+
+const generateSummaryFn = httpsCallable(functions, 'generateSummary');
 import {
   FileText, Calendar, Check, ChevronDown, X, Sparkles, Download,
   RefreshCw, AlertTriangle, TrendingUp, TrendingDown, Minus,
@@ -226,11 +228,8 @@ export default function ResumoExecutivo() {
     };
   };
 
-  // Gerar resumo com IA
+  // Gerar resumo com IA (via Cloud Function)
   const gerarResumoIA = async (dados, lang = 'pt') => {
-    const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
-    if (!OPENAI_API_KEY) return { resumo: '', atencao: [], recomendacoes: [] };
-
     const { cliente, threads, metricas, ticketsAbertos } = dados;
 
     // Configuração de idioma para o prompt
@@ -290,30 +289,9 @@ Generate a JSON with:
 Be specific and actionable in recommendations. Focus on usage patterns and conversation topics. Write in ${cfg.lang}.`;
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: cfg.systemMsg },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.5
-        })
-      });
-
-      if (!response.ok) throw new Error('Erro na API');
-
-      const data = await response.json();
-      const content = data.choices[0].message.content;
-      const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
-      return JSON.parse(jsonStr);
+      const result = await generateSummaryFn({ prompt, systemMsg: cfg.systemMsg, lang });
+      return result.data;
     } catch (error) {
-      console.error('Erro ao gerar resumo IA:', error);
       return {
         resumo: cfg.fallbackResumo,
         atencao: ticketsAbertos > 0 ? [`${ticketsAbertos} ${cfg.fallbackAtencao}`] : [],
@@ -761,25 +739,6 @@ Be specific and actionable in recommendations. Focus on usage patterns and conve
               })}
             </div>
           </div>
-
-          {/* Aviso OpenAI */}
-          {!isOpenAIConfigured() && (secoesAtivas.includes('conversas') || secoesAtivas.includes('recomendacoes')) && (
-            <div style={{
-              padding: '12px 16px',
-              background: 'rgba(245, 158, 11, 0.1)',
-              border: '1px solid rgba(245, 158, 11, 0.2)',
-              borderRadius: '10px',
-              marginBottom: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px'
-            }}>
-              <AlertTriangle style={{ width: '18px', height: '18px', color: '#f59e0b' }} />
-              <span style={{ color: '#f59e0b', fontSize: '12px' }}>
-                OpenAI não configurada. Seções com IA terão conteúdo limitado.
-              </span>
-            </div>
-          )}
 
           {/* Erro */}
           {erro && (

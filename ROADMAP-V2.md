@@ -322,26 +322,18 @@ SE tipo_conta == "google_gratuito":
 - [x] `clickup.js`: 3 `throw new Error(error.err)` → mensagens genéricas sem detalhes da API
 - [x] `openai.js`: já sanitizado no 7.2
 
-### 7.5 API Keys expostas no bundle de produção (CRÍTICO)
+### 7.5 ~~API Keys expostas no bundle de produção~~ ✅ CONCLUÍDO
 **Ref SEGURANCA.md:** #3 (CWE-200)
 **Prioridade:** CRÍTICA
-**Risco:** `VITE_OPENAI_API_KEY` e `VITE_CLICKUP_API_KEY` ficam visíveis no JavaScript compilado. Qualquer pessoa pode abrir o DevTools e extrair as chaves.
+**Solução:** Cloud Functions (onCall) com Firebase Secrets
 
-**Situação atual:**
-- `src/services/openai.js` faz `fetch` direto para `api.openai.com` com a key no header `Authorization`
-- `src/services/clickup.js` faz `fetch` direto para `api.clickup.com` com a key no header `Authorization`
-- As chaves são injetadas via `vite.config.js` → `define` → ficam no bundle JS final
-
-**O que fazer (sem Cloud Functions):**
-- [ ] Criar um proxy simples com Vercel Edge Functions, Cloudflare Workers ou Netlify Functions (gratuito)
-- [ ] Mover chamadas OpenAI para o proxy: frontend chama `/api/classify` → proxy chama OpenAI com a key segura
-- [ ] Mover chamadas ClickUp para o proxy: frontend chama `/api/clickup/*` → proxy encaminha
-- [ ] Remover `VITE_OPENAI_API_KEY` e `VITE_CLICKUP_API_KEY` do `vite.config.js` define
-- [ ] Adicionar autenticação no proxy (verificar token Firebase do usuário)
-
-**Alternativa com Cloud Functions (se plano Blaze disponível):**
-- [ ] Criar Cloud Functions `classifyThread` e `clickupProxy`
-- [ ] Usar `firebase-functions` com `onCall` (já verifica auth automaticamente)
+**O que foi feito:**
+- [x] Criadas Cloud Functions `classifyThread`, `clickupProxy` e `generateSummary` em `functions/index.js`
+- [x] API keys movidas para Firebase Secrets (`firebase functions:secrets:set`)
+- [x] Frontend refatorado: `openai.js`, `clickup.js` e `ResumoExecutivo.jsx` usam `httpsCallable`
+- [x] Removidas `VITE_OPENAI_API_KEY` e `VITE_CLICKUP_API_KEY` do `.env` e `vite.config.js`
+- [x] Verificado: zero ocorrências de `sk-proj-` e `pk_` no `dist/` após build
+- [x] Autenticação verificada automaticamente pelo `onCall` (request.auth)
 
 ### 7.6 Validação de parseInt e inputs numéricos
 **Ref SEGURANCA.md:** #9, #14 (CWE-20)
@@ -485,6 +477,7 @@ SE tipo_conta == "google_gratuito":
 17. ~~Validação OpenAI (7.2)~~ ✅
 18. ~~Firebase env vars (7.3)~~ ✅
 19. ~~Sanitização de erros (7.4)~~ ✅
+20. ~~API Keys → Cloud Functions (7.5)~~ ✅ CRÍTICO
 
 ### On Hold (aguardando decisão do time)
 - Cloud Functions (2.1) — precisa plano Blaze

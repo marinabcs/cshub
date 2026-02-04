@@ -15,9 +15,9 @@ export function useClassificarThread() {
     setErro(null);
 
     try {
-      // Verificar se a API está configurada
+      // Verificar se a API está configurada (Cloud Function)
       if (!isOpenAIConfigured()) {
-        throw new Error('API da OpenAI não configurada. Adicione VITE_OPENAI_API_KEY no arquivo .env');
+        throw new Error('Classificação por IA indisponível no momento.');
       }
 
       // Formatar observações do CS como contexto

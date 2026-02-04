@@ -18,9 +18,7 @@ export default defineConfig(({ mode }) => {
       drop: isProduction ? ['console', 'debugger'] : []
     },
     define: {
-      // Expose VITE_ prefixed env vars with fallbacks
-      'import.meta.env.VITE_OPENAI_API_KEY': JSON.stringify(env.VITE_OPENAI_API_KEY || ''),
-      'import.meta.env.VITE_CLICKUP_API_KEY': JSON.stringify(env.VITE_CLICKUP_API_KEY || ''),
+      // Config IDs (não sensíveis) — API keys movidas para Cloud Functions
       'import.meta.env.VITE_CLICKUP_TEAM_ID': JSON.stringify(env.VITE_CLICKUP_TEAM_ID || ''),
       'import.meta.env.VITE_CLICKUP_SPACE_ID': JSON.stringify(env.VITE_CLICKUP_SPACE_ID || ''),
       'import.meta.env.VITE_CLICKUP_FOLDER_ID': JSON.stringify(env.VITE_CLICKUP_FOLDER_ID || ''),

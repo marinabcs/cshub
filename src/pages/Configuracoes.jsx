@@ -190,20 +190,19 @@ export default function Configuracoes() {
   }, []);
 
   const checkIntegrations = async () => {
-    // Check ClickUp
-    const clickUpApiKey = import.meta.env.VITE_CLICKUP_API_KEY;
+    // Check ClickUp (API key agora é via Cloud Function, verificar apenas config IDs)
     const clickUpTeamId = import.meta.env.VITE_CLICKUP_TEAM_ID;
+    const clickUpListId = import.meta.env.VITE_CLICKUP_LIST_ID;
     setClickUpStatus({
-      configured: !!(clickUpApiKey && clickUpTeamId),
-      apiKey: clickUpApiKey ? 'Configurada' : 'Não configurada',
+      configured: !!(clickUpTeamId && clickUpListId),
+      apiKey: 'Via Cloud Function (servidor)',
       teamId: clickUpTeamId || 'Não configurado'
     });
 
-    // Check OpenAI
-    const openAIKey = import.meta.env.VITE_OPENAI_API_KEY;
+    // Check OpenAI (API key agora é via Cloud Function)
     setOpenAIStatus({
-      configured: !!openAIKey,
-      apiKey: openAIKey ? 'Configurada' : 'Não configurada'
+      configured: true,
+      apiKey: 'Via Cloud Function (servidor)'
     });
   };
 

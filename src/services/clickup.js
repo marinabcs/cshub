@@ -1,16 +1,17 @@
-// ClickUp API Integration
+// ClickUp API Integration (via Cloud Function)
+import { httpsCallable } from 'firebase/functions';
 import { logger } from '../utils/logger';
 import { sanitizeError } from '../utils/sanitizeError';
+import { functions } from './firebase';
 
-const CLICKUP_API_KEY = import.meta.env.VITE_CLICKUP_API_KEY || '';
+const clickupProxyFn = httpsCallable(functions, 'clickupProxy');
+
 const CLICKUP_LIST_ID = import.meta.env.VITE_CLICKUP_LIST_ID || '';
 const CLICKUP_TEAM_ID = import.meta.env.VITE_CLICKUP_TEAM_ID || '';
 
-const BASE_URL = 'https://api.clickup.com/api/v2';
-
-// Verificar se ClickUp está configurado
+// Verificar se ClickUp está configurado (LIST_ID é config, não secret)
 export function isClickUpConfigured() {
-  return !!(CLICKUP_API_KEY && CLICKUP_LIST_ID);
+  return !!CLICKUP_LIST_ID;
 }
 
 // Mapear prioridade CS Hub → ClickUp (1=urgente, 2=alta, 3=normal, 4=baixa)
@@ -48,7 +49,7 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
     descricao = montarDescricao(alerta),
     prioridade = PRIORIDADE_MAP[alerta.prioridade] || 3,
     responsavelId = null,
-    responsaveisIds = [], // Array de IDs para múltiplos responsáveis
+    responsaveisIds = [],
     dataVencimento = null,
     listId = null
   } = opcoes;
@@ -76,32 +77,18 @@ export async function criarTarefaClickUp(alerta, opcoes = {}) {
     body.due_date = dueDate.getTime();
   }
 
-  // Usar list ID customizado ou padrão
   const targetListId = listId || CLICKUP_LIST_ID;
 
-  const response = await fetch(`${BASE_URL}/list/${targetListId}/task`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': CLICKUP_API_KEY
-    },
-    body: JSON.stringify(body)
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
+  try {
+    const result = await clickupProxyFn({
+      action: 'createTask',
+      payload: { listId: targetListId, body }
+    });
+    return result.data;
+  } catch (error) {
     logger.error('Erro ao criar tarefa ClickUp', sanitizeError(error));
     throw new Error('Erro ao criar tarefa no ClickUp');
   }
-
-  const tarefa = await response.json();
-
-  return {
-    id: tarefa.id,
-    url: tarefa.url,
-    nome: tarefa.name,
-    status: tarefa.status?.status
-  };
 }
 
 // Cache de membros do ClickUp para evitar múltiplas requisições
@@ -206,7 +193,7 @@ _Criado automaticamente pelo CS Hub - Playbooks_
     const result = await criarTarefaClickUp({}, {
       nome,
       descricao,
-      prioridade: etapa.obrigatoria ? 2 : 3, // Alta para obrigatórias, Normal para opcionais
+      prioridade: etapa.obrigatoria ? 2 : 3,
       dataVencimento: etapa.prazo_data,
       responsaveisIds,
       ...opcoes
@@ -260,34 +247,17 @@ _Criado automaticamente pelo CS Hub_
  * Buscar membros do workspace do ClickUp
  */
 export async function buscarMembrosClickUp() {
-  // Se TEAM_ID não estiver configurado, retornar lista vazia
-  if (!CLICKUP_API_KEY || !CLICKUP_TEAM_ID) {
+  if (!CLICKUP_TEAM_ID) {
     logger.warn('ClickUp TEAM_ID não configurado. Lista de membros indisponível.');
     return [];
   }
 
   try {
-    const response = await fetch(`${BASE_URL}/team/${CLICKUP_TEAM_ID}`, {
-      headers: {
-        'Authorization': CLICKUP_API_KEY
-      }
+    const result = await clickupProxyFn({
+      action: 'getTeamMembers',
+      payload: { teamId: CLICKUP_TEAM_ID }
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      logger.error('Erro ao buscar membros ClickUp', sanitizeError(error));
-      return [];
-    }
-
-    const data = await response.json();
-
-    // Retornar membros do team
-    return (data.team?.members || []).map(m => ({
-      id: m.user.id,
-      nome: m.user.username || m.user.email,
-      email: m.user.email,
-      avatar: m.user.profilePicture
-    }));
+    return result.data;
   } catch (error) {
     logger.error('Erro ao buscar membros ClickUp', sanitizeError(error));
     return [];
@@ -298,22 +268,16 @@ export async function buscarMembrosClickUp() {
  * Buscar detalhes de uma tarefa
  */
 export async function buscarTarefaClickUp(taskId) {
-  if (!CLICKUP_API_KEY) {
-    throw new Error('ClickUp não está configurado.');
-  }
-
-  const response = await fetch(`${BASE_URL}/task/${taskId}`, {
-    headers: {
-      'Authorization': CLICKUP_API_KEY
-    }
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
+  try {
+    const result = await clickupProxyFn({
+      action: 'getTask',
+      payload: { taskId }
+    });
+    return result.data;
+  } catch (error) {
+    logger.error('Erro ao buscar tarefa ClickUp', sanitizeError(error));
     throw new Error('Erro ao buscar tarefa no ClickUp');
   }
-
-  return await response.json();
 }
 
 /**
@@ -322,27 +286,16 @@ export async function buscarTarefaClickUp(taskId) {
  * @param {string} status - Nome do status (PENDENTE, EM ANDAMENTO, RESOLVIDO, IGNORADO, BLOQUEADO)
  */
 export async function atualizarStatusTarefaClickUp(taskId, status) {
-  if (!CLICKUP_API_KEY) {
-    throw new Error('ClickUp não está configurado.');
-  }
-
-  const response = await fetch(`${BASE_URL}/task/${taskId}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': CLICKUP_API_KEY
-    },
-    body: JSON.stringify({
-      status: status.toLowerCase()
-    })
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
+  try {
+    const result = await clickupProxyFn({
+      action: 'updateTaskStatus',
+      payload: { taskId, status }
+    });
+    return result.data;
+  } catch (error) {
+    logger.error('Erro ao atualizar tarefa ClickUp', sanitizeError(error));
     throw new Error('Erro ao atualizar tarefa no ClickUp');
   }
-
-  return await response.json();
 }
 
 // Mapeamento de status CS Hub → ClickUp
