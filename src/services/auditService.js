@@ -59,19 +59,12 @@ function getUsuarioAtual(auth) {
 }
 
 /**
- * Tenta obter o IP do cliente (opcional, pode não funcionar em todos os ambientes)
- * @returns {Promise<string|null>}
+ * Retorna null — IP do cliente não é coletado no frontend.
+ * Caso necessário, obter server-side via Cloud Functions (req.ip).
+ * @returns {Promise<null>}
  */
 async function getClientIP() {
-  try {
-    const response = await fetch('https://api.ipify.org?format=json', {
-      signal: AbortSignal.timeout(2000),
-    });
-    const data = await response.json();
-    return data.ip || null;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 /**

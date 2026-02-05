@@ -5,11 +5,13 @@
  */
 
 import { initializeApp } from 'firebase-admin/app';
-import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { onRequest, onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getAuth } from 'firebase-admin/auth';
 import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import crypto from 'crypto';
 
 // Inicializar Firebase Admin
 initializeApp();
@@ -20,44 +22,64 @@ const db = getFirestore();
 // ============================================
 
 /**
- * Rate limiter em memoria (por instancia de Cloud Function).
- * Reseta no cold start. Adequado para escala pequena.
+ * Rate limiter distribuido usando Firestore.
+ * Persiste entre cold starts e funciona com multiplas instancias.
+ *
+ * Usa collection `_rate_limits` com documentos por uid+endpoint.
+ * Cada documento armazena timestamps dos requests na janela atual.
  */
-const rateLimitMap = new Map();
-
-function checkRateLimit(uid, { maxRequests = 30, windowMs = 60000 } = {}) {
+async function checkRateLimit(uid, { maxRequests = 30, windowMs = 60000, endpoint = 'default' } = {}) {
   const now = Date.now();
+  const docId = `${uid}_${endpoint}`;
+  const ref = db.collection('_rate_limits').doc(docId);
 
-  if (!rateLimitMap.has(uid)) {
-    rateLimitMap.set(uid, { count: 1, windowStart: now });
-    return;
-  }
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const doc = await tx.get(ref);
 
-  const entry = rateLimitMap.get(uid);
+      if (!doc.exists) {
+        tx.set(ref, { count: 1, windowStart: now, updatedAt: Timestamp.now() });
+        return { allowed: true };
+      }
 
-  if (now - entry.windowStart > windowMs) {
-    rateLimitMap.set(uid, { count: 1, windowStart: now });
-    return;
-  }
+      const data = doc.data();
 
-  entry.count++;
-  if (entry.count > maxRequests) {
-    throw new HttpsError(
-      'resource-exhausted',
-      'Muitas requisicoes. Tente novamente em alguns instantes.'
-    );
+      // Janela expirou — resetar
+      if (now - data.windowStart > windowMs) {
+        tx.update(ref, { count: 1, windowStart: now, updatedAt: Timestamp.now() });
+        return { allowed: true };
+      }
+
+      // Dentro da janela — verificar limite
+      if (data.count >= maxRequests) {
+        return { allowed: false };
+      }
+
+      tx.update(ref, { count: FieldValue.increment(1), updatedAt: Timestamp.now() });
+      return { allowed: true };
+    });
+
+    if (!result.allowed) {
+      throw new HttpsError(
+        'resource-exhausted',
+        'Muitas requisicoes. Tente novamente em alguns instantes.'
+      );
+    }
+  } catch (error) {
+    // Se o erro for de rate limit, relancar
+    if (error instanceof HttpsError) throw error;
+    // Se Firestore falhar, logar e permitir (fail-open para nao bloquear o sistema)
+    console.error('Rate limit check falhou, permitindo request:', error.message);
   }
 }
 
-// Limpeza periodica do mapa (a cada 5 minutos)
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitMap.entries()) {
-    if (now - entry.windowStart > 120000) {
-      rateLimitMap.delete(key);
-    }
-  }
-}, 300000);
+/**
+ * Rate limiter simplificado para webhooks (sem uid).
+ * Usa IP ou identificador fixo como chave.
+ */
+async function checkWebhookRateLimit(identifier, { maxRequests = 120, windowMs = 60000 } = {}) {
+  await checkRateLimit(identifier, { maxRequests, windowMs, endpoint: 'webhook' });
+}
 
 /**
  * Verifica se o usuario tem um dos roles permitidos.
@@ -173,6 +195,7 @@ export const setUserRole = onCall({
   region: 'southamerica-east1'
 }, async (request) => {
   await requireRole(request, ['admin', 'super_admin']);
+  await checkRateLimit(request.auth.uid, { maxRequests: 20, windowMs: 60000, endpoint: 'setUserRole' });
 
   const { userId, role } = request.data;
 
@@ -255,6 +278,28 @@ function normalizeStatus(status) {
 }
 
 /**
+ * Verifica assinatura HMAC do webhook do ClickUp.
+ * ClickUp assina os payloads com o webhook secret.
+ */
+function verifyClickUpSignature(req, secret) {
+  const signature = req.headers['x-signature'];
+  if (!signature || !secret) return false;
+
+  const payload = JSON.stringify(req.body);
+  const hash = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+
+  // Comparacao em tempo constante para prevenir timing attacks
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(hash));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Webhook para receber atualizações do ClickUp
  * POST /clickupWebhook
  *
@@ -262,40 +307,51 @@ function normalizeStatus(status) {
  * 1. Vá em Settings > Integrations > Webhooks
  * 2. Crie um novo webhook com a URL desta função
  * 3. Selecione o evento "Task Status Updated"
+ * 4. Configure o secret e salve em: firebase functions:secrets:set CLICKUP_WEBHOOK_SECRET
  */
 export const clickupWebhook = onRequest({
   region: 'southamerica-east1',
-  cors: true
+  cors: false
 }, async (req, res) => {
   // Aceitar apenas POST
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Método não permitido. Use POST.' });
+    res.status(405).json({ error: 'Metodo nao permitido' });
     return;
   }
 
-  console.log('='.repeat(60));
-  console.log('CLICKUP WEBHOOK RECEBIDO');
-  console.log(`Timestamp: ${new Date().toISOString()}`);
-  console.log('='.repeat(60));
+  // Verificar assinatura HMAC do ClickUp (quando configurado)
+  const webhookSecret = process.env.CLICKUP_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    if (!verifyClickUpSignature(req, webhookSecret)) {
+      console.warn('Webhook rejeitado: assinatura invalida');
+      res.status(401).json({ error: 'Assinatura invalida' });
+      return;
+    }
+  } else {
+    console.warn('CLICKUP_WEBHOOK_SECRET nao configurado — verificacao de assinatura desativada');
+  }
+
+  // Rate limiting por IP
+  const clientIp = req.headers['x-forwarded-for'] || req.ip || 'unknown';
+  try {
+    await checkWebhookRateLimit(clientIp, { maxRequests: 120, windowMs: 60000 });
+  } catch (error) {
+    res.status(429).json({ error: 'Muitas requisicoes' });
+    return;
+  }
 
   try {
     const payload = req.body;
 
-    // Log do payload para debug
-    console.log('Evento:', payload.event);
-    console.log('Task ID:', payload.task_id);
-
     // Verificar se é um evento de mudança de status
     if (payload.event !== 'taskStatusUpdated' && payload.event !== 'taskUpdated') {
-      console.log('Evento ignorado (não é atualização de status)');
       res.status(200).json({ success: true, message: 'Evento ignorado' });
       return;
     }
 
     const taskId = payload.task_id;
-    if (!taskId) {
-      console.log('Task ID não encontrado no payload');
-      res.status(400).json({ error: 'Task ID não encontrado' });
+    if (!taskId || typeof taskId !== 'string' || taskId.length > 100) {
+      res.status(400).json({ error: 'Task ID invalido' });
       return;
     }
 
@@ -303,7 +359,7 @@ export const clickupWebhook = onRequest({
     // ClickUp envia history_items com as mudanças
     let novoStatusClickUp = null;
 
-    if (payload.history_items && payload.history_items.length > 0) {
+    if (payload.history_items && Array.isArray(payload.history_items) && payload.history_items.length > 0) {
       const statusChange = payload.history_items.find(
         item => item.field === 'status' || item.field === 'task_status'
       );
@@ -317,33 +373,27 @@ export const clickupWebhook = onRequest({
       novoStatusClickUp = payload.status.status || payload.status;
     }
 
-    if (!novoStatusClickUp) {
-      console.log('Novo status não encontrado no payload');
-      res.status(200).json({ success: true, message: 'Status não alterado' });
+    if (!novoStatusClickUp || typeof novoStatusClickUp !== 'string') {
+      res.status(200).json({ success: true, message: 'Status nao alterado' });
       return;
     }
-
-    console.log('Novo status ClickUp:', novoStatusClickUp);
 
     // Mapear para status do CS Hub
     const novoStatusCSHub = CLICKUP_STATUS_MAP[normalizeStatus(novoStatusClickUp)];
 
     if (!novoStatusCSHub) {
-      console.log(`Status "${novoStatusClickUp}" não mapeado, ignorando`);
-      res.status(200).json({ success: true, message: 'Status não mapeado' });
+      res.status(200).json({ success: true, message: 'Status nao mapeado' });
       return;
     }
-
-    console.log('Novo status CS Hub:', novoStatusCSHub);
 
     // Buscar alerta pelo clickup_task_id
     const alertasSnap = await db.collection('alertas')
       .where('clickup_task_id', '==', taskId)
+      .limit(5)
       .get();
 
     if (alertasSnap.empty) {
-      console.log(`Nenhum alerta encontrado com clickup_task_id: ${taskId}`);
-      res.status(200).json({ success: true, message: 'Alerta não encontrado' });
+      res.status(200).json({ success: true, message: 'Alerta nao encontrado' });
       return;
     }
 
@@ -354,7 +404,6 @@ export const clickupWebhook = onRequest({
 
       // Só atualizar se o status for diferente
       if (alertaAtual.status === novoStatusCSHub) {
-        console.log(`Alerta ${alertaDoc.id} já está com status ${novoStatusCSHub}`);
         continue;
       }
 
@@ -371,26 +420,17 @@ export const clickupWebhook = onRequest({
       }
 
       await alertaDoc.ref.update(updateData);
-      console.log(`Alerta ${alertaDoc.id} atualizado: ${alertaAtual.status} -> ${novoStatusCSHub}`);
       atualizados++;
     }
 
-    console.log(`Total de alertas atualizados: ${atualizados}`);
-    console.log('='.repeat(60));
-
     res.status(200).json({
       success: true,
-      message: `${atualizados} alerta(s) atualizado(s)`,
-      taskId,
-      novoStatus: novoStatusCSHub
+      message: `${atualizados} alerta(s) atualizado(s)`
     });
 
   } catch (error) {
-    console.error('Erro no webhook ClickUp:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    console.error('Erro no webhook ClickUp:', error.message);
+    res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
@@ -430,12 +470,20 @@ export const classifyThread = onCall({
   secrets: ['OPENAI_API_KEY']
 }, async (request) => {
   await requireRole(request, ['cs', 'gestor', 'admin', 'super_admin']);
-  checkRateLimit(request.auth.uid, { maxRequests: 30, windowMs: 60000 });
+  await checkRateLimit(request.auth.uid, { maxRequests: 30, windowMs: 60000, endpoint: 'classifyThread' });
 
   const { conversa, contextoCliente } = request.data;
 
   if (!conversa || typeof conversa !== 'string') {
     throw new HttpsError('invalid-argument', 'Campo "conversa" é obrigatório');
+  }
+
+  if (conversa.length > 50000) {
+    throw new HttpsError('invalid-argument', 'Campo "conversa" excede o limite de 50.000 caracteres');
+  }
+
+  if (contextoCliente && (typeof contextoCliente !== 'string' || contextoCliente.length > 5000)) {
+    throw new HttpsError('invalid-argument', 'Campo "contextoCliente" invalido ou excede 5.000 caracteres');
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -510,18 +558,30 @@ export const clickupProxy = onCall({
   secrets: ['CLICKUP_API_KEY']
 }, async (request) => {
   await requireRole(request, ['cs', 'gestor', 'admin', 'super_admin']);
-  checkRateLimit(request.auth.uid, { maxRequests: 60, windowMs: 60000 });
+  await checkRateLimit(request.auth.uid, { maxRequests: 60, windowMs: 60000, endpoint: 'clickupProxy' });
 
   const { action, payload } = request.data;
 
-  if (!action) {
-    throw new HttpsError('invalid-argument', 'Campo "action" é obrigatório');
+  const VALID_ACTIONS = ['createTask', 'getTask', 'updateTaskStatus', 'getTeamMembers'];
+  if (!action || typeof action !== 'string' || !VALID_ACTIONS.includes(action)) {
+    throw new HttpsError('invalid-argument', 'Campo "action" invalido');
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    throw new HttpsError('invalid-argument', 'Campo "payload" é obrigatório');
   }
 
   const apiKey = process.env.CLICKUP_API_KEY;
   if (!apiKey) {
     throw new HttpsError('failed-precondition', 'CLICKUP_API_KEY não configurada no servidor');
   }
+
+  // Validar que IDs no payload sao strings alfanumericas com tamanho razoavel
+  const validateId = (id, fieldName) => {
+    if (!id || typeof id !== 'string' || id.length > 100) {
+      throw new HttpsError('invalid-argument', `${fieldName} invalido`);
+    }
+  };
 
   const CLICKUP_BASE = 'https://api.clickup.com/api/v2';
   const apiHeaders = {
@@ -536,6 +596,7 @@ export const clickupProxy = onCall({
         if (!listId || !body) {
           throw new HttpsError('invalid-argument', 'listId e body são obrigatórios');
         }
+        validateId(listId, 'listId');
         const res = await fetch(`${CLICKUP_BASE}/list/${listId}/task`, {
           method: 'POST',
           headers: apiHeaders,
@@ -556,9 +617,7 @@ export const clickupProxy = onCall({
 
       case 'getTask': {
         const { taskId } = payload;
-        if (!taskId) {
-          throw new HttpsError('invalid-argument', 'taskId é obrigatório');
-        }
+        validateId(taskId, 'taskId');
         const res = await fetch(`${CLICKUP_BASE}/task/${taskId}`, { headers: apiHeaders });
         if (!res.ok) {
           throw new HttpsError('internal', 'Erro ao buscar tarefa no ClickUp');
@@ -568,8 +627,9 @@ export const clickupProxy = onCall({
 
       case 'updateTaskStatus': {
         const { taskId, status } = payload;
-        if (!taskId || !status) {
-          throw new HttpsError('invalid-argument', 'taskId e status são obrigatórios');
+        validateId(taskId, 'taskId');
+        if (!status || typeof status !== 'string' || status.length > 50) {
+          throw new HttpsError('invalid-argument', 'status invalido');
         }
         const res = await fetch(`${CLICKUP_BASE}/task/${taskId}`, {
           method: 'PUT',
@@ -584,9 +644,7 @@ export const clickupProxy = onCall({
 
       case 'getTeamMembers': {
         const { teamId } = payload;
-        if (!teamId) {
-          throw new HttpsError('invalid-argument', 'teamId é obrigatório');
-        }
+        validateId(teamId, 'teamId');
         const res = await fetch(`${CLICKUP_BASE}/team/${teamId}`, { headers: apiHeaders });
         if (!res.ok) {
           console.error('ClickUp getTeamMembers error:', res.status);
@@ -602,7 +660,7 @@ export const clickupProxy = onCall({
       }
 
       default:
-        throw new HttpsError('invalid-argument', `Ação desconhecida: ${action}`);
+        throw new HttpsError('invalid-argument', 'Acao desconhecida');
     }
   } catch (error) {
     if (error instanceof HttpsError) throw error;
@@ -620,12 +678,20 @@ export const generateSummary = onCall({
   secrets: ['OPENAI_API_KEY']
 }, async (request) => {
   await requireRole(request, ['cs', 'gestor', 'admin', 'super_admin']);
-  checkRateLimit(request.auth.uid, { maxRequests: 30, windowMs: 60000 });
+  await checkRateLimit(request.auth.uid, { maxRequests: 30, windowMs: 60000, endpoint: 'generateSummary' });
 
   const { prompt, systemMsg, lang } = request.data;
 
   if (!prompt || typeof prompt !== 'string') {
     throw new HttpsError('invalid-argument', 'Campo "prompt" é obrigatório');
+  }
+
+  if (prompt.length > 80000) {
+    throw new HttpsError('invalid-argument', 'Campo "prompt" excede o limite de 80.000 caracteres');
+  }
+
+  if (systemMsg && (typeof systemMsg !== 'string' || systemMsg.length > 5000)) {
+    throw new HttpsError('invalid-argument', 'Campo "systemMsg" invalido ou excede 5.000 caracteres');
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -670,4 +736,276 @@ export const generateSummary = onCall({
     console.error('Erro na geração de resumo:', error.message);
     throw new HttpsError('internal', 'Não foi possível gerar o resumo');
   }
+});
+
+// ============================================
+// RECALCULAR SAUDE DIARIA - SCHEDULED (7h BRT)
+// ============================================
+
+const MESES_KEYS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+const LEGACY_SEGMENT_MAP = {
+  'GROW': 'CRESCIMENTO',
+  'NURTURE': 'ESTAVEL',
+  'WATCH': 'ALERTA',
+  'RESCUE': 'RESGATE'
+};
+
+function normalizarSegmento(seg) {
+  return LEGACY_SEGMENT_MAP[seg] || seg || 'ESTAVEL';
+}
+
+function calcularDiasSemUso(cliente, metricas) {
+  const now = new Date();
+  let ultima = null;
+
+  if (metricas?.ultima_atividade) {
+    ultima = metricas.ultima_atividade.toDate
+      ? metricas.ultima_atividade.toDate()
+      : new Date(metricas.ultima_atividade);
+  }
+  if (!ultima && cliente?.ultima_interacao) {
+    ultima = cliente.ultima_interacao.toDate
+      ? cliente.ultima_interacao.toDate()
+      : new Date(cliente.ultima_interacao);
+  }
+  if (!ultima && cliente?.updated_at) {
+    ultima = cliente.updated_at.toDate
+      ? cliente.updated_at.toDate()
+      : new Date(cliente.updated_at);
+  }
+  if (!ultima) return 999;
+  return Math.max(0, Math.floor((now - ultima) / (1000 * 60 * 60 * 24)));
+}
+
+function calcularFrequenciaUso(metricas, totalUsers = 1) {
+  if (!metricas) return 'sem_uso';
+  const { logins = 0, dias_ativos = 0 } = metricas;
+  const loginsPerUser = logins / Math.max(totalUsers, 1);
+  if (dias_ativos >= 20 || loginsPerUser >= 15) return 'frequente';
+  if (dias_ativos >= 8 || loginsPerUser >= 6) return 'regular';
+  if (dias_ativos >= 3 || loginsPerUser >= 2) return 'irregular';
+  if (dias_ativos >= 1 || logins > 0) return 'raro';
+  return 'sem_uso';
+}
+
+function temReclamacoesRecentes(threads) {
+  if (!threads || threads.length === 0) return false;
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  return threads.some(t => {
+    const date = t.updated_at?.toDate?.()
+      || (t.updated_at?._seconds ? new Date(t.updated_at._seconds * 1000) : null)
+      || (t.updated_at ? new Date(t.updated_at) : null);
+    if (!date || date < thirtyDaysAgo) return false;
+    return t.sentimento === 'negativo' || t.sentimento === 'urgente' ||
+      t.categoria === 'reclamacao' || t.categoria === 'erro_bug';
+  });
+}
+
+function temReclamacaoGrave(threads) {
+  if (!threads || threads.length === 0) return false;
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  return threads.some(t => {
+    const date = t.updated_at?.toDate?.()
+      || (t.updated_at?._seconds ? new Date(t.updated_at._seconds * 1000) : null)
+      || (t.updated_at ? new Date(t.updated_at) : null);
+    return date && date >= sevenDaysAgo && t.sentimento === 'urgente';
+  });
+}
+
+function calcularEngajamento(metricas) {
+  if (!metricas) return 'baixo';
+  const { pecas_criadas = 0, uso_ai_total = 0, downloads = 0 } = metricas;
+  const score = (pecas_criadas * 2) + (uso_ai_total * 1.5) + downloads;
+  if (score >= 50) return 'alto';
+  if (score >= 15) return 'medio';
+  return 'baixo';
+}
+
+function calcularSegmentoCS(cliente, threads, metricas, totalUsers) {
+  const diasSemUso = calcularDiasSemUso(cliente, metricas);
+  const frequenciaUso = calcularFrequenciaUso(metricas, totalUsers);
+  const reclamacoesRecentes = temReclamacoesRecentes(threads);
+  const reclamacaoGrave = temReclamacaoGrave(threads);
+  const engajamento = calcularEngajamento(metricas);
+
+  const tipoConta = cliente?.tipo_conta || 'pagante';
+  const isGratuito = tipoConta === 'google_gratuito';
+  const baseResgate = isGratuito ? 60 : 30;
+  const baseAlerta = isGratuito ? 28 : 14;
+
+  const calendario = cliente?.calendario_campanhas;
+  const mesKey = MESES_KEYS[new Date().getMonth()];
+  const sazonalidade = calendario?.[mesKey] || 'normal';
+  const emBaixa = sazonalidade === 'baixa';
+  const emAlta = sazonalidade === 'alta';
+
+  const thresholdResgate = emBaixa ? baseResgate * 2 : baseResgate;
+  const thresholdAlerta = emBaixa ? baseAlerta * 2 : baseAlerta;
+
+  const emAvisoPrevio = cliente?.status === 'aviso_previo';
+  const championSaiu = cliente?.champion_saiu === true;
+
+  const ultimaInteracao = cliente?.ultima_interacao_data;
+  const diasSemInteracao = ultimaInteracao
+    ? Math.floor((Date.now() - (ultimaInteracao.toDate ? ultimaInteracao.toDate() : new Date(ultimaInteracao)).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  // RESGATE
+  if (emAvisoPrevio) return { segmento: 'RESGATE', motivo: 'Em aviso previo' };
+  if (diasSemUso >= thresholdResgate) return { segmento: 'RESGATE', motivo: `${diasSemUso} dias sem uso` };
+  if (reclamacaoGrave) return { segmento: 'RESGATE', motivo: 'Reclamacao grave recente' };
+  if (frequenciaUso === 'sem_uso' && reclamacoesRecentes) return { segmento: 'RESGATE', motivo: 'Sem uso + reclamacoes' };
+
+  // ALERTA
+  if (diasSemUso >= thresholdAlerta) return { segmento: 'ALERTA', motivo: `${diasSemUso} dias sem uso` };
+  if (reclamacoesRecentes) return { segmento: 'ALERTA', motivo: 'Reclamacoes recentes' };
+  if (championSaiu) return { segmento: 'ALERTA', motivo: 'Champion saiu' };
+  if (frequenciaUso === 'raro' || frequenciaUso === 'sem_uso') return { segmento: 'ALERTA', motivo: 'Uso raro ou inexistente' };
+  if (frequenciaUso === 'irregular') return { segmento: 'ALERTA', motivo: 'Uso irregular' };
+  if ((cliente?.tags_problema || []).some(t => t.tag === 'Risco de Churn')) return { segmento: 'ALERTA', motivo: 'Tag "Risco de Churn" ativa' };
+  const bugsAbertos = (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length;
+  if (bugsAbertos >= 3) return { segmento: 'ALERTA', motivo: `${bugsAbertos} bugs abertos` };
+  if (emAlta && diasSemUso >= 7 && (frequenciaUso === 'raro' || frequenciaUso === 'irregular' || frequenciaUso === 'sem_uso')) {
+    return { segmento: 'ALERTA', motivo: 'Mes de alta temporada mas cliente inativo' };
+  }
+
+  // Zero producao
+  if ((metricas?.pecas_criadas || 0) === 0 && (metricas?.downloads || 0) === 0 && (metricas?.uso_ai_total || 0) === 0) {
+    if (diasSemUso >= 7) return { segmento: 'RESGATE', motivo: 'Sem producao e sem uso recente' };
+    return { segmento: 'ALERTA', motivo: 'Login sem producao' };
+  }
+
+  // CRESCIMENTO
+  const temTagsProblema = (cliente?.tags_problema || []).length > 0;
+  const temBugsAbertos = bugsAbertos > 0;
+  const semContatoRecente = diasSemInteracao !== null && diasSemInteracao > 60;
+  if (frequenciaUso === 'frequente' && (engajamento === 'alto' || engajamento === 'medio') && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos && !semContatoRecente) {
+    return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + bom engajamento' };
+  }
+
+  // ESTAVEL
+  return { segmento: 'ESTAVEL', motivo: 'Cliente estavel' };
+}
+
+/**
+ * Recalcula saude (segmento_cs) de todos os clientes ativos.
+ * Roda diariamente as 7h horario de Brasilia.
+ */
+export const recalcularSaudeDiaria = onSchedule({
+  schedule: '0 7 * * *',
+  timeZone: 'America/Sao_Paulo',
+  region: 'southamerica-east1',
+  timeoutSeconds: 540,
+  memory: '512MiB'
+}, async () => {
+  const clientesSnap = await db.collection('clientes').get();
+  const clientes = clientesSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(c => {
+      const st = c.status === 'onboarding' ? 'ativo' : (c.status || 'ativo');
+      return st !== 'inativo' && st !== 'cancelado' && !c.segmento_override;
+    });
+
+  if (clientes.length === 0) {
+    console.log('Nenhum cliente ativo para recalcular');
+    return;
+  }
+
+  const thirtyDaysAgo = Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+  let updatedCount = 0;
+  const BATCH_SIZE = 5;
+
+  for (let i = 0; i < clientes.length; i += BATCH_SIZE) {
+    const chunk = clientes.slice(i, i + BATCH_SIZE);
+
+    const results = await Promise.all(chunk.map(async (cliente) => {
+      try {
+        let teamIds = cliente.times || [];
+        if (teamIds.length === 0 && cliente.team_id) teamIds = [cliente.team_id];
+        if (teamIds.length === 0) teamIds = [cliente.id];
+
+        // Buscar threads, metricas e usuarios em paralelo
+        const threadPromises = [];
+        const metricasPromises = [];
+        const usuariosPromises = [];
+
+        for (let j = 0; j < teamIds.length; j += 10) {
+          const ids = teamIds.slice(j, j + 10);
+          threadPromises.push(
+            db.collection('threads').where('team_id', 'in', ids).get().catch(() => ({ docs: [] }))
+          );
+          metricasPromises.push(
+            db.collection('metricas_diarias').where('team_id', 'in', ids).where('data', '>=', thirtyDaysAgo).get().catch(() => ({ docs: [] }))
+          );
+          usuariosPromises.push(
+            db.collection('usuarios_lookup').where('team_id', 'in', ids).get().catch(() => ({ docs: [] }))
+          );
+        }
+
+        const [threadSnaps, metricasSnaps, usuariosSnaps] = await Promise.all([
+          Promise.all(threadPromises),
+          Promise.all(metricasPromises),
+          Promise.all(usuariosPromises)
+        ]);
+
+        const threads = threadSnaps.flatMap(s => s.docs.map(d => d.data()));
+        const metricasRaw = metricasSnaps.flatMap(s => s.docs.map(d => d.data()));
+        const totalUsers = Math.max(usuariosSnaps.reduce((acc, s) => acc + s.docs.length, 0), 1);
+
+        // Agregar metricas dos ultimos 30 dias
+        const metricas = metricasRaw.reduce((acc, d) => {
+          const dataDate = d.data?.toDate?.() || (d.data ? new Date(d.data) : null);
+          const temAtividade = (d.logins || 0) > 0 || (d.pecas_criadas || 0) > 0 || (d.downloads || 0) > 0 || (d.uso_ai_total || 0) > 0;
+          return {
+            logins: acc.logins + (d.logins || 0),
+            pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
+            downloads: acc.downloads + (d.downloads || 0),
+            uso_ai_total: acc.uso_ai_total + (d.uso_ai_total || 0),
+            dias_ativos: acc.dias_ativos + (temAtividade ? 1 : 0),
+            ultima_atividade: dataDate && (!acc.ultima_atividade || dataDate > acc.ultima_atividade) ? dataDate : acc.ultima_atividade
+          };
+        }, { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0, dias_ativos: 0, ultima_atividade: null });
+
+        const resultado = calcularSegmentoCS(cliente, threads, metricas, totalUsers);
+        const segmentoAtual = normalizarSegmento(cliente.segmento_cs);
+
+        return {
+          clienteId: cliente.id,
+          novoSegmento: resultado.segmento,
+          motivo: resultado.motivo,
+          changed: resultado.segmento !== segmentoAtual,
+          segmentoAnterior: segmentoAtual
+        };
+      } catch (err) {
+        console.error(`Erro ao recalcular ${cliente.id}:`, err.message);
+        return null;
+      }
+    }));
+
+    // Batch write
+    const batch = db.batch();
+    let batchCount = 0;
+
+    for (const r of results) {
+      if (!r) continue;
+      const ref = db.collection('clientes').doc(r.clienteId);
+      if (r.changed) {
+        batch.update(ref, {
+          segmento_cs: r.novoSegmento,
+          segmento_motivo: r.motivo,
+          segmento_recalculado_em: Timestamp.now(),
+          segmento_anterior: r.segmentoAnterior
+        });
+        updatedCount++;
+      } else {
+        batch.update(ref, { segmento_recalculado_em: Timestamp.now() });
+      }
+      batchCount++;
+    }
+
+    if (batchCount > 0) await batch.commit();
+  }
+
+  console.log(`Saude recalculada: ${clientes.length} clientes processados, ${updatedCount} atualizados`);
 });

@@ -6,12 +6,6 @@ export const CLIENTE_STATUS = {
     description: 'Cliente em operação normal',
     color: '#10b981', // verde
   },
-  onboarding: {
-    value: 'onboarding',
-    label: 'Onboarding',
-    description: 'Cliente em fase de implantação',
-    color: '#3b82f6', // azul
-  },
   aviso_previo: {
     value: 'aviso_previo',
     label: 'Em Aviso Prévio',
@@ -35,7 +29,6 @@ export const CLIENTE_STATUS = {
 // Lista ordenada de status para selects
 export const STATUS_OPTIONS = [
   CLIENTE_STATUS.ativo,
-  CLIENTE_STATUS.onboarding,
   CLIENTE_STATUS.aviso_previo,
   CLIENTE_STATUS.inativo,
   CLIENTE_STATUS.cancelado,
@@ -45,7 +38,7 @@ export const STATUS_OPTIONS = [
 export const DEFAULT_STATUS = 'ativo';
 
 // Status que devem ser exibidos por padrão (excluindo inativos e cancelados)
-export const DEFAULT_VISIBLE_STATUS = ['ativo', 'onboarding', 'aviso_previo'];
+export const DEFAULT_VISIBLE_STATUS = ['ativo', 'aviso_previo'];
 
 // Funções utilitárias
 export function getStatusColor(status) {

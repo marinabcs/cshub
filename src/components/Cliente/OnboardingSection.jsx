@@ -1,19 +1,33 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MODULOS, MODULOS_ORDEM, PLANO_STATUS, SESSAO_STATUS } from '../../constants/onboarding';
-import { buscarPlanoAtivo, atualizarSessao, marcarFirstValue, marcarTutorialEnviado, concluirOnboarding } from '../../services/onboarding';
+import { useAuth } from '../../contexts/AuthContext';
+import { buscarPlanoAtivo, buscarPlanosCliente, atualizarSessao, marcarFirstValue, marcarTutorialEnviado, concluirOnboarding, excluirPlano, adicionarComentarioFirstValue } from '../../services/onboarding';
 import { calculateProgress } from '../../utils/onboardingCalculator';
+import { Timestamp, collection, getDocs } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 import {
   GraduationCap, CheckCircle, Circle, Clock, Send, Calendar,
-  Monitor, Users, Award, ChevronDown, ChevronUp, PlayCircle
+  Monitor, Users, Award, ChevronDown, ChevronUp, PlayCircle, Pencil, Trash2,
+  MessageSquare, Plus, History
 } from 'lucide-react';
 
 export default function OnboardingSection({ clienteId }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [plano, setPlano] = useState(null);
   const [loading, setLoading] = useState(true);
   const [atualizando, setAtualizando] = useState(null);
   const [expandedSessao, setExpandedSessao] = useState(null);
+  const [confirmExcluir, setConfirmExcluir] = useState(false);
+  const [editandoData, setEditandoData] = useState(null);
+  const [expandedFV, setExpandedFV] = useState(null);
+  const [novoComentario, setNovoComentario] = useState('');
+  const [showHandoffModal, setShowHandoffModal] = useState(false);
+  const [usuariosSistema, setUsuariosSistema] = useState([]);
+  const [handoffResponsaveis, setHandoffResponsaveis] = useState([]);
+  const [historico, setHistorico] = useState([]);
+  const [showHistorico, setShowHistorico] = useState(false);
 
   useEffect(() => {
     loadPlano();
@@ -21,8 +35,12 @@ export default function OnboardingSection({ clienteId }) {
 
   async function loadPlano() {
     setLoading(true);
-    const p = await buscarPlanoAtivo(clienteId);
+    const [p, todos] = await Promise.all([
+      buscarPlanoAtivo(clienteId),
+      buscarPlanosCliente(clienteId)
+    ]);
     setPlano(p);
+    setHistorico(todos.filter(pl => pl.status !== 'em_andamento'));
     setLoading(false);
   }
 
@@ -59,10 +77,85 @@ export default function OnboardingSection({ clienteId }) {
     setAtualizando(null);
   }
 
-  async function handleHandoff() {
+  async function handleAbrirHandoff() {
+    // Carregar usuários do sistema para seleção de responsáveis
+    try {
+      const snap = await getDocs(collection(db, 'usuarios_sistema'));
+      const users = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => u.ativo !== false)
+        .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+      setUsuariosSistema(users);
+    } catch {
+      // silenciar
+    }
+    setHandoffResponsaveis([]);
+    setShowHandoffModal(true);
+  }
+
+  function handleToggleResponsavel(u) {
+    setHandoffResponsaveis(prev => {
+      const exists = prev.find(r => r.email === u.email);
+      if (exists) return prev.filter(r => r.email !== u.email);
+      return [...prev, { email: u.email, nome: u.nome }];
+    });
+  }
+
+  async function handleConfirmarHandoff() {
     setAtualizando('handoff');
     try {
-      await concluirOnboarding(clienteId, plano.id);
+      await concluirOnboarding(clienteId, plano.id, handoffResponsaveis);
+      setShowHandoffModal(false);
+      await loadPlano();
+    } catch {
+      // erro logado
+    }
+    setAtualizando(null);
+  }
+
+  async function handleEditar() {
+    setAtualizando('editar');
+    try {
+      await excluirPlano(clienteId, plano.id);
+      navigate(`/onboarding/${clienteId}`);
+    } catch {
+      // erro logado
+    }
+    setAtualizando(null);
+  }
+
+  async function handleSalvarData(sessaoNum, novaData) {
+    setAtualizando(`data-${sessaoNum}`);
+    try {
+      await atualizarSessao(clienteId, plano.id, sessaoNum, {
+        data_sugerida: Timestamp.fromDate(new Date(novaData + 'T12:00:00'))
+      });
+      await loadPlano();
+      setEditandoData(null);
+    } catch {
+      // erro logado
+    }
+    setAtualizando(null);
+  }
+
+  async function handleAdicionarComentario(moduloId) {
+    if (!novoComentario.trim()) return;
+    setAtualizando(`comment-${moduloId}`);
+    try {
+      await adicionarComentarioFirstValue(clienteId, plano.id, moduloId, novoComentario.trim(), user);
+      setNovoComentario('');
+      await loadPlano();
+    } catch {
+      // erro logado
+    }
+    setAtualizando(null);
+  }
+
+  async function handleExcluir() {
+    setAtualizando('excluir');
+    try {
+      await excluirPlano(clienteId, plano.id);
+      setConfirmExcluir(false);
       await loadPlano();
     } catch {
       // erro logado
@@ -132,19 +225,48 @@ export default function OnboardingSection({ clienteId }) {
               background: `${statusInfo.color}20`, color: statusInfo.color
             }}>{statusInfo.label}</span>
           </div>
-          {progress.handoffElegivel && plano.status === 'em_andamento' && (
-            <button
-              onClick={handleHandoff}
-              disabled={atualizando === 'handoff'}
-              style={{
-                padding: '8px 16px', background: '#10b981', border: 'none',
-                borderRadius: '10px', color: 'white', fontWeight: '600',
-                cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px'
-              }}
-            >
-              <Award size={14} /> {atualizando === 'handoff' ? 'Concluindo...' : 'Realizar Handoff'}
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {plano.status === 'em_andamento' && (
+              <>
+                <button
+                  onClick={handleEditar}
+                  disabled={atualizando === 'editar'}
+                  style={{
+                    padding: '6px 12px', background: 'rgba(139, 92, 246, 0.1)',
+                    border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px',
+                    color: '#a78bfa', cursor: 'pointer', fontSize: '13px',
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <Pencil size={13} /> {atualizando === 'editar' ? '...' : 'Editar'}
+                </button>
+                <button
+                  onClick={() => setConfirmExcluir(true)}
+                  style={{
+                    padding: '6px 12px', background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px',
+                    color: '#ef4444', cursor: 'pointer', fontSize: '13px',
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <Trash2 size={13} /> Excluir
+                </button>
+              </>
+            )}
+            {progress.handoffElegivel && plano.status === 'em_andamento' && (
+              <button
+                onClick={handleAbrirHandoff}
+                disabled={atualizando === 'handoff'}
+                style={{
+                  padding: '6px 12px', background: '#10b981', border: 'none',
+                  borderRadius: '10px', color: 'white', fontWeight: '600',
+                  cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px'
+                }}
+              >
+                <Award size={14} /> {atualizando === 'handoff' ? 'Concluindo...' : 'Realizar Handoff'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Barra de progresso */}
@@ -245,6 +367,48 @@ export default function OnboardingSection({ clienteId }) {
                         </div>
                       ))}
                     </div>
+
+                    {/* Editar data */}
+                    {plano.status === 'em_andamento' && (
+                      <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Calendar size={14} color="#64748b" />
+                        <span style={{ color: '#94a3b8', fontSize: '13px' }}>Data:</span>
+                        {editandoData === s.numero ? (
+                          <input
+                            type="date"
+                            defaultValue={dataSugerida ? dataSugerida.toISOString().split('T')[0] : ''}
+                            autoFocus
+                            onBlur={e => {
+                              if (e.target.value) handleSalvarData(s.numero, e.target.value);
+                              else setEditandoData(null);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && e.target.value) handleSalvarData(s.numero, e.target.value);
+                              if (e.key === 'Escape') setEditandoData(null);
+                            }}
+                            style={{
+                              padding: '4px 8px', background: '#0f0a1f', border: '1px solid #3730a3',
+                              borderRadius: '8px', color: 'white', outline: 'none', fontSize: '13px'
+                            }}
+                          />
+                        ) : (
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditandoData(s.numero); }}
+                            disabled={atualizando === `data-${s.numero}`}
+                            style={{
+                              padding: '4px 10px', background: 'rgba(139, 92, 246, 0.1)',
+                              border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px',
+                              color: '#a78bfa', cursor: 'pointer', fontSize: '13px',
+                              display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                          >
+                            {atualizando === `data-${s.numero}` ? '...' : (dataSugerida ? dataSugerida.toLocaleDateString('pt-BR') : 'Definir data')}
+                            <Pencil size={11} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {s.status !== 'concluida' && plano.status === 'em_andamento' && (
                       <button
                         onClick={() => handleConcluirSessao(s.numero)}
@@ -279,35 +443,112 @@ export default function OnboardingSection({ clienteId }) {
           {modulosAoVivo.map(id => {
             const fv = firstValues[id];
             const atingido = fv?.atingido;
+            const comentarios = fv?.comentarios || [];
+            const isExpanded = expandedFV === id;
 
             return (
               <div key={id} style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '12px', background: '#0f0a1f', borderRadius: '10px',
-                border: `1px solid ${atingido ? 'rgba(16, 185, 129, 0.2)' : 'rgba(139, 92, 246, 0.1)'}`
+                background: '#0f0a1f', borderRadius: '10px',
+                border: `1px solid ${atingido ? 'rgba(16, 185, 129, 0.2)' : 'rgba(139, 92, 246, 0.1)'}`,
+                overflow: 'hidden'
               }}>
-                {atingido
-                  ? <CheckCircle size={18} color="#10b981" />
-                  : <Circle size={18} color="#64748b" />
-                }
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: atingido ? '#10b981' : 'white', fontSize: '13px', fontWeight: '500' }}>
-                    {id} - {MODULOS[id]?.nome}
+                <div
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '12px', cursor: 'pointer'
+                  }}
+                  onClick={() => setExpandedFV(isExpanded ? null : id)}
+                >
+                  {atingido
+                    ? <CheckCircle size={18} color="#10b981" />
+                    : <Circle size={18} color="#64748b" />
+                  }
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: atingido ? '#10b981' : 'white', fontSize: '13px', fontWeight: '500' }}>
+                      {id} - {MODULOS[id]?.nome}
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: '12px' }}>{MODULOS[id]?.firstValue}</div>
                   </div>
-                  <div style={{ color: '#64748b', fontSize: '12px' }}>{MODULOS[id]?.firstValue}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {comentarios.length > 0 && (
+                      <span style={{
+                        padding: '2px 6px', borderRadius: '6px', fontSize: '11px',
+                        background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa',
+                        display: 'flex', alignItems: 'center', gap: '3px'
+                      }}>
+                        <MessageSquare size={10} /> {comentarios.length}
+                      </span>
+                    )}
+                    {!atingido && plano.status === 'em_andamento' && (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleMarcarFirstValue(id); }}
+                        disabled={atualizando === id}
+                        style={{
+                          padding: '4px 12px', background: 'rgba(16, 185, 129, 0.1)',
+                          border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px',
+                          color: '#10b981', cursor: 'pointer', fontSize: '12px'
+                        }}
+                      >
+                        {atualizando === id ? '...' : 'Atingido'}
+                      </button>
+                    )}
+                    {isExpanded ? <ChevronUp size={14} color="#64748b" /> : <ChevronDown size={14} color="#64748b" />}
+                  </div>
                 </div>
-                {!atingido && plano.status === 'em_andamento' && (
-                  <button
-                    onClick={() => handleMarcarFirstValue(id)}
-                    disabled={atualizando === id}
-                    style={{
-                      padding: '4px 12px', background: 'rgba(16, 185, 129, 0.1)',
-                      border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px',
-                      color: '#10b981', cursor: 'pointer', fontSize: '12px'
-                    }}
-                  >
-                    {atualizando === id ? '...' : 'Atingido'}
-                  </button>
+
+                {isExpanded && (
+                  <div style={{ padding: '0 12px 12px', borderTop: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                    {/* Comentários existentes */}
+                    {comentarios.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '10px' }}>
+                        {comentarios.map((c, i) => {
+                          const dataComent = c.data?.toDate ? c.data.toDate() : c.data ? new Date(c.data) : null;
+                          return (
+                            <div key={i} style={{
+                              padding: '8px 10px', background: 'rgba(30, 27, 75, 0.4)',
+                              borderRadius: '8px', borderLeft: '3px solid rgba(139, 92, 246, 0.4)'
+                            }}>
+                              <div style={{ color: '#e2e8f0', fontSize: '13px' }}>{c.texto}</div>
+                              <div style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>
+                                {c.autor}{dataComent ? ` • ${dataComent.toLocaleDateString('pt-BR')}` : ''}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Adicionar comentário */}
+                    {plano.status === 'em_andamento' && (
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                        <input
+                          type="text"
+                          placeholder="Adicionar acompanhamento..."
+                          value={expandedFV === id ? novoComentario : ''}
+                          onChange={e => setNovoComentario(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleAdicionarComentario(id); }}
+                          style={{
+                            flex: 1, padding: '8px 12px', background: 'rgba(30, 27, 75, 0.4)',
+                            border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px',
+                            color: 'white', outline: 'none', fontSize: '13px'
+                          }}
+                        />
+                        <button
+                          onClick={() => handleAdicionarComentario(id)}
+                          disabled={!novoComentario.trim() || atualizando === `comment-${id}`}
+                          style={{
+                            padding: '8px 12px', background: 'rgba(139, 92, 246, 0.15)',
+                            border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px',
+                            color: '#a78bfa', cursor: novoComentario.trim() ? 'pointer' : 'default',
+                            display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px',
+                            opacity: novoComentario.trim() ? 1 : 0.5
+                          }}
+                        >
+                          {atualizando === `comment-${id}` ? '...' : <><Plus size={13} /> Adicionar</>}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -377,7 +618,7 @@ export default function OnboardingSection({ clienteId }) {
             Todas as sessões concluídas, first values atingidos e tutoriais enviados.
           </p>
           <button
-            onClick={handleHandoff}
+            onClick={handleAbrirHandoff}
             disabled={atualizando === 'handoff'}
             style={{
               padding: '12px 24px', background: '#10b981', border: 'none',
@@ -412,6 +653,199 @@ export default function OnboardingSection({ clienteId }) {
                 • {progress.totalTutoriais - progress.tutoriaisEnviados} tutorial(is) não enviado(s)
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmação de exclusão */}
+      {confirmExcluir && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }} onClick={() => setConfirmExcluir(false)}>
+          <div style={{
+            background: '#1e1b4b', border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '16px', padding: '24px', width: '400px', maxWidth: '90vw'
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ color: 'white', margin: '0 0 12px', fontSize: '16px' }}>Excluir Plano de Onboarding?</h3>
+            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 24px' }}>
+              O plano será cancelado e não poderá ser reativado. Você poderá criar um novo plano depois.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setConfirmExcluir(false)}
+                style={{
+                  padding: '10px 20px', background: 'rgba(30, 27, 75, 0.4)',
+                  border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
+                  color: 'white', cursor: 'pointer', fontSize: '14px'
+                }}
+              >Cancelar</button>
+              <button
+                onClick={handleExcluir}
+                disabled={atualizando === 'excluir'}
+                style={{
+                  padding: '10px 20px', background: '#ef4444', border: 'none',
+                  borderRadius: '12px', color: 'white', fontWeight: '600',
+                  cursor: 'pointer', fontSize: '14px'
+                }}
+              >{atualizando === 'excluir' ? 'Excluindo...' : 'Excluir'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Histórico de planos anteriores */}
+      {historico.length > 0 && (
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '16px', padding: '24px'
+        }}>
+          <button
+            onClick={() => setShowHistorico(!showHistorico)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', width: '100%',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 0
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <History size={18} color="#64748b" />
+              <h3 style={{ color: '#94a3b8', fontSize: '15px', margin: 0, fontWeight: '500' }}>
+                Histórico ({historico.length} {historico.length === 1 ? 'plano anterior' : 'planos anteriores'})
+              </h3>
+            </div>
+            {showHistorico ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
+          </button>
+
+          {showHistorico && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+              {historico.map(h => {
+                const hStatus = PLANO_STATUS[h.status] || PLANO_STATUS.cancelado;
+                const hProgress = calculateProgress(h);
+                const criado = h.created_at?.toDate ? h.created_at.toDate() : h.created_at ? new Date(h.created_at) : null;
+                const atualizado = h.updated_at?.toDate ? h.updated_at.toDate() : h.updated_at ? new Date(h.updated_at) : null;
+                const hSessoes = h.sessoes || [];
+                const sessoesTotal = hSessoes.length;
+                const sessoesConcluidas = hSessoes.filter(s => s.status === 'concluida').length;
+
+                return (
+                  <div key={h.id} style={{
+                    padding: '14px', background: '#0f0a1f', borderRadius: '12px',
+                    border: '1px solid rgba(139, 92, 246, 0.1)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: '6px', fontSize: '11px',
+                          background: `${hStatus.color}20`, color: hStatus.color
+                        }}>{hStatus.label}</span>
+                        <span style={{ color: '#64748b', fontSize: '12px' }}>
+                          {criado && criado.toLocaleDateString('pt-BR')}
+                          {atualizado && ` — ${atualizado.toLocaleDateString('pt-BR')}`}
+                        </span>
+                      </div>
+                      <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600' }}>{hProgress.percentual}%</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '16px', color: '#64748b', fontSize: '12px' }}>
+                      <span>{sessoesConcluidas}/{sessoesTotal} sessões</span>
+                      <span>{hProgress.firstValuesAtingidos}/{hProgress.totalFirstValues} first values</span>
+                      <span>{hProgress.tutoriaisEnviados}/{hProgress.totalTutoriais} tutoriais</span>
+                    </div>
+                    {h.created_by && (
+                      <div style={{ color: '#64748b', fontSize: '11px', marginTop: '6px' }}>
+                        Criado por {h.created_by}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal de Handoff */}
+      {showHandoffModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }} onClick={() => setShowHandoffModal(false)}>
+          <div style={{
+            background: '#1e1b4b', border: '1px solid rgba(16, 185, 129, 0.3)',
+            borderRadius: '16px', padding: '24px', width: '480px', maxWidth: '90vw',
+            maxHeight: '80vh', overflowY: 'auto'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <Award size={22} color="#10b981" />
+              <h3 style={{ color: 'white', margin: 0, fontSize: '18px' }}>Realizar Handoff</h3>
+            </div>
+
+            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 20px' }}>
+              Selecione os responsáveis pelo cliente após o onboarding:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px', maxHeight: '240px', overflowY: 'auto' }}>
+              {usuariosSistema.map(u => {
+                const selected = handoffResponsaveis.some(r => r.email === u.email);
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => handleToggleResponsavel(u)}
+                    style={{
+                      padding: '10px 14px', background: selected ? 'rgba(16, 185, 129, 0.15)' : '#0f0a1f',
+                      border: `1px solid ${selected ? 'rgba(16, 185, 129, 0.4)' : 'rgba(139, 92, 246, 0.15)'}`,
+                      borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+                      display: 'flex', alignItems: 'center', gap: '10px'
+                    }}
+                  >
+                    <div style={{
+                      width: '20px', height: '20px', borderRadius: '6px',
+                      border: selected ? 'none' : '2px solid #64748b',
+                      background: selected ? '#10b981' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                    }}>
+                      {selected && <CheckCircle size={14} color="white" />}
+                    </div>
+                    <div>
+                      <div style={{ color: 'white', fontSize: '14px' }}>{u.nome}</div>
+                      <div style={{ color: '#64748b', fontSize: '12px' }}>{u.email}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {handoffResponsaveis.length > 0 && (
+              <div style={{
+                padding: '10px 14px', background: 'rgba(16, 185, 129, 0.1)',
+                borderRadius: '10px', marginBottom: '20px'
+              }}>
+                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Selecionados:</div>
+                <div style={{ color: '#10b981', fontSize: '13px', fontWeight: '500' }}>
+                  {handoffResponsaveis.map(r => r.nome).join(', ')}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowHandoffModal(false)}
+                style={{
+                  padding: '10px 20px', background: 'rgba(30, 27, 75, 0.4)',
+                  border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
+                  color: 'white', cursor: 'pointer', fontSize: '14px'
+                }}
+              >Cancelar</button>
+              <button
+                onClick={handleConfirmarHandoff}
+                disabled={handoffResponsaveis.length === 0 || atualizando === 'handoff'}
+                style={{
+                  padding: '10px 20px', background: handoffResponsaveis.length > 0 ? '#10b981' : '#3730a3',
+                  border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600',
+                  cursor: handoffResponsaveis.length > 0 ? 'pointer' : 'default', fontSize: '14px',
+                  opacity: handoffResponsaveis.length > 0 ? 1 : 0.5
+                }}
+              >{atualizando === 'handoff' ? 'Concluindo...' : 'Confirmar Handoff'}</button>
+            </div>
           </div>
         </div>
       )}

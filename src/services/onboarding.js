@@ -260,7 +260,8 @@ export async function marcarFirstValue(clienteId, planoId, moduloId) {
 
     const plano = planoSnap.data();
     const firstValues = { ...plano.first_values };
-    firstValues[moduloId] = { atingido: true, data: Timestamp.now() };
+    const existing = firstValues[moduloId] || {};
+    firstValues[moduloId] = { ...existing, atingido: true, data: Timestamp.now() };
 
     const progresso = calculateProgress({ ...plano, first_values: firstValues });
 
@@ -274,6 +275,37 @@ export async function marcarFirstValue(clienteId, planoId, moduloId) {
     logger.info(`First value atingido: ${moduloId} no plano ${planoId}`);
   } catch (error) {
     logger.error('Erro ao marcar first value:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Adiciona um comentario de acompanhamento a um first value.
+ */
+export async function adicionarComentarioFirstValue(clienteId, planoId, moduloId, texto, user) {
+  try {
+    const docRef = doc(db, 'clientes', clienteId, 'onboarding_planos', planoId);
+    const planoSnap = await getDoc(docRef);
+    if (!planoSnap.exists()) throw new Error('Plano nao encontrado');
+
+    const plano = planoSnap.data();
+    const firstValues = { ...plano.first_values };
+    const existing = firstValues[moduloId] || { atingido: false, data: null };
+    const comentarios = [...(existing.comentarios || []), {
+      texto,
+      autor: user?.email || 'sistema',
+      data: Timestamp.now()
+    }];
+    firstValues[moduloId] = { ...existing, comentarios };
+
+    await updateDoc(docRef, {
+      first_values: firstValues,
+      updated_at: serverTimestamp()
+    });
+
+    logger.info(`Comentario adicionado ao first value ${moduloId} no plano ${planoId}`);
+  } catch (error) {
+    logger.error('Erro ao adicionar comentario first value:', error.message);
     throw error;
   }
 }
@@ -311,9 +343,30 @@ export async function marcarTutorialEnviado(clienteId, planoId, moduloId) {
 }
 
 /**
- * Conclui o onboarding (handoff).
+ * Exclui (cancela) um plano de onboarding.
  */
-export async function concluirOnboarding(clienteId, planoId) {
+export async function excluirPlano(clienteId, planoId) {
+  try {
+    const docRef = doc(db, 'clientes', clienteId, 'onboarding_planos', planoId);
+    await updateDoc(docRef, {
+      status: 'cancelado',
+      updated_at: serverTimestamp()
+    });
+
+    logger.info(`Plano de onboarding ${planoId} cancelado para cliente ${clienteId}`);
+  } catch (error) {
+    logger.error('Erro ao excluir plano de onboarding:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Conclui o onboarding (handoff).
+ * @param {string} clienteId
+ * @param {string} planoId
+ * @param {Array<{email: string, nome: string}>} novosResponsaveis - responsáveis pós-onboarding
+ */
+export async function concluirOnboarding(clienteId, planoId, novosResponsaveis) {
   try {
     const docRef = doc(db, 'clientes', clienteId, 'onboarding_planos', planoId);
     await updateDoc(docRef, {
@@ -321,6 +374,17 @@ export async function concluirOnboarding(clienteId, planoId) {
       progresso: 100,
       updated_at: serverTimestamp()
     });
+
+    // Atualizar responsáveis do cliente se informados
+    if (novosResponsaveis && novosResponsaveis.length > 0) {
+      const clienteRef = doc(db, 'clientes', clienteId);
+      await updateDoc(clienteRef, {
+        responsaveis: novosResponsaveis,
+        responsavel_nome: novosResponsaveis[0].nome,
+        responsavel_email: novosResponsaveis[0].email,
+        updated_at: serverTimestamp()
+      });
+    }
 
     logger.info(`Onboarding concluido para cliente ${clienteId}`);
   } catch (error) {

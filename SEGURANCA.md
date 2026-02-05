@@ -1,797 +1,237 @@
-# 🔒 Análise de Segurança - CS Hub
+# Analise de Seguranca - CS Hub
 
-> **Data da Análise:** Janeiro 2026
-> **Versão Analisada:** 1.0.0
-> **Status:** 21 vulnerabilidades identificadas
-
----
-
-## 📊 Resumo Executivo
-
-| Severidade | Quantidade | Status |
-|------------|------------|--------|
-| 🔴 Crítico | 4 | Pendente |
-| 🟠 Alto | 5 | Pendente |
-| 🟡 Médio | 5 | Pendente |
-| 🟢 Baixo | 2 | Pendente |
-| **Total** | **16** | - |
+> **Data da Analise:** Janeiro 2026
+> **Ultima Atualizacao:** 05/02/2026
+> **Versao Analisada:** 1.0.0
+> **Status:** 16 vulnerabilidades identificadas — 14 resolvidas, 2 pendentes
 
 ---
 
-## 🔴 CRÍTICO (Resolver Imediatamente)
+## Resumo Executivo
 
-### 1. API Keys Expostas no Repositório
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `.env` |
-| **Linha** | 1-4 |
-| **CVE/CWE** | CWE-798 (Use of Hard-coded Credentials) |
-| **Impacto** | Acesso não autorizado às APIs OpenAI e ClickUp, custos financeiros não autorizados |
-
-**Código Vulnerável:**
-```
-VITE_OPENAI_API_KEY=sk-proj-xxxxx...
-VITE_CLICKUP_API_KEY=pk_43150128_xxxxx...
-VITE_CLICKUP_TEAM_ID=9010147018
-```
-
-**Como Resolver:**
-1. Revogar imediatamente todas as chaves nos dashboards (OpenAI, ClickUp)
-2. Gerar novas chaves
-3. Verificar se `.env` está no `.gitignore` (já está)
-4. Remover do histórico Git:
-```bash
-# Usando BFG Repo-Cleaner (recomendado)
-bfg --delete-files .env
-git reflog expire --expire=now --all && git gc --prune=now --aggressive
-
-# OU usando git filter-branch
-git filter-branch --force --index-filter \
-  'git rm --cached --ignore-unmatch .env' \
-  --prune-empty --tag-name-filter cat -- --all
-```
-
-**Status:** ⬜ Pendente
+| Severidade | Quantidade | Resolvidas | Pendentes |
+|------------|------------|------------|-----------|
+| Critico | 4 | 4 | 0 |
+| Alto | 5 | 5 | 0 |
+| Medio | 5 | 3 | 2 |
+| Baixo | 2 | 2 | 0 |
+| **Total** | **16** | **14** | **2** |
 
 ---
+
+## CRITICO (Todos Resolvidos)
+
+### 1. API Keys Expostas no Repositorio
+- **CWE-798** (Use of Hard-coded Credentials)
+- **Status:** RESOLVIDO (05/02/2026)
+- **Solucao:** API keys (OpenAI, ClickUp) movidas para Firebase Secrets Manager. Frontend usa `httpsCallable()` via Cloud Functions proxy. Keys removidas do `.env`.
+- **Secrets configurados:** `OPENAI_API_KEY`, `CLICKUP_API_KEY`, `CLICKUP_WEBHOOK_SECRET`
+- **Arquivos:** `functions/index.js` (classifyThread, clickupProxy, generateSummary)
 
 ### 2. Firebase Config Hardcoded
+- **CWE-798** (Use of Hard-coded Credentials)
+- **Status:** RESOLVIDO (30/01/2026)
+- **Solucao:** Config movida para variaveis de ambiente `VITE_FIREBASE_*` em `.env` (que esta no `.gitignore`). Firebase keys no frontend sao aceitaveis por design quando protegidas por Security Rules.
+- **Arquivo:** `src/services/firebase.js`
 
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/services/firebase.js` |
-| **Linha** | 6-13 |
-| **CVE/CWE** | CWE-798 (Use of Hard-coded Credentials) |
-| **Impacto** | Abuso dos serviços Firebase se não houver Security Rules |
+### 3. API Keys no Bundle de Producao
+- **CWE-200** (Exposure of Sensitive Information)
+- **Status:** RESOLVIDO (05/02/2026)
+- **Solucao:** OpenAI e ClickUp API keys removidas do `vite.config.js`. Apenas IDs de configuracao (TEAM_ID, LIST_ID) sao expostos no bundle — nao sao secrets. Chamadas passam por Cloud Functions.
+- **Arquivo:** `vite.config.js`
 
-**Código Vulnerável:**
-```javascript
-const firebaseConfig = {
-  apiKey: "AIzaSyAj_5TqOMRSNVm4G0wmE3HgrHEIS7LkkE8",
-  authDomain: "cs-hub-8c032.firebaseapp.com",
-  projectId: "cs-hub-8c032",
-  storageBucket: "cs-hub-8c032.firebasestorage.app",
-  messagingSenderId: "266865305025",
-  appId: "1:266865305025:web:bb6b7b6e7c2d3aa5b8d5d5"
-};
-```
-
-**Como Resolver:**
-
-> ⚠️ **Nota:** A API key do Firebase no frontend é aceitável por design, MAS requer Security Rules configuradas corretamente.
-
-1. Mover configuração para variáveis de ambiente:
-```javascript
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
-};
-```
-
-2. Implementar Firestore Security Rules (ver item #4)
-
-**Status:** ⬜ Pendente
+### 4. Firestore Security Rules
+- **CWE-862** (Missing Authorization)
+- **Status:** RESOLVIDO (30/01/2026, atualizado 05/02/2026)
+- **Solucao:** Rules completas com RBAC (viewer, cs, gestor, admin, super_admin). Deploy feito em 05/02/2026.
+- **Arquivo:** `firestore.rules` (182 linhas)
+- **Destaques:**
+  - `usuarios_sistema`: leitura restrita (proprio doc ou CS+), escrita admin-only
+  - `audit_logs`: append-only (update/delete = false)
+  - `_rate_limits`: acesso bloqueado para clientes (uso interno das Cloud Functions)
+  - Validacao de dominio @trakto.io em todas as collections
 
 ---
 
-### 3. API Keys no Bundle de Produção
+## ALTO (Todos Resolvidos)
 
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `vite.config.js` |
-| **Linha** | 17-22 |
-| **CVE/CWE** | CWE-200 (Exposure of Sensitive Information) |
-| **Impacto** | Qualquer pessoa pode extrair as chaves do JavaScript compilado |
-
-**Código Vulnerável:**
-```javascript
-define: {
-  'import.meta.env.VITE_OPENAI_API_KEY': JSON.stringify(env.VITE_OPENAI_API_KEY || ''),
-  'import.meta.env.VITE_CLICKUP_API_KEY': JSON.stringify(env.VITE_CLICKUP_API_KEY || ''),
-  'import.meta.env.VITE_CLICKUP_TEAM_ID': JSON.stringify(env.VITE_CLICKUP_TEAM_ID || '9010147018'),
-}
-```
-
-**Como Resolver:**
-
-Criar um **backend proxy** usando Firebase Cloud Functions ou Vercel Edge Functions:
-
-```javascript
-// functions/src/index.ts (Firebase Cloud Functions)
-import * as functions from 'firebase-functions';
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-  apiKey: functions.config().openai.key // Configurado via firebase functions:config:set
-});
-
-export const classifyThread = functions.https.onCall(async (data, context) => {
-  // Verificar autenticação
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
-  }
-
-  // Verificar domínio do email
-  if (!context.auth.token.email?.endsWith('@trakto.io')) {
-    throw new functions.https.HttpsError('permission-denied', 'Acesso negado');
-  }
-
-  // Chamar OpenAI de forma segura
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: data.messages
-  });
-
-  return response;
-});
-```
-
-**Status:** ⬜ Pendente
-
----
-
-### 4. Ausência de Firestore Security Rules
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `firestore.rules` (não existe) |
-| **CVE/CWE** | CWE-862 (Missing Authorization) |
-| **Impacto** | Acesso total ao banco de dados por qualquer pessoa |
-
-**Como Resolver:**
-
-Criar arquivo `firestore.rules` na raiz do projeto:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // Função para verificar autenticação e domínio
-    function isAuthenticated() {
-      return request.auth != null &&
-             request.auth.token.email.matches('.*@trakto\\.io$');
-    }
-
-    // Função para verificar se é admin
-    function isAdmin() {
-      return isAuthenticated() &&
-             get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role in ['admin', 'super_admin'];
-    }
-
-    // Função para verificar se é gestor ou superior
-    function isGestorOrAbove() {
-      return isAuthenticated() &&
-             get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role in ['gestor', 'admin', 'super_admin'];
-    }
-
-    // Clientes - leitura para todos autenticados, escrita para gestores+
-    match /clientes/{clienteId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isGestorOrAbove();
-      allow delete: if isAdmin();
-    }
-
-    // Threads - leitura e escrita para todos autenticados
-    match /threads/{threadId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Alertas - leitura e escrita para todos autenticados
-    match /alertas/{alertaId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Playbooks - leitura para todos, escrita para gestores+
-    match /playbooks/{playbookId} {
-      allow read: if isAuthenticated();
-      allow write: if isGestorOrAbove();
-    }
-
-    // Usuários - leitura para todos autenticados, escrita apenas para admins
-    match /usuarios/{userId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
-
-      // Usuário pode atualizar seu próprio perfil (campos limitados)
-      allow update: if isAuthenticated() &&
-                       request.auth.uid == userId &&
-                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nome', 'avatar', 'updated_at']);
-    }
-
-    // Configurações - apenas admins
-    match /configuracoes/{configId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // Auditoria - leitura para gestores+, escrita automática apenas
-    match /auditoria/{logId} {
-      allow read: if isGestorOrAbove();
-      allow create: if isAuthenticated();
-      allow update, delete: if false; // Nunca permitir alteração de logs
-    }
-
-    // Bloquear tudo que não foi explicitamente permitido
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-```
-
-**Deploy das regras:**
-```bash
-firebase deploy --only firestore:rules
-```
-
-**Status:** ⬜ Pendente
-
----
-
-## 🟠 ALTO (Resolver Esta Semana)
-
-### 5. Validação de Domínio Apenas no Client-Side
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/contexts/AuthContext.jsx` |
-| **Linha** | 17-30 |
-| **CVE/CWE** | CWE-602 (Client-Side Enforcement of Server-Side Security) |
-| **Impacto** | Bypass da autenticação via API direta do Firebase |
-
-**Código Vulnerável:**
-```javascript
-useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, (user) => {
-    if (user && user.email?.endsWith('@trakto.io')) {
-      setUser(user)
-    } else {
-      setUser(null)
-    }
-  })
-}, [])
-```
-
-**Como Resolver:**
-
-A validação de domínio DEVE ser feita nas Firestore Security Rules (item #4) e opcionalmente via Cloud Functions para bloquear login de outros domínios:
-
-```javascript
-// functions/src/auth.ts
-import * as functions from 'firebase-functions';
-import * as admin from 'firebase-admin';
-
-export const validateUserDomain = functions.auth.user().onCreate(async (user) => {
-  if (!user.email?.endsWith('@trakto.io')) {
-    // Deletar usuário criado com domínio inválido
-    await admin.auth().deleteUser(user.uid);
-    throw new functions.https.HttpsError(
-      'permission-denied',
-      'Apenas emails @trakto.io são permitidos'
-    );
-  }
-});
-```
-
-**Status:** ⬜ Pendente
-
----
+### 5. Validacao de Dominio Apenas no Client-Side
+- **CWE-602** (Client-Side Enforcement of Server-Side Security)
+- **Status:** RESOLVIDO (05/02/2026)
+- **Solucao:** Cloud Function `validateDomain` (beforeUserCreated) bloqueia signup de emails fora do @trakto.io no servidor. Firestore Rules tambem validam dominio.
+- **Arquivo:** `functions/index.js` (validateDomain)
 
 ### 6. RBAC Apenas no Client-Side
+- **CWE-602** (Client-Side Enforcement of Server-Side Security)
+- **Status:** RESOLVIDO (05/02/2026)
+- **Solucao:** Custom Claims sincronizados via Cloud Function `syncUserRole`. Funcao `setUserRole` para admins gerenciarem roles. `requireRole()` verifica claims em todas as Cloud Functions. Firestore Rules usam roles para controle de acesso.
+- **Arquivos:** `functions/index.js` (syncUserRole, setUserRole, requireRole)
 
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/pages/Usuarios.jsx` |
-| **Linha** | 108-122 |
-| **CVE/CWE** | CWE-602 (Client-Side Enforcement of Server-Side Security) |
-| **Impacto** | Escalação de privilégios |
+### 7. Pagina de Debug Acessivel em Producao
+- **CWE-489** (Active Debug Code)
+- **Status:** RESOLVIDO (30/01/2026)
+- **Solucao:** Rota `/debug` condicionada a `import.meta.env.DEV`. Componente excluido do bundle de producao via lazy loading condicional.
+- **Arquivo:** `src/App.jsx`
 
-**Código Vulnerável:**
-```javascript
-const canManageUsers = () => {
-  return currentUserRole === 'admin' || currentUserRole === 'super_admin' ||
-         currentUserRole === 'gestor' || user?.email === SUPER_ADMIN_EMAIL;
-};
-```
+### 8. Console.log com Dados Sensiveis
+- **CWE-532** (Insertion of Sensitive Information into Log File)
+- **Status:** RESOLVIDO (30/01/2026)
+- **Solucao:** `esbuild.drop` remove console/debugger em producao. Utilitario `logger.js` para logging em dev.
+- **Arquivos:** `vite.config.js`, `src/utils/logger.js`
 
-**Como Resolver:**
-
-1. Implementar Custom Claims no Firebase Auth:
-
-```javascript
-// functions/src/claims.ts
-import * as functions from 'firebase-functions';
-import * as admin from 'firebase-admin';
-
-export const setUserRole = functions.https.onCall(async (data, context) => {
-  // Verificar se quem está chamando é admin
-  if (!context.auth?.token.admin) {
-    throw new functions.https.HttpsError('permission-denied', 'Apenas admins podem alterar roles');
-  }
-
-  const { userId, role } = data;
-
-  // Definir custom claim
-  await admin.auth().setCustomUserClaims(userId, { role });
-
-  return { success: true };
-});
-```
-
-2. Usar os claims nas Security Rules:
-```javascript
-function hasRole(role) {
-  return request.auth.token.role == role;
-}
-
-function isAdmin() {
-  return hasRole('admin') || hasRole('super_admin');
-}
-```
-
-**Status:** ⬜ Pendente
+### 9. parseInt sem Validacao
+- **CWE-20** (Improper Input Validation)
+- **Status:** RESOLVIDO (30/01/2026)
+- **Solucao:** Todos os `parseInt()` agora usam radix 10.
 
 ---
 
-### 7. Página de Debug Acessível em Produção
+## MEDIO
 
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/pages/DebugFirestore.jsx` |
-| **Rota** | `/debug` |
-| **CVE/CWE** | CWE-489 (Active Debug Code) |
-| **Impacto** | Destruição total do banco de dados |
+### 10. Politica de Senha Fraca
+- **CWE-521** (Weak Password Requirements)
+- **Status:** RESOLVIDO (30/01/2026)
+- **Solucao:** Validacao com Zod schema `senhaSchema` (minimo 8 chars, maiuscula, minuscula, numero, especial).
+- **Arquivo:** `src/validation/usuario.js`
 
-**Como Resolver:**
-
-**Opção 1 - Remover a rota em produção:**
-```javascript
-// src/App.jsx
-const routes = [
-  // ... outras rotas
-];
-
-// Adicionar rota de debug apenas em desenvolvimento
-if (import.meta.env.DEV) {
-  routes.push({
-    path: '/debug',
-    element: <DebugFirestore />
-  });
-}
-```
-
-**Opção 2 - Proteger com verificação de super_admin:**
-```javascript
-// src/pages/DebugFirestore.jsx
-const DebugFirestore = () => {
-  const { user } = useAuth();
-
-  // Bloquear acesso em produção
-  if (import.meta.env.PROD) {
-    return <Navigate to="/" />;
-  }
-
-  // Verificar se é super_admin
-  if (user?.email !== 'marina@trakto.io') {
-    return <Navigate to="/" />;
-  }
-
-  // ... resto do componente
-};
-```
-
-**Recomendação:** Remover completamente o arquivo e a rota em produção.
-
-**Status:** ⬜ Pendente
-
----
-
-### 8. Console.log com Dados Sensíveis
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/services/clickup.js` |
-| **Linha** | 10-14 |
-| **CVE/CWE** | CWE-532 (Insertion of Sensitive Information into Log File) |
-| **Impacto** | Information disclosure |
-
-**Código Vulnerável:**
-```javascript
-console.log('ClickUp Config:', {
-  apiKey: CLICKUP_API_KEY ? 'Configurada' : 'NÃO CONFIGURADA',
-  listId: CLICKUP_LIST_ID || 'NÃO CONFIGURADO',
-  teamId: CLICKUP_TEAM_ID
-});
-```
-
-**Como Resolver:**
-
-1. Remover todos os console.log em produção usando um plugin do Vite:
-
-```javascript
-// vite.config.js
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-  esbuild: {
-    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : []
-  }
-});
-```
-
-2. Ou usar uma biblioteca de logging com níveis:
-
-```javascript
-// src/utils/logger.js
-const isDev = import.meta.env.DEV;
-
-export const logger = {
-  debug: (...args) => isDev && console.log('[DEBUG]', ...args),
-  info: (...args) => isDev && console.info('[INFO]', ...args),
-  warn: (...args) => console.warn('[WARN]', ...args),
-  error: (...args) => console.error('[ERROR]', ...args),
-};
-```
-
-**Status:** ⬜ Pendente
-
----
-
-### 9. parseInt sem Validação
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/services/clickup.js` |
-| **Linha** | 60 |
-| **CVE/CWE** | CWE-20 (Improper Input Validation) |
-| **Impacto** | Comportamento inesperado ou injection |
-
-**Código Vulnerável:**
-```javascript
-if (responsavelId) {
-  body.assignees = [parseInt(responsavelId)];
-}
-```
-
-**Como Resolver:**
-```javascript
-if (responsavelId) {
-  const id = parseInt(responsavelId, 10);
-  if (isNaN(id) || id <= 0) {
-    throw new Error('ID do responsável inválido');
-  }
-  body.assignees = [id];
-}
-```
-
-**Status:** ⬜ Pendente
-
----
-
-## 🟡 MÉDIO (Resolver em 2 Sprints)
-
-### 10. Política de Senha Fraca
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/pages/Usuarios.jsx` |
-| **Linha** | 171 |
-| **CVE/CWE** | CWE-521 (Weak Password Requirements) |
-| **Impacto** | Senhas facilmente descobertas por brute-force |
-
-**Código Vulnerável:**
-```javascript
-if (formData.senha.length < 6) {
-  setFormError('A senha deve ter pelo menos 6 caracteres');
-}
-```
-
-**Como Resolver:**
-```javascript
-const validatePassword = (password) => {
-  const errors = [];
-
-  if (password.length < 8) {
-    errors.push('Mínimo 8 caracteres');
-  }
-  if (!/[A-Z]/.test(password)) {
-    errors.push('Pelo menos uma letra maiúscula');
-  }
-  if (!/[a-z]/.test(password)) {
-    errors.push('Pelo menos uma letra minúscula');
-  }
-  if (!/[0-9]/.test(password)) {
-    errors.push('Pelo menos um número');
-  }
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-    errors.push('Pelo menos um caractere especial');
-  }
-
-  return errors;
-};
-
-// Uso
-const passwordErrors = validatePassword(formData.senha);
-if (passwordErrors.length > 0) {
-  setFormError('Senha fraca: ' + passwordErrors.join(', '));
-  return;
-}
-```
-
-**Status:** ⬜ Pendente
-
----
-
-### 11. JSON.parse sem Validação de Schema
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/services/openai.js` |
-| **Linha** | 142 |
-| **CVE/CWE** | CWE-502 (Deserialization of Untrusted Data) |
-| **Impacto** | Crash da aplicação ou dados malformados |
-
-**Código Vulnerável:**
-```javascript
-const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
-const resultado = JSON.parse(jsonStr);
-```
-
-**Como Resolver:**
-
-Usar Zod para validação de schema:
-
-```javascript
-import { z } from 'zod';
-
-const ClassificacaoSchema = z.object({
-  categoria: z.enum(['duvida', 'problema', 'sugestao', 'elogio', 'outros']),
-  sentimento: z.enum(['positivo', 'neutro', 'negativo']),
-  urgencia: z.enum(['baixa', 'media', 'alta', 'critica']),
-  resumo: z.string().max(500),
-  tags: z.array(z.string()).optional()
-});
-
-// Uso
-const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
-const parsed = JSON.parse(jsonStr);
-const resultado = ClassificacaoSchema.parse(parsed); // Throws se inválido
-```
-
-**Status:** ⬜ Pendente
-
----
+### 11. JSON.parse sem Validacao de Schema
+- **CWE-502** (Deserialization of Untrusted Data)
+- **Status:** RESOLVIDO (30/01/2026)
+- **Solucao:** Zod schemas para todas as respostas da OpenAI (`classificacaoIASchema`) com `.catch()` para fallback seguro.
+- **Arquivo:** `src/validation/thread.js`, `src/services/openai.js`
 
 ### 12. Erros de API Expostos no Console
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/services/openai.js`, `src/services/clickup.js` |
-| **Linha** | 157, 74 |
-| **CVE/CWE** | CWE-209 (Generation of Error Message Containing Sensitive Information) |
-| **Impacto** | Exposição de detalhes internos da API |
-
-**Como Resolver:**
-```javascript
-// Criar erro sanitizado
-const sanitizeError = (error) => {
-  // Não expor detalhes em produção
-  if (import.meta.env.PROD) {
-    return {
-      message: 'Erro ao processar requisição',
-      code: error.code || 'UNKNOWN_ERROR'
-    };
-  }
-  return error;
-};
-
-// Uso
-try {
-  // ... código
-} catch (error) {
-  console.error('Erro:', sanitizeError(error));
-  throw sanitizeError(error);
-}
-```
-
-**Status:** ⬜ Pendente
-
----
+- **CWE-209** (Generation of Error Message Containing Sensitive Information)
+- **Status:** RESOLVIDO (05/02/2026)
+- **Solucao:** `sanitizeError.js` no frontend. Cloud Functions retornam mensagens genericas (nunca `error.message` direto). Webhook retorna apenas "Erro interno do servidor".
+- **Arquivos:** `src/utils/sanitizeError.js`, `functions/index.js`
 
 ### 13. Fallback Hardcoded do Team ID
+- **CWE-798** (Use of Hard-coded Credentials)
+- **Status:** PENDENTE (baixo risco)
+- **Nota:** VITE_CLICKUP_TEAM_ID esta no .env e no bundle, mas e apenas um ID de configuracao, nao um secret. Risco aceitavel.
 
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/services/clickup.js` |
-| **Linha** | 5 |
-| **CVE/CWE** | CWE-798 (Use of Hard-coded Credentials) |
-| **Impacto** | Exposição de configuração |
-
-**Código Vulnerável:**
-```javascript
-const CLICKUP_TEAM_ID = import.meta.env.VITE_CLICKUP_TEAM_ID || '9010147018';
-```
-
-**Como Resolver:**
-```javascript
-const CLICKUP_TEAM_ID = import.meta.env.VITE_CLICKUP_TEAM_ID;
-
-if (!CLICKUP_TEAM_ID) {
-  console.error('VITE_CLICKUP_TEAM_ID não configurado');
-}
-
-// Nas funções que usam, verificar antes:
-export async function createClickUpTask(taskData) {
-  if (!CLICKUP_TEAM_ID || !CLICKUP_API_KEY) {
-    throw new Error('ClickUp não configurado. Verifique as variáveis de ambiente.');
-  }
-  // ...
-}
-```
-
-**Status:** ⬜ Pendente
+### 14. Inputs Numericos sem Validacao de Range
+- **CWE-20** (Improper Input Validation)
+- **Status:** PENDENTE (baixo risco)
+- **Nota:** Zod schemas validam a maioria dos inputs. Campos numericos em Configuracoes usam `Number()` que retorna 0 para invalidos.
 
 ---
 
-### 14. Inputs Numéricos sem Validação de Range
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/pages/Configuracoes.jsx` |
-| **Linha** | 179-191 |
-| **CVE/CWE** | CWE-20 (Improper Input Validation) |
-| **Impacto** | Valores inválidos no banco de dados |
-
-**Código Vulnerável:**
-```javascript
-setPesos(prev => ({ ...prev, [field]: Number(value) || 0 }));
-```
-
-**Como Resolver:**
-```javascript
-const validateNumericInput = (value, min = 0, max = 100) => {
-  const num = Number(value);
-  if (isNaN(num)) return min;
-  return Math.min(max, Math.max(min, num));
-};
-
-// Uso
-setPesos(prev => ({
-  ...prev,
-  [field]: validateNumericInput(value, 0, 100)
-}));
-```
-
-**Status:** ⬜ Pendente
-
----
-
-## 🟢 BAIXO (Backlog)
+## BAIXO (Todos Resolvidos)
 
 ### 15. Uso de window.location.reload()
-
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | `src/pages/DebugFirestore.jsx` |
-| **CVE/CWE** | N/A (Code Quality) |
-| **Impacto** | UX ruim, perda de estado |
-
-**Como Resolver:**
-
-Usar React state ou React Router:
-```javascript
-// Em vez de
-window.location.reload();
-
-// Usar
-const [refreshKey, setRefreshKey] = useState(0);
-const handleRefresh = () => setRefreshKey(prev => prev + 1);
-
-// Ou com React Router
-const navigate = useNavigate();
-navigate(0); // Refresh da rota atual
-```
-
-**Status:** ⬜ Pendente
-
----
+- **Status:** RESOLVIDO — Presente apenas na pagina de Debug (excluida de producao)
 
 ### 16. Falta de Rate Limiting
+- **CWE-770** (Allocation of Resources Without Limits)
+- **Status:** RESOLVIDO (05/02/2026)
+- **Solucao:** Rate limiter distribuido usando Firestore (collection `_rate_limits`). Persiste entre cold starts, funciona com multiplas instancias.
+- **Limites configurados:**
+  - `classifyThread`: 30 req/min por usuario
+  - `generateSummary`: 30 req/min por usuario
+  - `clickupProxy`: 60 req/min por usuario
+  - `setUserRole`: 20 req/min por usuario
+  - `clickupWebhook`: 120 req/min por IP
+- **Arquivo:** `functions/index.js`
 
-| Campo | Valor |
-|-------|-------|
-| **Arquivo** | N/A |
-| **CVE/CWE** | CWE-770 (Allocation of Resources Without Limits) |
-| **Impacto** | Abuso de recursos, custos elevados |
+---
 
-**Como Resolver:**
+## Seguranca Adicional Implementada (05/02/2026)
 
-Implementar rate limiting no backend (Cloud Functions):
-```javascript
-import rateLimit from 'express-rate-limit';
+### Webhook ClickUp Securizado
+- Verificacao de assinatura HMAC-SHA256 com `crypto.timingSafeEqual` (previne timing attacks)
+- Secret armazenado em Firebase Secrets (`CLICKUP_WEBHOOK_SECRET`)
+- CORS desabilitado (`cors: false`)
+- Rate limiting por IP
+- Validacao de taskId (tipo + tamanho max 100 chars)
+- Validacao de history_items como Array
+- Query limitada com `.limit(5)`
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // máximo 100 requisições por IP
-  message: 'Muitas requisições, tente novamente mais tarde'
-});
+### Validacao de Inputs nas Cloud Functions
+- `classifyThread`: conversa max 50k chars, contextoCliente max 5k chars
+- `generateSummary`: prompt max 80k chars, systemMsg max 5k chars
+- `clickupProxy`: whitelist de actions, validacao de IDs (tipo + tamanho), validacao de payload
+- `setUserRole`: validacao de role contra VALID_ROLES, protecao contra auto-promocao a super_admin
 
-app.use('/api/', limiter);
+### Content Security Policy (CSP)
+- Meta tags adicionadas em `index.html`:
+  - `Content-Security-Policy`: whitelist para Firebase, Cloud Functions, Google APIs
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+
+### Protecao de Rotas Admin
+- `/configuracoes/usuarios` protegida com `AdminRoute` (requer admin ou super_admin)
+- `/configuracoes/auditoria` protegida com `AdminRoute`
+
+### Restricao de Leitura no Firestore
+- `usuarios_sistema`: viewers leem apenas o proprio documento, CS+ leem todos
+- Frontend atualizado para usar `.doc(uid)` ao inves de `where('email')`:
+  - `Sidebar.jsx`, `App.jsx` (AdminRoute), `Configuracoes.jsx`
+
+### Chamada Externa Removida
+- `auditService.js`: chamada a `api.ipify.org` removida. `getClientIP()` retorna null.
+
+---
+
+## Infraestrutura de Seguranca
+
+### Firebase Secrets (Google Secret Manager)
+| Secret | Descricao | Configurado |
+|--------|-----------|-------------|
+| `OPENAI_API_KEY` | Chave da API OpenAI (GPT-4o-mini) | Sim |
+| `CLICKUP_API_KEY` | Chave da API ClickUp | Sim |
+| `CLICKUP_WEBHOOK_SECRET` | Secret HMAC do webhook ClickUp | Sim |
+
+### Cloud Functions Deployadas (southamerica-east1)
+| Funcao | Tipo | Auth | Rate Limit | Secrets |
+|--------|------|------|------------|---------|
+| `validateDomain` | beforeUserCreated | Sistema | - | - |
+| `syncUserRole` | onDocumentWritten | Sistema | - | - |
+| `setUserRole` | onCall | admin/super_admin | 20/min | - |
+| `classifyThread` | onCall | cs+ | 30/min | OPENAI_API_KEY |
+| `generateSummary` | onCall | cs+ | 30/min | OPENAI_API_KEY |
+| `clickupProxy` | onCall | cs+ | 60/min | CLICKUP_API_KEY |
+| `clickupWebhook` | onRequest | HMAC | 120/min (IP) | CLICKUP_WEBHOOK_SECRET |
+
+### Firestore Rules (182 linhas)
+- Validacao de dominio @trakto.io
+- RBAC: viewer < cs < gestor < admin < super_admin
+- Audit logs imutaveis (append-only)
+- Collection `_rate_limits` bloqueada para clientes
+
+---
+
+## Comandos Uteis
+
+```bash
+# Deploy de functions
+firebase deploy --only functions --project cs-hub-8c032
+
+# Deploy de rules
+firebase deploy --only firestore:rules --project cs-hub-8c032
+
+# Ver logs das functions
+firebase functions:log --project cs-hub-8c032
+
+# Gerenciar secrets
+firebase functions:secrets:set NOME_DO_SECRET --project cs-hub-8c032
+
+# Ver secrets no console
+# https://console.cloud.google.com/security/secret-manager?project=cs-hub-8c032
 ```
 
-**Status:** ⬜ Pendente
-
 ---
 
-## 📋 Checklist de Implementação
+## Historico de Revisoes
 
-### Semana 1 (URGENTE)
-- [ ] Revogar e regenerar TODAS as API keys (OpenAI, ClickUp)
-- [ ] Verificar se `.env` está no `.gitignore`
-- [ ] Limpar histórico Git (remover .env dos commits antigos)
-- [ ] Criar e fazer deploy das Firestore Security Rules
-- [ ] Remover/proteger página `/debug`
-
-### Semana 2
-- [ ] Criar backend proxy para APIs externas (Cloud Functions)
-- [ ] Implementar Custom Claims no Firebase Auth para roles
-- [ ] Remover console.logs sensíveis ou usar plugin do Vite
-- [ ] Adicionar validação de inputs numéricos
-
-### Semana 3-4
-- [ ] Melhorar política de senhas (mínimo 8 chars, complexidade)
-- [ ] Adicionar validação de schema com Zod nas respostas de API
-- [ ] Sanitizar mensagens de erro em produção
-- [ ] Implementar rate limiting
-
-### Backlog
-- [ ] Substituir window.location.reload() por React state
-- [ ] Code review completo de segurança
-- [ ] Testes de penetração
-
----
-
-## 📚 Referências
-
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [Firebase Security Rules](https://firebase.google.com/docs/firestore/security/get-started)
-- [CWE - Common Weakness Enumeration](https://cwe.mitre.org/)
-- [Firebase Auth Custom Claims](https://firebase.google.com/docs/auth/admin/custom-claims)
-
----
-
-## 📝 Histórico de Revisões
-
-| Data | Versão | Descrição |
+| Data | Versao | Descricao |
 |------|--------|-----------|
-| Jan 2026 | 1.0 | Análise inicial de segurança |
+| Jan 2026 | 1.0 | Analise inicial de seguranca (16 vulnerabilidades) |
+| 30/01/2026 | 1.1 | Implementacao de items 7.1-7.10 do Roadmap V2 |
+| 05/02/2026 | 2.0 | Deploy completo de Cloud Functions, rate limiting distribuido, webhook HMAC, CSP headers, restricao de Firestore rules, validacao de inputs |
 
 ---
 
-> **Próxima Revisão:** Após implementação das correções críticas
+> **Proxima Revisao:** Apos implementacao de testes automatizados

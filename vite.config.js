@@ -13,6 +13,11 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     envDir: path.resolve(__dirname, './'),
     envPrefix: 'VITE_',
+    test: {
+      environment: 'node',
+      globals: true,
+      include: ['src/**/*.test.{js,jsx}'],
+    },
     // Remove console.log em produção para segurança e performance
     esbuild: {
       drop: isProduction ? ['console', 'debugger'] : []

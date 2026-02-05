@@ -137,7 +137,7 @@ export const SESSION_GROUPS = [
 export const MAX_SESSION_MINUTES = 90;
 
 // ============================================
-// QUESTIONARIO DE QUALIFICACAO (20 perguntas)
+// QUESTIONARIO DE QUALIFICACAO (10 perguntas)
 // ============================================
 
 export const PERGUNTAS = [
@@ -155,105 +155,35 @@ export const PERGUNTAS = [
   },
   {
     id: 'q2',
-    campo: 'ferramentas',
-    texto: 'Quais ferramentas o time usa hoje?',
-    tipo: 'multiselect',
-    opcoes: [
-      { value: 'photoshop', label: 'Photoshop' },
-      { value: 'illustrator', label: 'Illustrator' },
-      { value: 'figma', label: 'Figma' },
-      { value: 'after_effects', label: 'After Effects' },
-      { value: 'premiere', label: 'Premiere' },
-      { value: 'canva', label: 'Canva' },
-      { value: 'outras_ias', label: 'Outras IAs' },
-      { value: 'nenhuma', label: 'Nenhuma' }
-    ]
-  },
-  {
-    id: 'q3',
-    campo: 'maior_desafio',
-    texto: 'Qual é o maior desafio hoje?',
-    tipo: 'select',
-    opcoes: [
-      { value: 'desdobrar_formatos', label: 'Desdobrar formatos' },
-      { value: 'velocidade', label: 'Velocidade de criação' },
-      { value: 'produzir_videos', label: 'Produzir vídeos' },
-      { value: 'organizar_materiais', label: 'Organizar materiais' },
-      { value: 'analisar_performance', label: 'Analisar performance' }
-    ]
-  },
-  {
-    id: 'q4',
     campo: 'materiais',
     texto: 'Que tipos de material produzem?',
     tipo: 'multiselect',
+    campoOutro: 'materiais_outro',
     opcoes: [
       { value: 'posts_social', label: 'Posts social' },
       { value: 'banners_display', label: 'Banners display' },
       { value: 'video_curto', label: 'Vídeo curto' },
       { value: 'video_longo', label: 'Vídeo longo' },
       { value: 'html5', label: 'HTML5' },
-      { value: 'catalogo_produtos', label: 'Catálogo produtos' }
+      { value: 'catalogo_produtos', label: 'Catálogo produtos' },
+      { value: 'outro', label: 'Outro' }
     ]
   },
   {
-    id: 'q5',
-    campo: 'formatos_campanha',
-    texto: 'Quantos formatos por campanha?',
+    id: 'q3',
+    campo: 'video_producao',
+    texto: 'Como é a produção de vídeo/motion no time?',
     tipo: 'select',
     opcoes: [
-      { value: '1_5', label: '1-5' },
-      { value: '6_15', label: '6-15' },
-      { value: '15+', label: '15+' }
+      { value: 'dedicada_frequente', label: 'Time dedicado, produz frequentemente' },
+      { value: 'basico_frequente', label: 'Produz frequentemente, sem pessoa dedicada' },
+      { value: 'ocasional', label: 'Produz ocasionalmente' },
+      { value: 'quer_comecar', label: 'Não produz mas quer começar' },
+      { value: 'nao', label: 'Não produz e não planeja' }
     ]
   },
   {
-    id: 'q6',
-    campo: 'catalogo',
-    texto: 'Trabalham com catálogo de produtos?',
-    tipo: 'select',
-    opcoes: [
-      { value: 'merchant_center', label: 'Sim com Merchant Center' },
-      { value: 'planilha', label: 'Sim com planilha' },
-      { value: 'nao', label: 'Não' }
-    ]
-  },
-  {
-    id: 'q7',
-    campo: 'video',
-    texto: 'Produzem vídeos/motion?',
-    tipo: 'select',
-    opcoes: [
-      { value: 'frequentemente', label: 'Sim frequentemente' },
-      { value: 'ocasionalmente', label: 'Sim ocasionalmente' },
-      { value: 'nao_mas_quer', label: 'Não mas quer' },
-      { value: 'nao', label: 'Não' }
-    ]
-  },
-  {
-    id: 'q8',
-    campo: 'pessoa_video',
-    texto: 'Têm pessoa dedicada a vídeo?',
-    tipo: 'select',
-    opcoes: [
-      { value: 'dedicada', label: 'Sim dedicada' },
-      { value: 'basico', label: 'Sim básico' },
-      { value: 'nao', label: 'Não' }
-    ]
-  },
-  {
-    id: 'q9',
-    campo: 'html5',
-    texto: 'Precisam de HTML5?',
-    tipo: 'select',
-    opcoes: [
-      { value: 'sim', label: 'Sim' },
-      { value: 'talvez', label: 'Talvez' },
-      { value: 'nao', label: 'Não' }
-    ]
-  },
-  {
-    id: 'q10',
+    id: 'q4',
     campo: 'uso_ia',
     texto: 'Como veem o uso de IA na criação?',
     tipo: 'select',
@@ -265,7 +195,7 @@ export const PERGUNTAS = [
     ]
   },
   {
-    id: 'q11',
+    id: 'q5',
     campo: 'video_ia',
     texto: 'Interesse em criar vídeos com IA?',
     tipo: 'select',
@@ -276,7 +206,7 @@ export const PERGUNTAS = [
     ]
   },
   {
-    id: 'q12',
+    id: 'q6',
     campo: 'consistencia_marca',
     texto: 'Consistência de marca com IA é importante?',
     tipo: 'select',
@@ -287,64 +217,47 @@ export const PERGUNTAS = [
     ]
   },
   {
-    id: 'q13',
+    id: 'q7',
     campo: 'publicam',
-    texto: 'Onde publicam campanhas?',
+    texto: 'Onde e como publicam campanhas?',
     tipo: 'multiselect',
+    campoOutro: 'publicam_outro',
     opcoes: [
       { value: 'google_ads', label: 'Google Ads' },
       { value: 'cm360', label: 'CM360' },
       { value: 'youtube', label: 'YouTube' },
       { value: 'meta', label: 'Meta' },
-      { value: 'download_manual', label: 'Download manual' }
+      { value: 'merchant_center', label: 'Merchant Center' },
+      { value: 'download_manual', label: 'Download manual' },
+      { value: 'outro', label: 'Outro' }
     ]
   },
   {
-    id: 'q14',
-    campo: 'analytics',
-    texto: 'Acompanham performance criativa?',
+    id: 'q8',
+    campo: 'analytics_performance',
+    texto: 'Acompanham performance criativa das campanhas?',
     tipo: 'select',
     opcoes: [
-      { value: 'avancado', label: 'Sim avançado' },
-      { value: 'basico', label: 'Sim básico' },
+      { value: 'sim_campanhas', label: 'Sim, com campanhas rodando' },
+      { value: 'sim_sem_campanhas', label: 'Sim, sem campanhas no momento' },
       { value: 'quer_comecar', label: 'Quer começar' },
       { value: 'nao', label: 'Não' }
     ]
   },
   {
-    id: 'q15',
-    campo: 'campanhas_rodando',
-    texto: 'Têm campanhas rodando para analisar?',
-    tipo: 'select',
+    id: 'q9',
+    campo: 'extras',
+    texto: 'Quais recursos extras interessam ao time?',
+    tipo: 'multiselect',
+    campoOutro: 'extras_outro',
     opcoes: [
-      { value: 'sim', label: 'Sim' },
-      { value: 'nao', label: 'Não' }
+      { value: '3d', label: '3D e Efeitos' },
+      { value: 'nomenclatura', label: 'Nomenclatura padronizada' },
+      { value: 'outro', label: 'Outro' }
     ]
   },
   {
-    id: 'q16',
-    campo: '3d',
-    texto: 'Interesse em 3D e efeitos?',
-    tipo: 'select',
-    opcoes: [
-      { value: 'sim_muito', label: 'Sim muito' },
-      { value: 'sim_pouco', label: 'Sim pouco' },
-      { value: 'nao', label: 'Não' }
-    ]
-  },
-  {
-    id: 'q17',
-    campo: 'nomenclatura',
-    texto: 'Precisam de nomenclatura padronizada?',
-    tipo: 'select',
-    opcoes: [
-      { value: 'critico', label: 'Crítico' },
-      { value: 'importante', label: 'Importante' },
-      { value: 'nao', label: 'Não' }
-    ]
-  },
-  {
-    id: 'q18',
+    id: 'q10',
     campo: 'urgencia',
     texto: 'Quando precisam usar para campanha real?',
     tipo: 'select',
@@ -355,23 +268,6 @@ export const PERGUNTAS = [
       { value: 'mes', label: 'Mês' },
       { value: 'sem_pressa', label: 'Sem pressa' }
     ]
-  },
-  {
-    id: 'q19',
-    campo: 'kv_disponivel',
-    texto: 'Têm KV para usar no treinamento?',
-    tipo: 'select',
-    opcoes: [
-      { value: 'sim_atual', label: 'Sim atual' },
-      { value: 'sim_anterior', label: 'Sim anterior' },
-      { value: 'nao', label: 'Não' }
-    ]
-  },
-  {
-    id: 'q20',
-    campo: 'participantes',
-    texto: 'Quem vai participar do treinamento?',
-    tipo: 'text'
   }
 ];
 
@@ -384,7 +280,7 @@ export const PERGUNTAS = [
 export const REGRAS = {
   M3: (r) => {
     const publicam = r.publicam || [];
-    return publicam.includes('google_ads') || publicam.includes('cm360') || r.catalogo === 'merchant_center';
+    return publicam.includes('google_ads') || publicam.includes('cm360') || publicam.includes('merchant_center');
   },
   M4: (r) => ['principal', 'complemento'].includes(r.uso_ia),
   M5: (r) => {
@@ -393,16 +289,16 @@ export const REGRAS = {
   },
   M6: (r) => {
     const iaAlto = ['principal', 'complemento'].includes(r.uso_ia);
-    return r.video_ia === 'sim_muito' && (r.video !== 'nao' || iaAlto);
+    return r.video_ia === 'sim_muito' && (r.video_producao !== 'nao' || iaAlto);
   },
-  M7: (r) => r.video === 'frequentemente' && r.pessoa_video === 'dedicada',
+  M7: (r) => r.video_producao === 'dedicada_frequente',
   M8: (r) => {
     const materiais = r.materiais || [];
-    return r.html5 === 'sim' || (r.pessoa_video === 'dedicada' && materiais.includes('video_longo'));
+    return materiais.includes('html5') || (r.video_producao === 'dedicada_frequente' && materiais.includes('video_longo'));
   },
-  M9: (r) => r['3d'] === 'sim_muito',
-  M10: (r) => ['avancado', 'basico'].includes(r.analytics) && r.campanhas_rodando === 'sim',
-  M11: (r) => r.nomenclatura === 'critico' || ['11_20', '20+'].includes(r.qtd_pessoas)
+  M9: (r) => (r.extras || []).includes('3d'),
+  M10: (r) => r.analytics_performance === 'sim_campanhas',
+  M11: (r) => (r.extras || []).includes('nomenclatura') || ['11_20', '20+'].includes(r.qtd_pessoas)
 };
 
 // ============================================
@@ -440,6 +336,7 @@ export function getRespostasIniciais() {
   for (const p of PERGUNTAS) {
     if (p.tipo === 'multiselect') {
       respostas[p.campo] = [];
+      if (p.campoOutro) respostas[p.campoOutro] = '';
     } else if (p.tipo === 'text') {
       respostas[p.campo] = '';
     } else {

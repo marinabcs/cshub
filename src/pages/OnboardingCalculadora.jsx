@@ -240,9 +240,9 @@ export default function OnboardingCalculadora() {
                   <span>{c.nome}</span>
                   <span style={{
                     fontSize: '12px', padding: '2px 8px', borderRadius: '8px',
-                    background: c.status === 'onboarding' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                    color: c.status === 'onboarding' ? '#3b82f6' : '#10b981'
-                  }}>{c.status || 'ativo'}</span>
+                    background: 'rgba(16, 185, 129, 0.2)',
+                    color: '#10b981'
+                  }}>{c.status === 'onboarding' ? 'ativo' : (c.status || 'ativo')}</span>
                 </button>
               ))
             )}
@@ -545,7 +545,7 @@ export default function OnboardingCalculadora() {
       secoes.push(PERGUNTAS.slice(i, i + 5));
     }
 
-    const secaoLabels = ['Equipe e Ferramentas', 'Produção de Conteúdo', 'IA e Vídeo', 'Publicação e Analytics'];
+    const secaoLabels = ['Equipe e Produção', 'IA, Publicação e Planejamento'];
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -583,24 +583,39 @@ export default function OnboardingCalculadora() {
                   )}
 
                   {pergunta.tipo === 'multiselect' && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {pergunta.opcoes.map(o => {
-                        const selected = (respostas[pergunta.campo] || []).includes(o.value);
-                        return (
-                          <button
-                            key={o.value}
-                            type="button"
-                            onClick={() => handleMultiselect(pergunta.campo, o.value)}
-                            style={{
-                              padding: '8px 16px', borderRadius: '10px',
-                              background: selected ? 'rgba(139, 92, 246, 0.2)' : '#0f0a1f',
-                              border: `1px solid ${selected ? '#8b5cf6' : '#3730a3'}`,
-                              color: selected ? '#8b5cf6' : '#94a3b8',
-                              cursor: 'pointer', fontSize: '13px', fontWeight: selected ? '600' : '400'
-                            }}
-                          >{o.label}</button>
-                        );
-                      })}
+                    <div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {pergunta.opcoes.map(o => {
+                          const selected = (respostas[pergunta.campo] || []).includes(o.value);
+                          return (
+                            <button
+                              key={o.value}
+                              type="button"
+                              onClick={() => handleMultiselect(pergunta.campo, o.value)}
+                              style={{
+                                padding: '8px 16px', borderRadius: '10px',
+                                background: selected ? 'rgba(139, 92, 246, 0.2)' : '#0f0a1f',
+                                border: `1px solid ${selected ? '#8b5cf6' : '#3730a3'}`,
+                                color: selected ? '#8b5cf6' : '#94a3b8',
+                                cursor: 'pointer', fontSize: '13px', fontWeight: selected ? '600' : '400'
+                              }}
+                            >{o.label}</button>
+                          );
+                        })}
+                      </div>
+                      {pergunta.campoOutro && (respostas[pergunta.campo] || []).includes('outro') && (
+                        <input
+                          type="text"
+                          placeholder="Especifique..."
+                          value={respostas[pergunta.campoOutro] || ''}
+                          onChange={e => handleResposta(pergunta.campoOutro, e.target.value)}
+                          style={{
+                            width: '100%', padding: '10px 16px', background: '#0f0a1f',
+                            border: '1px solid #3730a3', borderRadius: '12px', color: 'white',
+                            outline: 'none', boxSizing: 'border-box', marginTop: '10px'
+                          }}
+                        />
+                      )}
                     </div>
                   )}
 

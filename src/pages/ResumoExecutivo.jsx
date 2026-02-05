@@ -5,9 +5,8 @@ import { db, functions } from '../services/firebase';
 
 const generateSummaryFn = httpsCallable(functions, 'generateSummary');
 import {
-  FileText, Calendar, Check, ChevronDown, X, Sparkles, Download,
-  RefreshCw, AlertTriangle, TrendingUp, TrendingDown, Minus,
-  Activity, Users, Zap, Image, Search
+  FileText, Check, ChevronDown, X, Sparkles, Download,
+  RefreshCw, AlertTriangle, Zap, Search
 } from 'lucide-react';
 
 // Seções disponíveis para o resumo
@@ -119,7 +118,7 @@ export default function ResumoExecutivo() {
         const data = snapshot.docs
           .map(doc => ({ id: doc.id, ...doc.data() }))
           .filter(c => c.status !== 'inativo' && c.status !== 'cancelado')
-          .sort((a, b) => (a.team_name || '').localeCompare(b.team_name || ''));
+          .sort((a, b) => (a.nome || a.team_name || '').localeCompare(b.nome || b.team_name || ''));
         setClientes(data);
       } catch (error) {
         console.error('Erro ao carregar clientes:', error);
@@ -132,7 +131,7 @@ export default function ResumoExecutivo() {
 
   // Filtrar clientes para dropdown
   const clientesFiltrados = clientes.filter(c =>
-    !searchCliente || (c.team_name || '').toLowerCase().includes(searchCliente.toLowerCase())
+    !searchCliente || (c.nome || c.team_name || '').toLowerCase().includes(searchCliente.toLowerCase())
   );
 
   // Toggle seleção de cliente
@@ -160,62 +159,38 @@ export default function ResumoExecutivo() {
     const fim = new Date(dataFim);
     fim.setHours(23, 59, 59, 999);
 
-    // Buscar threads do período
-    const threadsRef = collection(db, 'threads');
-    let allThreads = [];
     const chunkSize = 10;
-
+    const chunks = [];
     for (let i = 0; i < teamIds.length; i += chunkSize) {
-      const chunk = teamIds.slice(i, i + chunkSize);
-      const q = query(threadsRef, where('team_id', 'in', chunk));
-      const snap = await getDocs(q);
-      allThreads.push(...snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      chunks.push(teamIds.slice(i, i + chunkSize));
     }
 
-    // Filtrar por período
-    const threadsPeriodo = allThreads.filter(t => {
+    // Buscar threads, métricas e alertas em paralelo
+    const [threadSnaps, metricasSnaps, alertasSnap] = await Promise.all([
+      Promise.all(chunks.map(c =>
+        getDocs(query(collection(db, 'threads'), where('team_id', 'in', c))).catch(() => ({ docs: [] }))
+      )),
+      Promise.all(chunks.map(c =>
+        getDocs(query(collection(db, 'metricas_diarias'), where('team_id', 'in', c), where('data', '>=', inicio), where('data', '<=', fim))).catch(() => ({ docs: [] }))
+      )),
+      getDocs(query(collection(db, 'alertas'), where('cliente_id', '==', cliente.id), where('status', '==', 'pendente'))).catch(() => ({ docs: [] }))
+    ]);
+
+    // Filtrar threads por período
+    const threadsPeriodo = threadSnaps.flatMap(s => s.docs.map(d => ({ id: d.id, ...d.data() }))).filter(t => {
       const createdAt = t.created_at?.toDate?.() || new Date(t.created_at || 0);
       return createdAt >= inicio && createdAt <= fim;
     });
 
-    // Buscar métricas do período
-    const metricasRef = collection(db, 'metricas_diarias');
-    let allMetricas = [];
-
-    for (let i = 0; i < teamIds.length; i += chunkSize) {
-      const chunk = teamIds.slice(i, i + chunkSize);
-      const q = query(
-        metricasRef,
-        where('team_id', 'in', chunk),
-        where('data', '>=', inicio),
-        where('data', '<=', fim)
-      );
-      const snap = await getDocs(q);
-      allMetricas.push(...snap.docs.map(d => d.data()));
-    }
-
     // Agregar métricas
-    const metricas = allMetricas.reduce((acc, m) => ({
+    const metricas = metricasSnaps.flatMap(s => s.docs.map(d => d.data())).reduce((acc, m) => ({
       logins: acc.logins + (m.logins || 0),
       pecas_criadas: acc.pecas_criadas + (m.pecas_criadas || 0),
       downloads: acc.downloads + (m.downloads || 0),
       uso_ai_total: acc.uso_ai_total + (m.uso_ai_total || 0),
     }), { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 });
 
-    // Buscar alertas pendentes
-    const alertasRef = collection(db, 'alertas');
-    let alertasPendentes = [];
-    try {
-      const alertasQ = query(
-        alertasRef,
-        where('cliente_id', '==', cliente.id),
-        where('status', '==', 'pendente')
-      );
-      const alertasSnap = await getDocs(alertasQ);
-      alertasPendentes = alertasSnap.docs.map(d => d.data());
-    } catch (e) {
-      // Índice pode não existir
-    }
+    const alertasPendentes = alertasSnap.docs.map(d => d.data());
 
     return {
       cliente,
@@ -266,7 +241,7 @@ export default function ResumoExecutivo() {
 
     const prompt = `You are a Customer Success analyst at Trakto. Generate a professional executive summary for a client.
 
-CLIENT: ${cliente.team_name}
+CLIENT: ${cliente.nome || cliente.team_name}
 PERIOD: ${dataInicio} to ${dataFim}
 
 PERIOD METRICS:
@@ -331,7 +306,7 @@ Be specific and actionable in recommendations. Focus on usage patterns and conve
           setProgressoGeracao({
             atual: operacaoAtual,
             total: totalOperacoes,
-            cliente: `${cliente?.team_name || ''} (${langLabel})`
+            cliente: `${cliente?.nome || cliente?.team_name || ''} (${langLabel})`
           });
 
           let resumoIA = { resumo: '', atencao: [], recomendacoes: [] };
@@ -348,7 +323,7 @@ Be specific and actionable in recommendations. Focus on usage patterns and conve
           });
         }
       } catch (error) {
-        console.error(`Erro ao gerar resumo para ${cliente?.team_name}:`, error);
+        console.error(`Erro ao gerar resumo para ${cliente?.nome || cliente?.team_name}:`, error);
       }
     }
 
@@ -374,7 +349,7 @@ Be specific and actionable in recommendations. Focus on usage patterns and conve
         const idiomasSuffix = idiomasUnicos.length > 1 ? `-${idiomasUnicos.join('-')}` : `-${idiomasUnicos[0]}`;
 
         if (clientesUnicos.length === 1) {
-          const nomeCliente = sanitize(resumosGerados[0].cliente.team_name || 'cliente');
+          const nomeCliente = sanitize(resumosGerados[0].cliente.nome || resumosGerados[0].cliente.team_name || 'cliente');
           return `resumo-executivo-${nomeCliente}${idiomasSuffix}-${periodoFormatado}.pdf`;
         } else {
           return `resumo-executivo-${clientesUnicos.length}-clientes${idiomasSuffix}-${periodoFormatado}.pdf`;
@@ -553,7 +528,7 @@ Be specific and actionable in recommendations. Focus on usage patterns and conve
                           }}>
                             {isSelected && <Check style={{ width: '12px', height: '12px', color: 'white' }} />}
                           </div>
-                          <span style={{ color: 'white', fontSize: '13px', flex: 1 }}>{cliente.team_name}</span>
+                          <span style={{ color: 'white', fontSize: '13px', flex: 1 }}>{cliente.nome || cliente.team_name}</span>
                         </div>
                       );
                     })}
@@ -583,7 +558,7 @@ Be specific and actionable in recommendations. Focus on usage patterns and conve
                         gap: '4px'
                       }}
                     >
-                      {cliente?.team_name}
+                      {cliente?.nome || cliente?.team_name}
                       <X
                         style={{ width: '12px', height: '12px', cursor: 'pointer' }}
                         onClick={() => toggleCliente(id)}
@@ -886,7 +861,7 @@ Be specific and actionable in recommendations. Focus on usage patterns and conve
                             {t('titulo', resumo.idioma)}
                           </h2>
                           <p style={{ margin: 0, fontSize: '18px', opacity: 0.9 }}>
-                            {resumo.cliente.team_name}
+                            {resumo.cliente.nome || resumo.cliente.team_name}
                           </p>
                         </div>
                         <div style={{ textAlign: 'right' }}>

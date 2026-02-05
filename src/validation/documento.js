@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const documentoSchema = z.object({
   titulo: z.string().min(1, 'Título é obrigatório'),
-  url: z.string().url('URL inválida')
+  url: z.string().min(1, 'URL é obrigatória')
 });
 
 export const observacaoSchema = z.object({
@@ -10,7 +10,7 @@ export const observacaoSchema = z.object({
 });
 
 export const interacaoSchema = z.object({
-  tipo: z.enum(['onboarding', 'feedback', 'suporte', 'treinamento', 'qbr', 'outro']),
+  tipo: z.enum(['reuniao', 'onboarding', 'feedback', 'suporte', 'treinamento', 'qbr', 'outro']),
   data: z.string().min(1, 'Data é obrigatória'),
   participantes: z.string().optional().default(''),
   notas: z.string().optional().default(''),

@@ -1,32 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam } from '../services/api';
-import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, UserCircle, Phone, Mail, Briefcase, Eye, EyeOff, Key, Pencil } from 'lucide-react';
+import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, UserCircle, Eye, EyeOff, Key, Pencil } from 'lucide-react';
 import { STATUS_OPTIONS, DEFAULT_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
-import { logAction, calculateChanges } from '../utils/audit';
+import { logAction } from '../utils/audit';
 import { useAuth } from '../contexts/AuthContext';
 import { AREAS_ATUACAO } from '../utils/areasAtuacao';
 import { validateForm } from '../validation';
 import { clienteSchema, stakeholderSchema } from '../validation/cliente';
 import { ErrorMessage } from '../components/UI/ErrorMessage';
 
-const TAGS_CONTEXTO = [
-  'Onboarding',
-  'Treinamento',
-  'Problemas',
-  'Dúvidas',
-  'Expansão',
-  'Renovação',
-  'Churn Risk'
-];
-
 const TIPOS_CONTATO = [
   { value: 'decisor', label: 'Decisor', color: '#8b5cf6' },
   { value: 'operacional', label: 'Operacional', color: '#06b6d4' },
   { value: 'financeiro', label: 'Financeiro', color: '#10b981' },
   { value: 'tecnico', label: 'Técnico', color: '#f59e0b' },
+  { value: 'time_google', label: 'Time Google', color: '#3b82f6' },
   { value: 'outro', label: 'Outro', color: '#64748b' }
 ];
 
@@ -58,7 +49,6 @@ export default function ClienteForm() {
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [categoriasProduto, setCategoriasProduto] = useState(['studio']);
   const [responsaveis, setResponsaveis] = useState([]);
-  const [tags, setTags] = useState([]);
   const [timesSelecionados, setTimesSelecionados] = useState([]);
   const [timesOriginais, setTimesOriginais] = useState([]);
   const [stakeholders, setStakeholders] = useState([]);
@@ -66,13 +56,6 @@ export default function ClienteForm() {
   const [showSenha, setShowSenha] = useState(false);
   const [areaAtuacao, setAreaAtuacao] = useState('');
   const [tipoConta, setTipoConta] = useState('pagante');
-  const [pessoaVideo, setPessoaVideo] = useState(false);
-  const [modulosConcluidos, setModulosConcluidos] = useState([]);
-  const [firstValue, setFirstValue] = useState({ estatico: '', ai: '', motion: '' });
-  const [calendarioCampanhas, setCalendarioCampanhas] = useState({
-    jan: 'normal', fev: 'normal', mar: 'normal', abr: 'normal', mai: 'normal', jun: 'normal',
-    jul: 'normal', ago: 'normal', set: 'normal', out: 'normal', nov: 'normal', dez: 'normal'
-  });
   const [errors, setErrors] = useState({});
 
   // Filter state for teams
@@ -89,58 +72,47 @@ export default function ClienteForm() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch all teams
-        const timesSnap = await getDocs(collection(db, 'times'));
-        const timesData = timesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const fetches = [
+          getDocs(collection(db, 'times')),
+          getDocs(collection(db, 'clientes')),
+          getDocs(collection(db, 'usuarios_sistema'))
+        ];
+        if (isEditing) fetches.push(getDoc(doc(db, 'clientes', id)));
+
+        const results = await Promise.all(fetches);
+
+        const timesData = results[0].docs.map(d => ({ id: d.id, ...d.data() }));
         setTimes(timesData);
 
-        // Buscar contagem de usuários para cada time
         const teamIds = timesData.map(t => t.id);
         const counts = await getUsuariosCountByTeam(teamIds);
         setUsuariosCount(counts);
 
-        // Fetch all clients to check team assignments
-        const clientesSnap = await getDocs(collection(db, 'clientes'));
-        const clientesData = clientesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const clientesData = results[1].docs.map(d => ({ id: d.id, ...d.data() }));
         setClientes(clientesData);
 
-        // Fetch system users for responsaveis list
-        const usuariosSnap = await getDocs(collection(db, 'usuarios_sistema'));
-        const usuariosData = usuariosSnap.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter(u => u.ativo !== false) // Only active users
+        const usuariosData = results[2].docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(u => u.ativo !== false)
           .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
         setUsuariosSistema(usuariosData);
 
-        // If editing, fetch client data
-        if (isEditing) {
-          const clienteDoc = await getDoc(doc(db, 'clientes', id));
-          if (clienteDoc.exists()) {
-            const data = clienteDoc.data();
-            setNome(data.nome || data.team_name || '');
-            setStatus(data.status || DEFAULT_STATUS);
-            // Handle both old single value and new array format
-            const produtosData = data.categorias_produto || (data.categoria_produto ? [data.categoria_produto] : ['studio']);
-            setCategoriasProduto(Array.isArray(produtosData) ? produtosData : [produtosData]);
-            setResponsaveis(data.responsaveis || (data.responsavel_email ? [{ email: data.responsavel_email, nome: data.responsavel_nome }] : []));
-            setTags(data.tags || []);
-            setTimesSelecionados(data.times || []);
-            setTimesOriginais(data.times || []);
-            setStakeholders(data.stakeholders || []);
-            setSenhaPadrao(data.senha_padrao || '');
-            setAreaAtuacao(data.area_atuacao || '');
-            setTipoConta(data.tipo_conta || 'pagante');
-            setPessoaVideo(data.pessoa_video || false);
-            setModulosConcluidos(data.modulos_concluidos || []);
-            setFirstValue(data.first_value_atingido || { estatico: '', ai: '', motion: '' });
-            setCalendarioCampanhas(data.calendario_campanhas || {
-              jan: 'normal', fev: 'normal', mar: 'normal', abr: 'normal', mai: 'normal', jun: 'normal',
-              jul: 'normal', ago: 'normal', set: 'normal', out: 'normal', nov: 'normal', dez: 'normal'
-            });
-          }
+        if (isEditing && results[3]?.exists()) {
+          const data = results[3].data();
+          setNome(data.nome || data.team_name || '');
+          setStatus(data.status === 'onboarding' ? 'ativo' : (data.status || DEFAULT_STATUS));
+          const produtosData = data.categorias_produto || (data.categoria_produto ? [data.categoria_produto] : ['studio']);
+          setCategoriasProduto(Array.isArray(produtosData) ? produtosData : [produtosData]);
+          setResponsaveis(data.responsaveis || (data.responsavel_email ? [{ email: data.responsavel_email, nome: data.responsavel_nome }] : []));
+          setTimesSelecionados(data.times || []);
+          setTimesOriginais(data.times || []);
+          setStakeholders(data.stakeholders || []);
+          setSenhaPadrao(data.senha_padrao || '');
+          setAreaAtuacao(data.area_atuacao || '');
+          setTipoConta(data.tipo_conta || 'pagante');
         }
       } catch (error) {
-        console.error('Erro ao carregar dados:', error);
+        // erro silenciado em produção
       } finally {
         setLoading(false);
       }
@@ -204,12 +176,6 @@ export default function ClienteForm() {
       // Then alphabetically
       return (a.team_name || '').localeCompare(b.team_name || '');
     });
-
-  const toggleTag = (tag) => {
-    setTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
-  };
 
   const toggleCategoriaProduto = (categoria) => {
     setCategoriasProduto(prev => {
@@ -288,17 +254,12 @@ export default function ClienteForm() {
       status,
       categorias_produto: categoriasProduto,
       responsaveis,
-      tags,
       times: timesSelecionados,
       team_type: getTeamTypes().join(', '),
       stakeholders,
       senha_padrao: senhaPadrao,
       area_atuacao: areaAtuacao || null,
-      tipo_conta: tipoConta,
-      pessoa_video: pessoaVideo,
-      modulos_concluidos: modulosConcluidos,
-      first_value_atingido: firstValue,
-      calendario_campanhas: calendarioCampanhas
+      tipo_conta: tipoConta
     };
 
     const validationErrors = validateForm(clienteSchema, formData);
@@ -333,12 +294,11 @@ export default function ClienteForm() {
         team_name: nome.trim(),
         status,
         categorias_produto: categoriasProduto,
-        categoria_produto: categoriasProduto[0], // Keep for backwards compatibility
+        categoria_produto: categoriasProduto[0],
         usa_metricas_plataforma: usaPlataforma,
         responsaveis,
         responsavel_email: responsaveis[0]?.email || '',
         responsavel_nome: responsaveis[0]?.nome || '',
-        tags,
         times: timesSelecionados,
         team_types: teamTypesArray,
         team_type: teamTypesArray.length === 1 ? teamTypesArray[0] : teamTypesArray.join(', '),
@@ -346,53 +306,42 @@ export default function ClienteForm() {
         senha_padrao: senhaPadrao,
         area_atuacao: areaAtuacao || null,
         tipo_conta: tipoConta,
-        pessoa_video: pessoaVideo,
-        modulos_concluidos: modulosConcluidos,
-        first_value_atingido: firstValue,
-        calendario_campanhas: calendarioCampanhas,
-        updated_at: new Date()
+        updated_at: serverTimestamp()
       };
 
       if (isEditing) {
         await updateDoc(doc(db, 'clientes', id), clienteData);
 
-        // Update times that were removed
+        // Update times em paralelo
         const timesRemovidos = timesOriginais.filter(t => !timesSelecionados.includes(t));
-        for (const teamId of timesRemovidos) {
-          try {
-            await updateDoc(doc(db, 'times', teamId), { cliente_id: null });
-          } catch (e) { /* ignore */ }
-        }
-
-        // Update times that were added
         const timesAdicionados = timesSelecionados.filter(t => !timesOriginais.includes(t));
-        for (const teamId of timesAdicionados) {
-          try {
-            await updateDoc(doc(db, 'times', teamId), { cliente_id: id });
-          } catch (e) { /* ignore */ }
-        }
+        const timesUpdates = [
+          ...timesRemovidos.map(teamId =>
+            updateDoc(doc(db, 'times', teamId), { cliente_id: null }).catch(() => {})
+          ),
+          ...timesAdicionados.map(teamId =>
+            updateDoc(doc(db, 'times', teamId), { cliente_id: id }).catch(() => {})
+          )
+        ];
+        await Promise.all(timesUpdates);
 
-        // Log audit
         await logAction('update', 'cliente', id, nome, {
           status: { old: null, new: status },
-          responsaveis: { old: null, new: responsaveis.map(r => r.nome).join(', ') },
-          times: { old: timesOriginais.length, new: timesSelecionados.length }
+          responsaveis: { old: null, new: responsaveis.map(r => r.nome).join(', ') }
         }, { email: user?.email, name: user?.email?.split('@')[0] });
       } else {
-        // Create new client
         const newClientRef = doc(collection(db, 'clientes'));
-        clienteData.created_at = new Date();
+        clienteData.created_at = serverTimestamp();
         clienteData.segmento_cs = 'ESTAVEL';
         await setDoc(newClientRef, clienteData);
 
-        // Update times with new client ID
-        for (const teamId of timesSelecionados) {
-          try {
-            await updateDoc(doc(db, 'times', teamId), { cliente_id: newClientRef.id });
-          } catch (e) { /* ignore */ }
-        }
+        // Update times em paralelo
+        await Promise.all(
+          timesSelecionados.map(teamId =>
+            updateDoc(doc(db, 'times', teamId), { cliente_id: newClientRef.id }).catch(() => {})
+          )
+        );
 
-        // Log audit
         await logAction('create', 'cliente', newClientRef.id, nome, {}, { email: user?.email, name: user?.email?.split('@')[0] });
       }
 
@@ -543,8 +492,8 @@ export default function ClienteForm() {
                 {categoriasProduto.length > 0 && (
                   <p style={{ color: '#64748b', fontSize: '12px', marginTop: '8px' }}>
                     {categoriasProduto.some(cat => CATEGORIAS_PRODUTO.find(c => c.value === cat)?.usaPlatforma)
-                      ? '✓ Usa métricas da plataforma no Health Score'
-                      : '○ Não usa métricas da plataforma no Health Score'}
+                      ? '✓ Usa métricas da plataforma na Saúde CS'
+                      : '○ Não usa métricas da plataforma na Saúde CS'}
                   </p>
                 )}
               </div>
@@ -607,39 +556,6 @@ export default function ClienteForm() {
                 </div>
               </div>
 
-              {/* Pessoa para Video (Motion) */}
-              <div style={{ marginBottom: '20px' }}>
-                <button
-                  type="button"
-                  onClick={() => setPessoaVideo(!pessoaVideo)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    width: '100%',
-                    padding: '12px 16px',
-                    background: pessoaVideo ? 'rgba(16, 185, 129, 0.15)' : 'rgba(15, 10, 31, 0.6)',
-                    border: pessoaVideo ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)',
-                    borderRadius: '12px',
-                    color: pessoaVideo ? '#10b981' : '#94a3b8',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    textAlign: 'left'
-                  }}
-                >
-                  <div style={{
-                    width: '20px', height: '20px', borderRadius: '6px',
-                    background: pessoaVideo ? '#10b981' : 'transparent',
-                    border: pessoaVideo ? 'none' : '2px solid #64748b',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    {pessoaVideo && <Check style={{ width: '14px', height: '14px', color: 'white' }} />}
-                  </div>
-                  Tem pessoa capacitada para Motion (Video)
-                </button>
-              </div>
-
               <div>
                 <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
                   Team Type (automático)
@@ -697,107 +613,6 @@ export default function ClienteForm() {
                 <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '16px' }}>
                   Nenhum usuário cadastrado no sistema. Cadastre usuários em Configurações → Usuários.
                 </p>
-              )}
-            </div>
-
-            {/* Tags de Contexto */}
-            <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px' }}>
-              <h2 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Tags de Contexto</h2>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {TAGS_CONTEXTO.map(tag => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => toggleTag(tag)}
-                    style={{
-                      padding: '8px 16px',
-                      background: tags.includes(tag) ? 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' : 'rgba(15, 10, 31, 0.6)',
-                      border: tags.includes(tag) ? 'none' : '1px solid rgba(139, 92, 246, 0.3)',
-                      borderRadius: '20px',
-                      color: 'white',
-                      fontSize: '13px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    {tags.includes(tag) && <Check style={{ width: '14px', height: '14px', marginRight: '6px', display: 'inline', verticalAlign: 'middle' }} />}
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Onboarding e Produto */}
-            <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px' }}>
-              <h2 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Onboarding e Produto</h2>
-
-              {/* Módulos Concluídos */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
-                  Módulos Concluídos
-                </label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {[{ value: 'estatico', label: 'Estático' }, { value: 'ai', label: 'AI' }, { value: 'motion', label: 'Motion' }].map(mod => {
-                    const isSelected = modulosConcluidos.includes(mod.value);
-                    return (
-                      <button
-                        key={mod.value}
-                        type="button"
-                        onClick={() => setModulosConcluidos(prev =>
-                          prev.includes(mod.value) ? prev.filter(m => m !== mod.value) : [...prev, mod.value]
-                        )}
-                        style={{
-                          flex: 1,
-                          padding: '10px 16px',
-                          background: isSelected ? 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)' : 'rgba(15, 10, 31, 0.6)',
-                          border: isSelected ? 'none' : '1px solid rgba(139, 92, 246, 0.3)',
-                          borderRadius: '12px',
-                          color: 'white',
-                          fontSize: '13px',
-                          fontWeight: isSelected ? '600' : '400',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {isSelected && <Check style={{ width: '14px', height: '14px', marginRight: '6px', display: 'inline', verticalAlign: 'middle' }} />}
-                        {mod.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* First Value Atingido */}
-              {modulosConcluidos.length > 0 && (
-                <div>
-                  <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>
-                    First Value Atingido (data por módulo)
-                  </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {modulosConcluidos.map(mod => (
-                      <div key={mod} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{ color: '#94a3b8', fontSize: '13px', width: '70px' }}>
-                          {mod === 'estatico' ? 'Estático' : mod === 'ai' ? 'AI' : 'Motion'}
-                        </span>
-                        <input
-                          type="date"
-                          value={firstValue[mod] || ''}
-                          onChange={(e) => setFirstValue(prev => ({ ...prev, [mod]: e.target.value }))}
-                          style={{
-                            flex: 1,
-                            padding: '8px 12px',
-                            background: '#0f0a1f',
-                            border: '1px solid rgba(139, 92, 246, 0.3)',
-                            borderRadius: '12px',
-                            color: 'white',
-                            fontSize: '13px',
-                            outline: 'none',
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
               )}
             </div>
 
@@ -1065,62 +880,6 @@ export default function ClienteForm() {
                     <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>Nenhum time encontrado</p>
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Calendário de Campanhas */}
-            <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px' }}>
-              <h2 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Calendário de Campanhas</h2>
-              <p style={{ color: '#64748b', fontSize: '12px', marginBottom: '16px' }}>
-                Defina a sazonalidade esperada por mês (alta, normal ou baixa demanda)
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                {[
-                  { key: 'jan', label: 'Jan' }, { key: 'fev', label: 'Fev' }, { key: 'mar', label: 'Mar' }, { key: 'abr', label: 'Abr' },
-                  { key: 'mai', label: 'Mai' }, { key: 'jun', label: 'Jun' }, { key: 'jul', label: 'Jul' }, { key: 'ago', label: 'Ago' },
-                  { key: 'set', label: 'Set' }, { key: 'out', label: 'Out' }, { key: 'nov', label: 'Nov' }, { key: 'dez', label: 'Dez' }
-                ].map(mes => {
-                  const valor = calendarioCampanhas[mes.key] || 'normal';
-                  const cores = { alta: '#10b981', normal: '#64748b', baixa: '#f59e0b' };
-                  return (
-                    <div key={mes.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600' }}>{mes.label}</span>
-                      <div style={{ display: 'flex', gap: '2px' }}>
-                        {['alta', 'normal', 'baixa'].map(nivel => (
-                          <button
-                            key={nivel}
-                            type="button"
-                            onClick={() => setCalendarioCampanhas(prev => ({ ...prev, [mes.key]: nivel }))}
-                            style={{
-                              width: '24px', height: '24px', borderRadius: '6px',
-                              background: valor === nivel ? cores[nivel] : 'rgba(15, 10, 31, 0.6)',
-                              border: valor === nivel ? 'none' : '1px solid rgba(255,255,255,0.1)',
-                              cursor: 'pointer',
-                              fontSize: '9px',
-                              color: valor === nivel ? 'white' : '#64748b',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              padding: 0
-                            }}
-                            title={`${mes.label}: ${nivel}`}
-                          >
-                            {nivel[0].toUpperCase()}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '12px' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b' }}>
-                  <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#10b981' }}></span> Alta
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b' }}>
-                  <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#64748b' }}></span> Normal
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748b' }}>
-                  <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: '#f59e0b' }}></span> Baixa
-                </span>
               </div>
             </div>
 

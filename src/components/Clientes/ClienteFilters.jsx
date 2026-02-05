@@ -46,7 +46,7 @@ export default function ClienteFilters({
           value={segmento || ''}
           onChange={(e) => onSegmentoChange(e.target.value)}
         >
-          <option value="">Todos os segmentos</option>
+          <option value="">Todas as saúdes</option>
           {SEGMENTO_OPTIONS.map((seg) => (
             <option key={seg.value} value={seg.value}>
               {seg.label}

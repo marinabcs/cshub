@@ -26,7 +26,7 @@ const customErrorMap = (issue, ctx) => {
   if (issue.code === z.ZodIssueCode.invalid_enum_value) {
     return { message: 'Valor inválido' };
   }
-  return { message: ctx.defaultError };
+  return { message: ctx?.defaultError || 'Valor inválido' };
 };
 
 z.setErrorMap(customErrorMap);

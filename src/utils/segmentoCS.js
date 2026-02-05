@@ -160,10 +160,21 @@ export function getSegmentoLabel(segmento) {
 }
 
 /**
- * Obter acoes recomendadas
+ * Ações padrão por segmento (usado como fallback se config/ongoing não existir)
  */
-export function getSegmentoAcoes(segmento) {
+export const DEFAULT_ONGOING_ACOES = {
+  CRESCIMENTO: SEGMENTOS_CS.CRESCIMENTO.acoes,
+  ESTAVEL: SEGMENTOS_CS.ESTAVEL.acoes,
+  ALERTA: SEGMENTOS_CS.ALERTA.acoes,
+  RESGATE: SEGMENTOS_CS.RESGATE.acoes,
+};
+
+/**
+ * Obter acoes recomendadas (aceita config do Firestore como override)
+ */
+export function getSegmentoAcoes(segmento, ongoingConfig) {
   const normalized = normalizarSegmento(segmento);
+  if (ongoingConfig?.[normalized]) return ongoingConfig[normalized];
   return SEGMENTOS_CS[normalized]?.acoes || [];
 }
 

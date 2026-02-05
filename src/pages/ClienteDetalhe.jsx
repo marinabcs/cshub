@@ -3,14 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin, GraduationCap } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin, GraduationCap, Search } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SEGMENTOS_CS, getSegmentoInfo, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge, SegmentoCard } from '../components/UI/SegmentoBadge';
 import { useClassificarThread } from '../hooks/useClassificarThread';
 import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../services/openai';
-import PlaybooksSection from '../components/Cliente/PlaybooksSection';
 import OnboardingSection from '../components/Cliente/OnboardingSection';
+import OngoingSection from '../components/Cliente/OngoingSection';
 import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
 import HeavyUsersCard from '../components/Cliente/HeavyUsersCard';
 import { useEmailFilters } from '../hooks/useEmailFilters';
@@ -33,6 +33,7 @@ const TIPOS_CONTATO = [
   { value: 'operacional', label: 'Operacional', color: '#06b6d4' },
   { value: 'financeiro', label: 'Financeiro', color: '#10b981' },
   { value: 'tecnico', label: 'Técnico', color: '#f59e0b' },
+  { value: 'time_google', label: 'Time Google', color: '#3b82f6' },
   { value: 'outro', label: 'Outro', color: '#64748b' }
 ];
 
@@ -199,6 +200,13 @@ export default function ClienteDetalhe() {
   const [interacaoForm, setInteracaoForm] = useState({ tipo: 'feedback', data: '', participantes: '', notas: '', duracao: '', link_gravacao: '' });
   const [savingInteracao, setSavingInteracao] = useState(false);
   const [editingInteracaoId, setEditingInteracaoId] = useState(null);
+  const [filterInteracaoTexto, setFilterInteracaoTexto] = useState('');
+  const [filterInteracaoTipo, setFilterInteracaoTipo] = useState('');
+
+  // Stakeholders
+  const [showStakeholderForm, setShowStakeholderForm] = useState(false);
+  const [stakeholderForm, setStakeholderForm] = useState({ nome: '', email: '', cargo: '', telefone: '', linkedin_url: '', tipo_contato: 'outro' });
+  const [savingStakeholder, setSavingStakeholder] = useState(false);
 
   useEffect(() => {
     const fetchCliente = async () => {
@@ -505,18 +513,19 @@ export default function ClienteDetalhe() {
     }
     setSavingDoc(true);
     try {
+      const normalizedUrl = docForm.url.match(/^https?:\/\//) ? docForm.url : `https://${docForm.url}`;
       if (editingDoc) {
         await updateDoc(doc(db, 'documentos', editingDoc.id), {
           titulo: docForm.titulo,
           descricao: docForm.descricao,
-          url: docForm.url,
+          url: normalizedUrl,
           updated_at: Timestamp.now()
         });
       } else {
         await addDoc(collection(db, 'documentos'), {
           titulo: docForm.titulo,
           descricao: docForm.descricao,
-          url: docForm.url,
+          url: normalizedUrl,
           cliente_id: id,
           created_at: Timestamp.now(),
           updated_at: Timestamp.now()
@@ -741,13 +750,57 @@ export default function ClienteDetalhe() {
 
   // Interações - Handlers
   const TIPOS_INTERACAO = [
+    { value: 'email', label: 'Email', color: '#06b6d4' },
+    { value: 'reuniao', label: 'Reunião', color: '#a855f7' },
+    { value: 'observacao', label: 'Observação', color: '#10b981' },
     { value: 'onboarding', label: 'Onboarding', color: '#8b5cf6' },
-    { value: 'feedback', label: 'Feedback', color: '#06b6d4' },
+    { value: 'feedback', label: 'Feedback', color: '#3b82f6' },
     { value: 'suporte', label: 'Suporte', color: '#f59e0b' },
     { value: 'treinamento', label: 'Treinamento', color: '#10b981' },
     { value: 'qbr', label: 'QBR', color: '#f97316' },
     { value: 'outro', label: 'Outro', color: '#64748b' }
   ];
+
+  // Stakeholders - Handlers
+  const handleSaveStakeholder = async () => {
+    if (!stakeholderForm.nome.trim() || !stakeholderForm.email.trim()) {
+      alert('Nome e email são obrigatórios');
+      return;
+    }
+    setSavingStakeholder(true);
+    try {
+      const newStakeholder = {
+        id: Date.now().toString(),
+        nome: stakeholderForm.nome.trim(),
+        email: stakeholderForm.email.trim().toLowerCase(),
+        cargo: stakeholderForm.cargo.trim(),
+        telefone: stakeholderForm.telefone.trim(),
+        linkedin_url: stakeholderForm.linkedin_url.trim(),
+        tipo_contato: stakeholderForm.tipo_contato
+      };
+      const updatedStakeholders = [...(cliente.stakeholders || []), newStakeholder];
+      await updateDoc(doc(db, 'clientes', id), { stakeholders: updatedStakeholders });
+      setCliente(prev => ({ ...prev, stakeholders: updatedStakeholders }));
+      setStakeholderForm({ nome: '', email: '', cargo: '', telefone: '', linkedin_url: '', tipo_contato: 'outro' });
+      setShowStakeholderForm(false);
+    } catch (error) {
+      alert('Erro ao salvar stakeholder');
+    } finally {
+      setSavingStakeholder(false);
+    }
+  };
+
+  const handleDeleteStakeholder = async (stakeholderId, index) => {
+    if (!confirm('Remover este stakeholder?')) return;
+    try {
+      const current = cliente.stakeholders || [];
+      const updatedStakeholders = current.filter((s, i) => s.id ? s.id !== stakeholderId : i !== index);
+      await updateDoc(doc(db, 'clientes', id), { stakeholders: updatedStakeholders });
+      setCliente(prev => ({ ...prev, stakeholders: updatedStakeholders }));
+    } catch (error) {
+      alert('Erro ao remover stakeholder');
+    }
+  };
 
   const fetchInteracoes = async () => {
     setLoadingInteracoes(true);
@@ -847,7 +900,7 @@ export default function ClienteDetalhe() {
 
   // Carregar observações quando a aba for selecionada ou conversas (para card no painel)
   useEffect(() => {
-    if ((activeTab === 'observacoes' || activeTab === 'conversas') && observacoes.length === 0) {
+    if (activeTab === 'interacoes' && observacoes.length === 0) {
       fetchObservacoes();
     }
   }, [activeTab]);
@@ -1047,7 +1100,7 @@ export default function ClienteDetalhe() {
   }
 
   return (
-    <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
+    <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh', maxWidth: '100%', overflow: 'hidden' }}>
       <div style={{ marginBottom: '32px' }}>
         <button onClick={() => navigate('/clientes')} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', color: '#94a3b8', fontSize: '14px', cursor: 'pointer', marginBottom: '16px', padding: 0 }}>
           <ArrowLeft style={{ width: '18px', height: '18px' }} />
@@ -1065,9 +1118,16 @@ export default function ClienteDetalhe() {
                   <Building2 style={{ width: '16px', height: '16px', color: '#64748b' }} />
                   <span style={{ color: '#94a3b8', fontSize: '14px' }}>{cliente.team_type || 'Sem tipo'}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   <Users style={{ width: '16px', height: '16px', color: '#64748b' }} />
-                  <span style={{ color: '#94a3b8', fontSize: '14px' }}>{cliente.responsavel_nome || 'Sem responsável'}</span>
+                  {cliente.responsaveis && cliente.responsaveis.length > 0
+                    ? cliente.responsaveis.map((r, i) => (
+                        <span key={r.email} style={{ color: '#94a3b8', fontSize: '14px' }}>
+                          {r.nome}{i < cliente.responsaveis.length - 1 ? ',' : ''}
+                        </span>
+                      ))
+                    : <span style={{ color: '#94a3b8', fontSize: '14px' }}>{cliente.responsavel_nome || 'Sem responsável'}</span>
+                  }
                 </div>
                 {cliente.created_at && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1118,17 +1178,16 @@ export default function ClienteDetalhe() {
         background: 'rgba(30, 27, 75, 0.4)',
         padding: '6px',
         borderRadius: '16px',
-        border: '1px solid rgba(139, 92, 246, 0.15)'
+        border: '1px solid rgba(139, 92, 246, 0.15)',
+        overflowX: 'auto',
+        overflowY: 'hidden'
       }}>
         {[
           { id: 'resumo', label: 'Resumo', icon: Activity },
-          { id: 'conversas', label: 'Conversas', icon: MessageSquare, count: threads.length },
-          { id: 'playbook', label: 'Playbooks', icon: FileText },
+          { id: 'interacoes', label: 'Interações', icon: MessageSquare, count: threads.length + interacoes.length + observacoes.length },
           { id: 'onboarding', label: 'Onboarding', icon: GraduationCap },
+          { id: 'ongoing', label: 'Ongoing', icon: ClipboardList },
           { id: 'documentos', label: 'Documentos', icon: FolderOpen },
-          { id: 'observacoes', label: 'Observações', icon: ClipboardList },
-          { id: 'bugs', label: 'Bugs', icon: Bug, count: (cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length },
-          { id: 'interacoes', label: 'Interações', icon: Phone, count: interacoes.length },
           { id: 'pessoas', label: 'Pessoas', icon: Users, count: usuarios.length }
         ].map(tab => {
           const TabIcon = tab.icon;
@@ -1142,8 +1201,9 @@ export default function ClienteDetalhe() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px',
-                padding: '12px 20px',
+                gap: '6px',
+                padding: '10px 14px',
+                whiteSpace: 'nowrap',
                 background: isActive
                   ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(6, 182, 212, 0.15) 100%)'
                   : 'transparent',
@@ -1182,399 +1242,152 @@ export default function ClienteDetalhe() {
         <>
       {/* Aviso de Cliente Inativo */}
       {cliente.status === 'inativo' && (
-        <div style={{
-          background: 'rgba(107, 114, 128, 0.15)',
-          border: '1px solid rgba(107, 114, 128, 0.3)',
-          borderRadius: '16px',
-          padding: '24px',
-          marginBottom: '32px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px'
-        }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            background: 'rgba(107, 114, 128, 0.2)',
-            borderRadius: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <AlertTriangle style={{ width: '24px', height: '24px', color: '#9ca3af' }} />
-          </div>
-          <div>
-            <h3 style={{ color: '#9ca3af', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>Cliente Inativo</h3>
-            <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>
-              As métricas estão pausadas enquanto o cliente permanece inativo. Os dados históricos foram preservados.
-            </p>
-          </div>
+        <div style={{ background: 'rgba(107, 114, 128, 0.15)', border: '1px solid rgba(107, 114, 128, 0.3)', borderRadius: '16px', padding: '20px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <AlertTriangle style={{ width: '20px', height: '20px', color: '#9ca3af', flexShrink: 0 }} />
+          <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
+            <strong>Cliente Inativo</strong> — métricas pausadas, dados históricos preservados.
+          </p>
         </div>
       )}
 
-      {/* Segmento CS Card */}
+      {/* Saúde CS - Compacto */}
       {cliente.status !== 'inativo' && (
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-          <div>
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>Segmento CS</h3>
-            {(cliente.segmento_recalculado_em || segmentoCalculado?.recalculadoEm) && (
-              <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
-                Recalculado em {(cliente.segmento_recalculado_em?.toDate?.() || segmentoCalculado?.recalculadoEm)?.toLocaleString('pt-BR')}
-              </p>
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: segmentoCalculado?.motivo || segmentoCalculado?.fatores ? '14px' : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <SegmentoBadge segmento={getClienteSegmento(cliente)} size="lg" />
+            {segmentoCalculado?.changed && cliente.segmento_anterior && (
+              <span style={{ color: '#f59e0b', fontSize: '12px' }}>
+                (era {cliente.segmento_anterior})
+              </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              onClick={handleRecalcularSegmento}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '6px 12px',
-                background: 'rgba(139, 92, 246, 0.1)',
-                border: '1px solid rgba(139, 92, 246, 0.3)',
-                borderRadius: '12px',
-                color: '#a78bfa', fontSize: '13px', fontWeight: '500', cursor: 'pointer'
-              }}
-            >
-              <RotateCcw style={{ width: '14px', height: '14px' }} />
-              Recalcular
-            </button>
-            <SegmentoBadge segmento={getClienteSegmento(cliente)} size="lg" />
-          </div>
+          <button
+            onClick={handleRecalcularSegmento}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '12px', color: '#a78bfa', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}
+          >
+            <RotateCcw style={{ width: '14px', height: '14px' }} />
+            Recalcular
+          </button>
         </div>
-
-        {/* Motivo da classificacao */}
         {segmentoCalculado?.motivo && (
-          <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', marginBottom: '6px', textTransform: 'uppercase' }}>Motivo</p>
-            <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>{segmentoCalculado.motivo}</p>
-          </div>
+          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 10px 0' }}>{segmentoCalculado.motivo}</p>
         )}
-
-        {/* Fatores do calculo */}
         {segmentoCalculado?.fatores && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
-            <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-              <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 2px 0' }}>Dias sem uso</p>
-              <p style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>{segmentoCalculado.fatores.dias_sem_uso}</p>
-            </div>
-            <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-              <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 2px 0' }}>Frequencia</p>
-              <p style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0 }}>{segmentoCalculado.fatores.frequencia_uso}</p>
-            </div>
-            <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
-              <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 2px 0' }}>Engajamento</p>
-              <p style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0 }}>{segmentoCalculado.fatores.engajamento}</p>
-            </div>
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <span style={{ color: '#64748b', fontSize: '12px' }}>Dias sem uso: <strong style={{ color: 'white' }}>{segmentoCalculado.fatores.dias_sem_uso}</strong></span>
+            <span style={{ color: '#64748b', fontSize: '12px' }}>Frequência: <strong style={{ color: 'white' }}>{segmentoCalculado.fatores.frequencia_uso}</strong></span>
+            <span style={{ color: '#64748b', fontSize: '12px' }}>Engajamento: <strong style={{ color: 'white' }}>{segmentoCalculado.fatores.engajamento}</strong></span>
           </div>
         )}
-
-        {/* Indicador de mudanca */}
-        {segmentoCalculado?.changed && cliente.segmento_anterior && (
-          <div style={{ padding: '10px 16px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '12px', marginBottom: '16px' }}>
-            <p style={{ color: '#f59e0b', fontSize: '13px', margin: 0 }}>
-              Segmento atualizado de {cliente.segmento_anterior} para {getClienteSegmento(cliente)}
-            </p>
-          </div>
-        )}
-
-        {(() => {
-          const segmentoInfo = getSegmentoInfo(getClienteSegmento(cliente));
-          if (!segmentoInfo) return null;
-          return (
-            <>
-              {/* Criterios */}
-              <div style={{ marginBottom: '20px' }}>
-                <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase' }}>Criterios deste segmento</p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {segmentoInfo.criterios.map((criterio, i) => (
-                    <span key={i} style={{ padding: '6px 12px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', color: '#94a3b8', fontSize: '13px' }}>
-                      {criterio}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Acoes Recomendadas */}
-              <div>
-                <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase' }}>Acoes Recomendadas</p>
-                <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                  {segmentoInfo.acoes.map((acao, i) => (
-                    <li key={i} style={{ color: segmentoInfo.color, fontSize: '14px', marginBottom: '8px' }}>
-                      {acao}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </>
-          );
-        })()}
       </div>
       )}
 
-      {/* Onboarding e Produto */}
+      {/* Métricas de Uso - 4 em uma linha */}
       {cliente.status !== 'inativo' && (
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-        {/* Card: Conta e Onboarding */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '12px' }}>Conta e Onboarding</p>
-
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
-            {/* Tipo de conta */}
-            <span style={{
-              padding: '4px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600',
-              background: cliente.tipo_conta === 'google_gratuito' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(139, 92, 246, 0.15)',
-              color: cliente.tipo_conta === 'google_gratuito' ? '#f59e0b' : '#a78bfa'
-            }}>
-              {cliente.tipo_conta === 'google_gratuito' ? 'Google Gratuito' : 'Pagante'}
-            </span>
-
-            {/* Pessoa Video */}
-            <span style={{
-              padding: '4px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '500',
-              background: cliente.pessoa_video ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
-              color: cliente.pessoa_video ? '#10b981' : '#64748b'
-            }}>
-              {cliente.pessoa_video ? 'Motion: Sim' : 'Motion: Nao'}
-            </span>
-          </div>
-
-          {/* Módulos Concluídos */}
-          <div style={{ marginBottom: '12px' }}>
-            <p style={{ color: '#64748b', fontSize: '11px', marginBottom: '6px' }}>Módulos concluídos</p>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              {['estatico', 'ai', 'motion'].map(mod => {
-                const concluido = (cliente.modulos_concluidos || []).includes(mod);
-                return (
-                  <span key={mod} style={{
-                    padding: '4px 10px', borderRadius: '8px', fontSize: '12px',
-                    background: concluido ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.1)',
-                    color: concluido ? '#10b981' : '#475569'
-                  }}>
-                    {concluido ? '\u2713 ' : ''}{mod === 'estatico' ? 'Estático' : mod === 'ai' ? 'AI' : 'Motion'}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* First Value */}
-          {cliente.first_value_atingido && Object.values(cliente.first_value_atingido).some(v => v) && (
-            <div>
-              <p style={{ color: '#64748b', fontSize: '11px', marginBottom: '6px' }}>First Value</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {['estatico', 'ai', 'motion'].map(mod => {
-                  const data = cliente.first_value_atingido?.[mod];
-                  if (!data) return null;
-                  return (
-                    <div key={mod} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ color: '#94a3b8', fontSize: '12px', width: '55px' }}>
-                        {mod === 'estatico' ? 'Estático' : mod === 'ai' ? 'AI' : 'Motion'}
-                      </span>
-                      <span style={{ color: 'white', fontSize: '12px' }}>{data}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', padding: '16px' }}>
+          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Logins (30d)</p>
+          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.logins.toLocaleString('pt-BR')}</p>
         </div>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '12px', padding: '16px' }}>
+          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Peças (30d)</p>
+          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.pecas_criadas.toLocaleString('pt-BR')}</p>
+        </div>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '12px', padding: '16px' }}>
+          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Downloads (30d)</p>
+          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.downloads.toLocaleString('pt-BR')}</p>
+        </div>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '12px', padding: '16px' }}>
+          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Uso AI (30d)</p>
+          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.ai_total.toLocaleString('pt-BR')}</p>
+        </div>
+      </div>
+      )}
 
-        {/* Card: Tags de Problema */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertTriangle style={{ width: '14px', height: '14px', color: '#ef4444' }} />
-              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', margin: 0 }}>Tags de Problema</p>
-              {(cliente.tags_problema || []).length > 0 && (
-                <span style={{ padding: '2px 8px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', borderRadius: '10px', fontSize: '11px', fontWeight: '500' }}>
-                  {(cliente.tags_problema || []).length}
-                </span>
-              )}
-            </div>
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setShowTagDropdown(!showTagDropdown)}
-                style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}
-              >
-                <Plus style={{ width: '14px', height: '14px' }} />
-              </button>
-              {showTagDropdown && (
-                <div style={{ position: 'absolute', top: '36px', right: 0, background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '12px', padding: '8px', zIndex: 50, minWidth: '220px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
-                  {TAGS_PREDEFINIDAS.filter(t => !(cliente.tags_problema || []).some(tp => tp.tag === t)).map(tag => (
-                    <button
-                      key={tag}
-                      onClick={() => handleAddTag(tag)}
-                      style={{ display: 'block', width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '13px', textAlign: 'left', cursor: 'pointer', borderRadius: '8px' }}
-                      onMouseEnter={e => { e.target.style.background = 'rgba(139, 92, 246, 0.15)'; e.target.style.color = 'white'; }}
-                      onMouseLeave={e => { e.target.style.background = 'transparent'; e.target.style.color = '#94a3b8'; }}
-                    >
-                      {tag}
-                    </button>
-                  ))}
-                  <div style={{ borderTop: '1px solid rgba(139, 92, 246, 0.15)', marginTop: '4px', paddingTop: '8px', display: 'flex', gap: '6px' }}>
-                    <input
-                      type="text"
-                      value={customTag}
-                      onChange={e => setCustomTag(e.target.value)}
-                      placeholder="Tag customizada..."
-                      style={{ flex: 1, padding: '6px 10px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '8px', color: 'white', fontSize: '12px', outline: 'none' }}
-                      onKeyDown={e => { if (e.key === 'Enter' && customTag.trim()) handleAddTag(customTag.trim()); }}
-                    />
-                    <button
-                      onClick={() => { if (customTag.trim()) handleAddTag(customTag.trim()); }}
-                      style={{ padding: '6px 10px', background: 'rgba(139, 92, 246, 0.3)', border: 'none', borderRadius: '8px', color: '#a78bfa', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    >
-                      Adicionar
-                    </button>
-                  </div>
+      {/* Tags de Problema */}
+      {cliente.status !== 'inativo' && (
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertTriangle style={{ width: '14px', height: '14px', color: '#ef4444' }} />
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', margin: 0 }}>Tags de Problema</p>
+            {(cliente.tags_problema || []).length > 0 && (
+              <span style={{ padding: '2px 8px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', borderRadius: '10px', fontSize: '11px', fontWeight: '500' }}>
+                {(cliente.tags_problema || []).length}
+              </span>
+            )}
+          </div>
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowTagDropdown(!showTagDropdown)}
+              style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}
+            >
+              <Plus style={{ width: '14px', height: '14px' }} />
+            </button>
+            {showTagDropdown && (
+              <div style={{ position: 'absolute', top: '36px', right: 0, background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '12px', padding: '8px', zIndex: 50, minWidth: '220px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+                {TAGS_PREDEFINIDAS.filter(t => !(cliente.tags_problema || []).some(tp => tp.tag === t)).map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => handleAddTag(tag)}
+                    style={{ display: 'block', width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '13px', textAlign: 'left', cursor: 'pointer', borderRadius: '8px' }}
+                    onMouseEnter={e => { e.target.style.background = 'rgba(139, 92, 246, 0.15)'; e.target.style.color = 'white'; }}
+                    onMouseLeave={e => { e.target.style.background = 'transparent'; e.target.style.color = '#94a3b8'; }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+                <div style={{ borderTop: '1px solid rgba(139, 92, 246, 0.15)', marginTop: '4px', paddingTop: '8px', display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    value={customTag}
+                    onChange={e => setCustomTag(e.target.value)}
+                    placeholder="Tag customizada..."
+                    style={{ flex: 1, padding: '6px 10px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '8px', color: 'white', fontSize: '12px', outline: 'none' }}
+                    onKeyDown={e => { if (e.key === 'Enter' && customTag.trim()) handleAddTag(customTag.trim()); }}
+                  />
+                  <button
+                    onClick={() => { if (customTag.trim()) handleAddTag(customTag.trim()); }}
+                    style={{ padding: '6px 10px', background: 'rgba(139, 92, 246, 0.3)', border: 'none', borderRadius: '8px', color: '#a78bfa', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    Adicionar
+                  </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-          {(cliente.tags_problema || []).length === 0 ? (
-            <p style={{ color: '#475569', fontSize: '13px', margin: 0 }}>Nenhuma tag de problema</p>
-          ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {(cliente.tags_problema || []).map((t, idx) => {
-                const isIA = t.origem === 'ia';
-                const cor = isIA ? '#06b6d4' : '#8b5cf6';
-                return (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: isIA ? 'rgba(6, 182, 212, 0.15)' : 'rgba(139, 92, 246, 0.15)', border: `1px solid ${isIA ? 'rgba(6, 182, 212, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`, borderRadius: '8px' }}>
-                    <span style={{ color: cor, fontSize: '12px', fontWeight: '500' }}>{t.tag}</span>
-                    <span style={{ color: '#475569', fontSize: '10px' }}>{isIA ? 'IA' : 'CS'}</span>
-                    <button
-                      onClick={() => handleRemoveTag(t.tag)}
-                      style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center' }}
-                      onMouseEnter={e => { e.target.style.color = '#ef4444'; }}
-                      onMouseLeave={e => { e.target.style.color = '#475569'; }}
-                    >
-                      <X style={{ width: '12px', height: '12px' }} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
-
-        {/* Card: Sazonalidade */}
-        {cliente.calendario_campanhas && (
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', marginBottom: '12px' }}>Sazonalidade</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '6px' }}>
-            {[
-              { key: 'jan', label: 'J' }, { key: 'fev', label: 'F' }, { key: 'mar', label: 'M' }, { key: 'abr', label: 'A' },
-              { key: 'mai', label: 'M' }, { key: 'jun', label: 'J' }, { key: 'jul', label: 'J' }, { key: 'ago', label: 'A' },
-              { key: 'set', label: 'S' }, { key: 'out', label: 'O' }, { key: 'nov', label: 'N' }, { key: 'dez', label: 'D' }
-            ].map(mes => {
-              const valor = cliente.calendario_campanhas[mes.key] || 'normal';
-              const cores = { alta: '#10b981', normal: '#334155', baixa: '#f59e0b' };
+        {(cliente.tags_problema || []).length === 0 ? (
+          <p style={{ color: '#475569', fontSize: '13px', margin: 0 }}>Nenhuma tag de problema</p>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {(cliente.tags_problema || []).map((t, idx) => {
+              const isIA = t.origem === 'ia';
+              const cor = isIA ? '#06b6d4' : '#8b5cf6';
               return (
-                <div key={mes.key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                  <span style={{ color: '#64748b', fontSize: '10px' }}>{mes.label}</span>
-                  <div style={{
-                    width: '28px', height: '28px', borderRadius: '6px',
-                    background: cores[valor],
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '10px', color: 'white', fontWeight: '600'
-                  }}>
-                    {valor[0].toUpperCase()}
-                  </div>
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: isIA ? 'rgba(6, 182, 212, 0.15)' : 'rgba(139, 92, 246, 0.15)', border: `1px solid ${isIA ? 'rgba(6, 182, 212, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`, borderRadius: '8px' }}>
+                  <span style={{ color: cor, fontSize: '12px', fontWeight: '500' }}>{t.tag}</span>
+                  <span style={{ color: '#475569', fontSize: '10px' }}>{isIA ? 'IA' : 'CS'}</span>
+                  <button
+                    onClick={() => handleRemoveTag(t.tag)}
+                    style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center' }}
+                    onMouseEnter={e => { e.target.style.color = '#ef4444'; }}
+                    onMouseLeave={e => { e.target.style.color = '#475569'; }}
+                  >
+                    <X style={{ width: '12px', height: '12px' }} />
+                  </button>
                 </div>
               );
             })}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '10px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#64748b' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#10b981' }}></span> Alta
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#64748b' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#334155' }}></span> Normal
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#64748b' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#f59e0b' }}></span> Baixa
-            </span>
-          </div>
-        </div>
         )}
-      </div>
-      )}
-
-      {/* Stats Cards - Somente para clientes ativos */}
-      {cliente.status !== 'inativo' && (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Total de Conversas</p>
-          <span style={{ color: 'white', fontSize: '32px', fontWeight: '700' }}>{threads.length}</span>
-        </div>
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Conversas Ativas</p>
-          <span style={{ color: '#8b5cf6', fontSize: '32px', fontWeight: '700' }}>{threads.filter(t => t.status === 'ativo' || t.status === 'aguardando_cliente' || t.status === 'aguardando_equipe').length}</span>
-        </div>
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>Ultima Interacao</p>
-          <span style={{ color: 'white', fontSize: '20px', fontWeight: '600' }}>{formatRelativeDate(cliente.ultima_interacao)}</span>
-        </div>
-      </div>
-      )}
-
-      {/* Métricas de Uso da Plataforma - Somente para clientes ativos */}
-      {cliente.status !== 'inativo' && (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px', marginBottom: '32px' }}>
-        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <LogIn style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Logins (30d)</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{usageData.logins.toLocaleString('pt-BR')}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <FileImage style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Peças Criadas (30d)</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{usageData.pecas_criadas.toLocaleString('pt-BR')}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Download style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Downloads (30d)</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{usageData.downloads.toLocaleString('pt-BR')}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Sparkles style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Uso AI (30d)</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{usageData.ai_total.toLocaleString('pt-BR')}</p>
-            </div>
-          </div>
-        </div>
       </div>
       )}
 
       {/* Heavy Users */}
       {cliente.status !== 'inativo' && (
-      <div style={{ marginBottom: '32px' }}>
+      <div style={{ marginBottom: '16px' }}>
         <HeavyUsersCard
           teamIds={cliente.times || (cliente.team_id ? [cliente.team_id] : [cliente.id])}
           days={30}
@@ -1585,60 +1398,23 @@ export default function ClienteDetalhe() {
 
       {/* Senha Padrão @trakto */}
       {cliente.senha_padrao && (
-        <div style={{
-          background: 'rgba(30, 27, 75, 0.4)',
-          border: '1px solid rgba(245, 158, 11, 0.2)',
-          borderRadius: '16px',
-          padding: '20px',
-          marginBottom: '32px'
-        }}>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: '12px', padding: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                background: 'rgba(245, 158, 11, 0.15)',
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Key style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
-              </div>
-              <div>
-                <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Senha Padrão (@trakto)</p>
-                <p style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0, fontFamily: 'monospace', letterSpacing: '1px' }}>
-                  {showSenhaPadrao ? cliente.senha_padrao : '••••••••••'}
-                </p>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Key style={{ width: '16px', height: '16px', color: '#f59e0b' }} />
+              <span style={{ color: '#94a3b8', fontSize: '13px' }}>Senha Padrão:</span>
+              <span style={{ color: 'white', fontSize: '14px', fontWeight: '600', fontFamily: 'monospace' }}>
+                {showSenhaPadrao ? cliente.senha_padrao : '••••••••'}
+              </span>
             </div>
             <button
               onClick={() => setShowSenhaPadrao(!showSenhaPadrao)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
-                background: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.2)',
-                borderRadius: '10px',
-                color: '#f59e0b',
-                fontSize: '13px',
-                fontWeight: '500',
-                cursor: 'pointer'
-              }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
             >
-              {showSenhaPadrao ? (
-                <>
-                  <EyeOff style={{ width: '16px', height: '16px' }} />
-                  Ocultar
-                </>
-              ) : (
-                <>
-                  <Eye style={{ width: '16px', height: '16px' }} />
-                  Mostrar
-                </>
-              )}
+              {showSenhaPadrao
+                ? <EyeOff style={{ width: '16px', height: '16px', color: '#f59e0b' }} />
+                : <Eye style={{ width: '16px', height: '16px', color: '#f59e0b' }} />
+              }
             </button>
           </div>
         </div>
@@ -1646,14 +1422,14 @@ export default function ClienteDetalhe() {
         </>
       )}
 
-      {/* Tab Content: Playbooks */}
-      {activeTab === 'playbook' && (
-        <PlaybooksSection clienteId={id} />
-      )}
-
       {/* Tab Content: Onboarding */}
       {activeTab === 'onboarding' && (
         <OnboardingSection clienteId={id} />
+      )}
+
+      {/* Tab Content: Ongoing */}
+      {activeTab === 'ongoing' && (
+        <OngoingSection clienteId={id} segmentoAtual={getClienteSegmento(cliente)} />
       )}
 
       {/* Tab Content: Documentos */}
@@ -1901,476 +1677,126 @@ export default function ClienteDetalhe() {
       )}
 
       {/* Tab Content: Observações */}
-      {activeTab === 'observacoes' && (
+      {/* Tab Content: Interações (Timeline Unificada) */}
+      {/* Tab Content: Interações (Timeline Unificada) */}
+      {activeTab === 'interacoes' && (() => {
+        // Montar timeline unificada: threads (email) + interações manuais + observações
+        const timelineItems = [
+          ...threads.map(t => {
+            const d = t.updated_at?.toDate ? t.updated_at.toDate() : (t.updated_at ? new Date(t.updated_at) : new Date(0));
+            return { _source: 'thread', _date: d, _tipo: 'email', ...t };
+          }),
+          ...interacoes.map(i => {
+            const d = i.data_interacao?.toDate ? i.data_interacao.toDate() : new Date(i.data_interacao || 0);
+            return { _source: 'interacao', _date: d, _tipo: i.tipo || 'outro', ...i };
+          }),
+          ...observacoes.map(o => {
+            const d = o.criado_em?.toDate ? o.criado_em.toDate() : new Date(o.criado_em || 0);
+            return { _source: 'observacao', _date: d, _tipo: 'observacao', ...o };
+          })
+        ];
+        // Filtrar por tipo
+        const filteredByTipo = filterInteracaoTipo
+          ? timelineItems.filter(item => item._tipo === filterInteracaoTipo)
+          : timelineItems;
+        // Filtrar por texto
+        const searchLower = filterInteracaoTexto.toLowerCase();
+        const filteredItems = searchLower
+          ? filteredByTipo.filter(item => {
+              if (item._source === 'thread') {
+                return (item.assunto || item.subject || '').toLowerCase().includes(searchLower) ||
+                  (item.snippet || '').toLowerCase().includes(searchLower) ||
+                  (item.remetente_nome || item.sender_name || '').toLowerCase().includes(searchLower);
+              }
+              if (item._source === 'observacao') {
+                return (item.texto || '').toLowerCase().includes(searchLower);
+              }
+              return (item.notas || '').toLowerCase().includes(searchLower) ||
+                (item.participantes || '').toLowerCase().includes(searchLower);
+            })
+          : filteredByTipo;
+        // Ordenar por data desc
+        const sortedItems = [...filteredItems].sort((a, b) => b._date - a._date);
+        const totalCount = threads.length + interacoes.length + observacoes.length;
+
+        return (
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <ClipboardList style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Observações do CS</h2>
+              <MessageSquare style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Timeline</h2>
               <span style={{ padding: '4px 12px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
-                {observacoes.filter(o => o.status === 'ativa').length} {observacoes.filter(o => o.status === 'ativa').length === 1 ? 'ativa' : 'ativas'}
+                {sortedItems.length}{sortedItems.length !== totalCount ? ` / ${totalCount}` : ''}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
-                onClick={() => setMostrarResolvidas(!mostrarResolvidas)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '8px 14px',
-                  background: mostrarResolvidas ? 'rgba(100, 116, 139, 0.3)' : 'rgba(100, 116, 139, 0.1)',
-                  border: '1px solid rgba(100, 116, 139, 0.3)',
-                  borderRadius: '10px',
-                  color: '#94a3b8',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  cursor: 'pointer'
-                }}
-              >
-                {mostrarResolvidas ? <EyeOff style={{ width: '14px', height: '14px' }} /> : <Eye style={{ width: '14px', height: '14px' }} />}
-                {mostrarResolvidas ? 'Ocultar resolvidas' : 'Mostrar resolvidas'}
-              </button>
               <button
                 onClick={() => { setShowObsForm(true); setObsTexto(''); }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 16px',
-                  background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-                  border: 'none',
-                  borderRadius: '10px',
-                  color: 'white',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
+                style={{ padding: '8px 14px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '10px', color: '#10b981', fontSize: '13px', fontWeight: '500', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 <Plus style={{ width: '16px', height: '16px' }} />
-                Nova Observação
-              </button>
-            </div>
-          </div>
-
-          <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-            Notas e contexto qualitativo do CS. Observações ativas são incluídas na classificação da IA.
-          </p>
-
-          {/* Formulário de nova observação */}
-          {showObsForm && (
-            <div style={{ padding: '20px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)', marginBottom: '20px' }}>
-              <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: '0 0 12px 0' }}>Nova Observação</h3>
-              <textarea
-                value={obsTexto}
-                onChange={(e) => setObsTexto(e.target.value)}
-                placeholder="Ex: Cliente mencionou na call que está avaliando concorrentes. Insatisfeito com o tempo de resposta do suporte."
-                rows={3}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  background: '#0f0a1f',
-                  border: formErrors.texto ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '14px',
-                  outline: 'none',
-                  resize: 'vertical',
-                  boxSizing: 'border-box',
-                  lineHeight: 1.5,
-                  marginBottom: '4px'
-                }}
-              />
-              <ErrorMessage error={formErrors.texto} />
-              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                <button
-                  onClick={handleSaveObs}
-                  disabled={!obsTexto.trim() || savingObs}
-                  style={{
-                    padding: '10px 20px',
-                    background: !obsTexto.trim() ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-                    border: 'none',
-                    borderRadius: '8px',
-                    color: 'white',
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    cursor: !obsTexto.trim() ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {savingObs ? 'Salvando...' : 'Adicionar'}
-                </button>
-                <button
-                  onClick={() => { setShowObsForm(false); setObsTexto(''); }}
-                  style={{
-                    padding: '10px 20px',
-                    background: 'rgba(100, 116, 139, 0.2)',
-                    border: '1px solid rgba(100, 116, 139, 0.3)',
-                    borderRadius: '8px',
-                    color: '#94a3b8',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Lista de observações */}
-          {loadingObs ? (
-            <div style={{ padding: '48px', textAlign: 'center' }}>
-              <div style={{ width: '32px', height: '32px', border: '3px solid rgba(139, 92, 246, 0.2)', borderTopColor: '#8b5cf6', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }}></div>
-            </div>
-          ) : observacoes.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {observacoes
-                .filter(obs => mostrarResolvidas || obs.status === 'ativa')
-                .map(obs => (
-                  <div
-                    key={obs.id}
-                    style={{
-                      padding: '16px',
-                      background: 'rgba(15, 10, 31, 0.6)',
-                      border: `1px solid ${obs.status === 'ativa' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.15)'}`,
-                      borderRadius: '12px',
-                      opacity: obs.status === 'resolvida' ? 0.5 : 1
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                          <span style={{
-                            padding: '3px 10px',
-                            background: obs.status === 'ativa' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.2)',
-                            color: obs.status === 'ativa' ? '#10b981' : '#64748b',
-                            borderRadius: '6px',
-                            fontSize: '11px',
-                            fontWeight: '600'
-                          }}>
-                            {obs.status === 'ativa' ? 'Ativa' : 'Resolvida'}
-                          </span>
-                          <span style={{ color: '#64748b', fontSize: '12px' }}>
-                            {obs.criado_em?.toDate ? obs.criado_em.toDate().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
-                          </span>
-                          <span style={{ color: '#4a4568', fontSize: '11px' }}>por {obs.criado_por || 'CS'}</span>
-                        </div>
-                        <p style={{ color: '#e2e8f0', fontSize: '14px', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                          {obs.texto}
-                        </p>
-                        {obs.status === 'resolvida' && obs.resolvido_em && (
-                          <p style={{ color: '#64748b', fontSize: '11px', margin: '8px 0 0 0' }}>
-                            Resolvida em {obs.resolvido_em?.toDate ? obs.resolvido_em.toDate().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'}
-                          </p>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                        <button
-                          onClick={() => handleToggleObsStatus(obs)}
-                          title={obs.status === 'ativa' ? 'Marcar como resolvida' : 'Reativar'}
-                          style={{
-                            padding: '8px',
-                            background: obs.status === 'ativa' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(139, 92, 246, 0.1)',
-                            border: `1px solid ${obs.status === 'ativa' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
-                            borderRadius: '8px',
-                            color: obs.status === 'ativa' ? '#10b981' : '#8b5cf6',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          {obs.status === 'ativa'
-                            ? <CheckCircle2 style={{ width: '16px', height: '16px' }} />
-                            : <RotateCcw style={{ width: '16px', height: '16px' }} />
-                          }
-                        </button>
-                        <button
-                          onClick={() => handleDeleteObs(obs)}
-                          style={{
-                            padding: '8px',
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#64748b',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <Trash2 style={{ width: '16px', height: '16px' }} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          ) : (
-            <div style={{ padding: '48px', textAlign: 'center' }}>
-              <ClipboardList style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
-              <p style={{ color: '#94a3b8', fontSize: '16px', margin: '0 0 8px 0' }}>Nenhuma observação</p>
-              <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Adicione notas e contexto após calls ou reuniões com o cliente</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab Content: Bugs/Problemas */}
-      {activeTab === 'bugs' && (
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Bug style={{ width: '20px', height: '20px', color: '#ef4444' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Bugs/Problemas Reportados</h2>
-              <span style={{ padding: '4px 12px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
-                {(cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length} {(cliente.bugs_reportados || []).filter(b => b.status !== 'resolvido').length === 1 ? 'aberto' : 'abertos'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
-                onClick={() => setMostrarResolvidos(!mostrarResolvidos)}
-                style={{ padding: '8px 14px', background: mostrarResolvidos ? 'rgba(16, 185, 129, 0.15)' : 'rgba(30, 27, 75, 0.6)', border: `1px solid ${mostrarResolvidos ? 'rgba(16, 185, 129, 0.3)' : 'rgba(139, 92, 246, 0.2)'}`, borderRadius: '10px', color: mostrarResolvidos ? '#10b981' : '#94a3b8', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}
-              >
-                {mostrarResolvidos ? 'Ocultar resolvidos' : 'Mostrar resolvidos'}
+                Observação
               </button>
               <button
-                onClick={() => { setShowBugForm(!showBugForm); setEditingBugId(null); setBugForm({ titulo: '', descricao: '', prioridade: 'media', link_clickup: '' }); }}
+                onClick={() => { setShowInteracaoForm(!showInteracaoForm); setEditingInteracaoId(null); setInteracaoForm({ tipo: 'feedback', data: '', participantes: '', notas: '', duracao: '', link_gravacao: '' }); }}
                 style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 <Plus style={{ width: '16px', height: '16px' }} />
-                Novo Bug
+                Interação
               </button>
             </div>
           </div>
 
-          {/* Formulário de Bug */}
-          {showBugForm && (
-            <div style={{ background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Título *</label>
-                  <input
-                    type="text"
-                    value={bugForm.titulo}
-                    onChange={e => setBugForm(prev => ({ ...prev, titulo: e.target.value }))}
-                    placeholder="Ex: Erro ao exportar relatório..."
-                    style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Descrição</label>
-                  <textarea
-                    value={bugForm.descricao}
-                    onChange={e => setBugForm(prev => ({ ...prev, descricao: e.target.value }))}
-                    placeholder="Detalhes do bug..."
-                    rows={3}
-                    style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                  />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Prioridade</label>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      {PRIORIDADES_BUG.map(p => (
-                        <button
-                          key={p.value}
-                          onClick={() => setBugForm(prev => ({ ...prev, prioridade: p.value }))}
-                          style={{
-                            flex: 1, padding: '8px', border: `1px solid ${bugForm.prioridade === p.value ? p.color : 'rgba(139, 92, 246, 0.2)'}`,
-                            background: bugForm.prioridade === p.value ? `${p.color}20` : 'transparent',
-                            borderRadius: '8px', color: bugForm.prioridade === p.value ? p.color : '#64748b',
-                            fontSize: '12px', fontWeight: '500', cursor: 'pointer'
-                          }}
-                        >
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Link ClickUp / Jira</label>
-                    <input
-                      type="text"
-                      value={bugForm.link_clickup}
-                      onChange={e => setBugForm(prev => ({ ...prev, link_clickup: e.target.value }))}
-                      placeholder="https://app.clickup.com/..."
-                      style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                  <button
-                    onClick={() => { setShowBugForm(false); setEditingBugId(null); }}
-                    style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#94a3b8', fontSize: '13px', cursor: 'pointer' }}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleSaveBug}
-                    disabled={savingBug || !bugForm.titulo.trim()}
-                    style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', opacity: savingBug || !bugForm.titulo.trim() ? 0.5 : 1 }}
-                  >
-                    {savingBug ? 'Salvando...' : editingBugId ? 'Atualizar' : 'Adicionar'}
-                  </button>
-                </div>
-              </div>
+          {/* Filtros */}
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#64748b' }} />
+              <input
+                type="text"
+                value={filterInteracaoTexto}
+                onChange={e => setFilterInteracaoTexto(e.target.value)}
+                placeholder="Buscar na timeline..."
+                style={{ width: '100%', padding: '10px 12px 10px 36px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+              />
             </div>
-          )}
-
-          {/* Lista de Bugs */}
-          {(() => {
-            const bugsAll = cliente.bugs_reportados || [];
-            const bugsFiltrados = mostrarResolvidos ? bugsAll : bugsAll.filter(b => b.status !== 'resolvido');
-            const bugsSorted = [...bugsFiltrados].sort((a, b) => {
-              const prioOrder = { critica: 1, alta: 2, media: 3, baixa: 4 };
-              const statusOrder = { aberto: 1, em_andamento: 2, resolvido: 3 };
-              if (a.status !== b.status) return (statusOrder[a.status] || 4) - (statusOrder[b.status] || 4);
-              return (prioOrder[a.prioridade] || 5) - (prioOrder[b.prioridade] || 5);
-            });
-
-            if (bugsSorted.length === 0) {
-              return (
-                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                  <Bug style={{ width: '40px', height: '40px', color: '#3730a3', margin: '0 auto 12px' }} />
-                  <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
-                    {bugsAll.length === 0 ? 'Nenhum bug reportado' : 'Nenhum bug aberto'}
-                  </p>
-                </div>
-              );
-            }
-
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {bugsSorted.map(bug => {
-                  const prioInfo = PRIORIDADES_BUG.find(p => p.value === bug.prioridade) || PRIORIDADES_BUG[1];
-                  const statusInfo = STATUS_BUG.find(s => s.value === bug.status) || STATUS_BUG[0];
-                  const dataBug = bug.data?.toDate ? bug.data.toDate() : new Date(bug.data);
-                  return (
-                    <div key={bug.id} style={{ background: 'rgba(15, 10, 31, 0.4)', border: `1px solid ${bug.status === 'resolvido' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}`, borderRadius: '12px', padding: '14px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ padding: '2px 8px', background: `${prioInfo.color}20`, color: prioInfo.color, borderRadius: '6px', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
-                              {prioInfo.label}
-                            </span>
-                            <span style={{ padding: '2px 8px', background: `${statusInfo.color}20`, color: statusInfo.color, borderRadius: '6px', fontSize: '11px', fontWeight: '500' }}>
-                              {statusInfo.label}
-                            </span>
-                            <span style={{ color: '#475569', fontSize: '11px' }}>
-                              {dataBug.toLocaleDateString('pt-BR')}
-                            </span>
-                          </div>
-                          <p style={{ color: bug.status === 'resolvido' ? '#64748b' : 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 4px 0', textDecoration: bug.status === 'resolvido' ? 'line-through' : 'none' }}>
-                            {bug.titulo}
-                          </p>
-                          {bug.descricao && (
-                            <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 6px 0', lineHeight: '1.4' }}>
-                              {bug.descricao}
-                            </p>
-                          )}
-                          {bug.link_clickup && (
-                            <a href={bug.link_clickup} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}>
-                              <ExternalLink style={{ width: '12px', height: '12px' }} />
-                              Ver no ClickUp
-                            </a>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                          {bug.status !== 'resolvido' && (
-                            <button
-                              onClick={() => handleToggleBugStatus(bug.id, bug.status === 'aberto' ? 'em_andamento' : 'resolvido')}
-                              title={bug.status === 'aberto' ? 'Marcar em andamento' : 'Marcar resolvido'}
-                              style={{ width: '30px', height: '30px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            >
-                              <CheckCircle2 style={{ width: '14px', height: '14px' }} />
-                            </button>
-                          )}
-                          {bug.status === 'resolvido' && (
-                            <button
-                              onClick={() => handleToggleBugStatus(bug.id, 'aberto')}
-                              title="Reabrir"
-                              style={{ width: '30px', height: '30px', background: 'rgba(249, 115, 22, 0.1)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '8px', color: '#f97316', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            >
-                              <RotateCcw style={{ width: '14px', height: '14px' }} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleEditBug(bug)}
-                            title="Editar"
-                            style={{ width: '30px', height: '30px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <Pencil style={{ width: '14px', height: '14px' }} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteBug(bug.id)}
-                            title="Excluir"
-                            style={{ width: '30px', height: '30px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <Trash2 style={{ width: '14px', height: '14px' }} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Tab Content: Interações */}
-      {activeTab === 'interacoes' && (
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Phone style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Interações</h2>
-              <span style={{ padding: '4px 12px', background: 'rgba(139, 92, 246, 0.2)', color: '#a78bfa', borderRadius: '20px', fontSize: '13px', fontWeight: '500' }}>
-                {interacoes.length} {interacoes.length === 1 ? 'registro' : 'registros'}
-              </span>
-            </div>
-            <button
-              onClick={() => { setShowInteracaoForm(!showInteracaoForm); setEditingInteracaoId(null); setInteracaoForm({ tipo: 'feedback', data: '', participantes: '', notas: '', duracao: '', link_gravacao: '' }); }}
-              style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            <select
+              value={filterInteracaoTipo}
+              onChange={e => setFilterInteracaoTipo(e.target.value)}
+              style={{ padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: filterInteracaoTipo ? 'white' : '#64748b', fontSize: '13px', outline: 'none', cursor: 'pointer', minWidth: '150px' }}
             >
-              <Plus style={{ width: '16px', height: '16px' }} />
-              Nova Interação
-            </button>
+              <option value="">Todos os tipos</option>
+              {TIPOS_INTERACAO.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Métricas rápidas */}
-          {interacoes.length > 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
-              {(() => {
-                const agora = new Date();
-                const trintaDiasAtras = new Date(agora.getTime() - 30 * 24 * 60 * 60 * 1000);
-                const ultimas30d = interacoes.filter(i => {
-                  const d = i.data_interacao?.toDate?.() || new Date(i.data_interacao || 0);
-                  return d >= trintaDiasAtras;
-                });
-                const ultimaData = interacoes[0]?.data_interacao?.toDate?.() || new Date(interacoes[0]?.data_interacao || 0);
-                const diasDesdeUltima = Math.floor((agora - ultimaData) / (1000 * 60 * 60 * 24));
-                const duracaoTotal = interacoes.reduce((sum, i) => sum + (i.duracao || 0), 0);
-                return (
-                  <>
-                    <div style={{ background: 'rgba(15, 10, 31, 0.4)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
-                      <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Últimos 30d</p>
-                      <p style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{ultimas30d.length}</p>
-                    </div>
-                    <div style={{ background: 'rgba(15, 10, 31, 0.4)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
-                      <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Última interação</p>
-                      <p style={{ color: diasDesdeUltima > 30 ? '#f59e0b' : 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{diasDesdeUltima}d</p>
-                    </div>
-                    <div style={{ background: 'rgba(15, 10, 31, 0.4)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
-                      <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 4px 0', textTransform: 'uppercase' }}>Horas totais</p>
-                      <p style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{Math.round(duracaoTotal / 60 * 10) / 10}h</p>
-                    </div>
-                  </>
-                );
-              })()}
+          {/* Formulário de Nova Observação */}
+          {showObsForm && (
+            <div style={{ background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                <span style={{ padding: '2px 8px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderRadius: '6px', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Observação</span>
+                <span style={{ color: '#64748b', fontSize: '12px' }}>Nota qualitativa do CS</span>
+              </div>
+              <textarea
+                value={obsTexto}
+                onChange={(e) => setObsTexto(e.target.value)}
+                placeholder="Ex: Cliente mencionou na call que está avaliando concorrentes..."
+                rows={3}
+                style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: formErrors.texto ? '1px solid #ef4444' : '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+              />
+              <ErrorMessage error={formErrors.texto} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+                <button onClick={() => { setShowObsForm(false); setObsTexto(''); }} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#94a3b8', fontSize: '13px', cursor: 'pointer' }}>Cancelar</button>
+                <button onClick={handleSaveObs} disabled={!obsTexto.trim() || savingObs} style={{ padding: '8px 16px', background: !obsTexto.trim() ? 'rgba(16, 185, 129, 0.3)' : 'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: !obsTexto.trim() ? 'not-allowed' : 'pointer' }}>
+                  {savingObs ? 'Salvando...' : 'Adicionar'}
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Formulário */}
+          {/* Formulário de Nova Interação */}
           {showInteracaoForm && (
             <div style={{ background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -2378,7 +1804,7 @@ export default function ClienteDetalhe() {
                   <div>
                     <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>Tipo *</label>
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                      {TIPOS_INTERACAO.map(t => (
+                      {TIPOS_INTERACAO.filter(t => t.value !== 'email').map(t => (
                         <button
                           key={t.value}
                           onClick={() => setInteracaoForm(prev => ({ ...prev, tipo: t.value }))}
@@ -2470,27 +1896,123 @@ export default function ClienteDetalhe() {
             </div>
           )}
 
-          {/* Timeline de Interações */}
-          {loadingInteracoes ? (
-            <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Carregando...</p>
-          ) : interacoes.length === 0 ? (
+          {/* Timeline Unificada */}
+          {sortedItems.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-              <Phone style={{ width: '40px', height: '40px', color: '#3730a3', margin: '0 auto 12px' }} />
-              <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Nenhuma interação registrada</p>
+              <MessageSquare style={{ width: '40px', height: '40px', color: '#3730a3', margin: '0 auto 12px' }} />
+              <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
+                {totalCount === 0 ? 'Nenhuma interação registrada' : 'Nenhum resultado para os filtros aplicados'}
+              </p>
             </div>
           ) : (
             <div style={{ position: 'relative', paddingLeft: '24px' }}>
               {/* Linha vertical da timeline */}
               <div style={{ position: 'absolute', left: '8px', top: '8px', bottom: '8px', width: '2px', background: 'rgba(139, 92, 246, 0.15)' }} />
 
-              {interacoes.map((inter, idx) => {
-                const tipoInfo = TIPOS_INTERACAO.find(t => t.value === inter.tipo) || TIPOS_INTERACAO[5];
-                const dataInter = inter.data_interacao?.toDate ? inter.data_interacao.toDate() : new Date(inter.data_interacao || 0);
-                return (
-                  <div key={inter.id} style={{ position: 'relative', marginBottom: idx < interacoes.length - 1 ? '16px' : 0 }}>
-                    {/* Dot na timeline */}
-                    <div style={{ position: 'absolute', left: '-20px', top: '14px', width: '12px', height: '12px', borderRadius: '50%', background: tipoInfo.color, border: '2px solid #0f0a1f' }} />
+              {sortedItems.map((item, idx) => {
+                const tipoInfo = TIPOS_INTERACAO.find(t => t.value === item._tipo) || TIPOS_INTERACAO[TIPOS_INTERACAO.length - 1];
 
+                if (item._source === 'thread') {
+                  // Renderizar thread de email
+                  const assunto = item.assunto || item.subject || 'Sem assunto';
+                  const remetente = item.remetente_nome || item.sender_name || item.remetente_email || '';
+                  const snippet = item.snippet || '';
+                  const categoriaInfo = item.categoria ? getCategoriaInfo(item.categoria) : null;
+                  const sentimentoInfo = item.sentimento ? getSentimentoInfo(item.sentimento) : null;
+
+                  return (
+                    <div key={`t-${item.id}`} style={{ position: 'relative', marginBottom: idx < sortedItems.length - 1 ? '12px' : 0 }}>
+                      <div style={{ position: 'absolute', left: '-20px', top: '14px', width: '12px', height: '12px', borderRadius: '50%', background: tipoInfo.color, border: '2px solid #0f0a1f' }} />
+                      <div
+                        onClick={() => handleThreadClick(item)}
+                        style={{ background: 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.12)', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.2s' }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.35)'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(6, 182, 212, 0.12)'}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ padding: '2px 8px', background: `${tipoInfo.color}20`, color: tipoInfo.color, borderRadius: '6px', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
+                            Email
+                          </span>
+                          <span style={{ color: '#94a3b8', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Calendar style={{ width: '11px', height: '11px' }} />
+                            {item._date.toLocaleDateString('pt-BR')}
+                          </span>
+                          {remetente && (
+                            <span style={{ color: '#64748b', fontSize: '12px' }}>{remetente}</span>
+                          )}
+                          {categoriaInfo && (
+                            <span style={{ padding: '1px 6px', background: `${categoriaInfo.color}15`, color: categoriaInfo.color, borderRadius: '4px', fontSize: '10px', fontWeight: '500' }}>
+                              {categoriaInfo.label}
+                            </span>
+                          )}
+                          {sentimentoInfo && (
+                            <span style={{ fontSize: '12px' }}>{sentimentoInfo.emoji}</span>
+                          )}
+                        </div>
+                        <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {assunto}
+                        </p>
+                        {snippet && (
+                          <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {snippet.substring(0, 150)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Renderizar observação
+                if (item._source === 'observacao') {
+                  return (
+                    <div key={`o-${item.id}`} style={{ position: 'relative', marginBottom: idx < sortedItems.length - 1 ? '12px' : 0 }}>
+                      <div style={{ position: 'absolute', left: '-20px', top: '14px', width: '12px', height: '12px', borderRadius: '50%', background: tipoInfo.color, border: '2px solid #0f0a1f' }} />
+                      <div style={{ background: 'rgba(15, 10, 31, 0.4)', border: `1px solid ${item.status === 'ativa' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.1)'}`, borderRadius: '12px', padding: '14px 16px', opacity: item.status === 'resolvida' ? 0.6 : 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ padding: '2px 8px', background: `${tipoInfo.color}20`, color: tipoInfo.color, borderRadius: '6px', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
+                                Observação
+                              </span>
+                              <span style={{ padding: '2px 8px', background: item.status === 'ativa' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.2)', color: item.status === 'ativa' ? '#10b981' : '#64748b', borderRadius: '6px', fontSize: '10px', fontWeight: '600' }}>
+                                {item.status === 'ativa' ? 'Ativa' : 'Resolvida'}
+                              </span>
+                              <span style={{ color: '#94a3b8', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Calendar style={{ width: '11px', height: '11px' }} />
+                                {item._date.toLocaleDateString('pt-BR')}
+                              </span>
+                              <span style={{ color: '#4a4568', fontSize: '11px' }}>por {item.criado_por || 'CS'}</span>
+                            </div>
+                            <p style={{ color: '#e2e8f0', fontSize: '13px', margin: 0, lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                              {item.texto}
+                            </p>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                            <button
+                              onClick={() => handleToggleObsStatus(item)}
+                              title={item.status === 'ativa' ? 'Marcar resolvida' : 'Reativar'}
+                              style={{ width: '30px', height: '30px', background: item.status === 'ativa' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(139, 92, 246, 0.1)', border: `1px solid ${item.status === 'ativa' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(139, 92, 246, 0.2)'}`, borderRadius: '8px', color: item.status === 'ativa' ? '#10b981' : '#8b5cf6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              {item.status === 'ativa' ? <CheckCircle2 style={{ width: '14px', height: '14px' }} /> : <RotateCcw style={{ width: '14px', height: '14px' }} />}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteObs(item)}
+                              title="Excluir"
+                              style={{ width: '30px', height: '30px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Trash2 style={{ width: '14px', height: '14px' }} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Renderizar interação manual
+                return (
+                  <div key={`i-${item.id}`} style={{ position: 'relative', marginBottom: idx < sortedItems.length - 1 ? '12px' : 0 }}>
+                    <div style={{ position: 'absolute', left: '-20px', top: '14px', width: '12px', height: '12px', borderRadius: '50%', background: tipoInfo.color, border: '2px solid #0f0a1f' }} />
                     <div style={{ background: 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(139, 92, 246, 0.1)', borderRadius: '12px', padding: '14px 16px' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -2500,28 +2022,28 @@ export default function ClienteDetalhe() {
                             </span>
                             <span style={{ color: '#94a3b8', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <Calendar style={{ width: '11px', height: '11px' }} />
-                              {dataInter.toLocaleDateString('pt-BR')}
+                              {item._date.toLocaleDateString('pt-BR')}
                             </span>
-                            {inter.duracao > 0 && (
+                            {item.duracao > 0 && (
                               <span style={{ color: '#64748b', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <Clock style={{ width: '11px', height: '11px' }} />
-                                {inter.duracao}min
+                                {item.duracao}min
                               </span>
                             )}
                           </div>
-                          {inter.participantes && (
+                          {item.participantes && (
                             <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <Users style={{ width: '11px', height: '11px', flexShrink: 0 }} />
-                              {inter.participantes}
+                              {item.participantes}
                             </p>
                           )}
-                          {inter.notas && (
+                          {item.notas && (
                             <p style={{ color: '#e2e8f0', fontSize: '13px', margin: '0 0 6px 0', lineHeight: '1.4' }}>
-                              {inter.notas}
+                              {item.notas}
                             </p>
                           )}
-                          {inter.link_gravacao && (
-                            <a href={inter.link_gravacao} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}>
+                          {item.link_gravacao && (
+                            <a href={item.link_gravacao} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}>
                               <Video style={{ width: '12px', height: '12px' }} />
                               Ver gravação
                             </a>
@@ -2529,14 +2051,14 @@ export default function ClienteDetalhe() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                           <button
-                            onClick={() => handleEditInteracao(inter)}
+                            onClick={() => handleEditInteracao(item)}
                             title="Editar"
                             style={{ width: '30px', height: '30px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px', color: '#8b5cf6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
                             <Pencil style={{ width: '14px', height: '14px' }} />
                           </button>
                           <button
-                            onClick={() => handleDeleteInteracao(inter.id)}
+                            onClick={() => handleDeleteInteracao(item.id)}
                             title="Excluir"
                             style={{ width: '30px', height: '30px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >
@@ -2551,7 +2073,8 @@ export default function ClienteDetalhe() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Tab Content: Pessoas */}
       {activeTab === 'pessoas' && (
@@ -2685,15 +2208,91 @@ export default function ClienteDetalhe() {
               {(cliente?.stakeholders || []).length} {(cliente?.stakeholders || []).length === 1 ? 'pessoa' : 'pessoas'}
             </span>
           </div>
-          <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.1)', color: '#f97316', borderRadius: '8px', fontSize: '11px' }}>
-            Contatos de vendas/contratos
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.1)', color: '#f97316', borderRadius: '8px', fontSize: '11px' }}>
+              Contatos de vendas/contratos
+            </span>
+            <button
+              onClick={() => setShowStakeholderForm(!showStakeholderForm)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '6px 14px', background: 'rgba(249, 115, 22, 0.15)',
+                border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '10px',
+                color: '#fb923c', fontSize: '13px', fontWeight: '500', cursor: 'pointer'
+              }}
+            >
+              <Plus style={{ width: '14px', height: '14px' }} />
+              Adicionar
+            </button>
+          </div>
         </div>
+
+        {/* Formulário inline para novo stakeholder */}
+        {showStakeholderForm && (
+          <div style={{ background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+              <input
+                placeholder="Nome *"
+                value={stakeholderForm.nome}
+                onChange={e => setStakeholderForm(f => ({ ...f, nome: e.target.value }))}
+                style={{ padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none' }}
+              />
+              <input
+                placeholder="Email *"
+                value={stakeholderForm.email}
+                onChange={e => setStakeholderForm(f => ({ ...f, email: e.target.value }))}
+                style={{ padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none' }}
+              />
+              <input
+                placeholder="Cargo"
+                value={stakeholderForm.cargo}
+                onChange={e => setStakeholderForm(f => ({ ...f, cargo: e.target.value }))}
+                style={{ padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none' }}
+              />
+              <input
+                placeholder="Telefone"
+                value={stakeholderForm.telefone}
+                onChange={e => setStakeholderForm(f => ({ ...f, telefone: e.target.value }))}
+                style={{ padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none' }}
+              />
+              <input
+                placeholder="LinkedIn URL"
+                value={stakeholderForm.linkedin_url}
+                onChange={e => setStakeholderForm(f => ({ ...f, linkedin_url: e.target.value }))}
+                style={{ padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none' }}
+              />
+              <select
+                value={stakeholderForm.tipo_contato}
+                onChange={e => setStakeholderForm(f => ({ ...f, tipo_contato: e.target.value }))}
+                style={{ padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none' }}
+              >
+                {TIPOS_CONTATO.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { setShowStakeholderForm(false); setStakeholderForm({ nome: '', email: '', cargo: '', telefone: '', linkedin_url: '', tipo_contato: 'outro' }); }}
+                style={{ padding: '8px 16px', background: 'none', border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '10px', color: '#94a3b8', fontSize: '13px', cursor: 'pointer' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveStakeholder}
+                disabled={savingStakeholder}
+                style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', opacity: savingStakeholder ? 0.6 : 1 }}
+              >
+                {savingStakeholder ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {cliente?.stakeholders && cliente.stakeholders.length > 0 ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px' }}>
           {cliente.stakeholders.map((stakeholder, index) => {
-            const tipoInfo = TIPOS_CONTATO.find(t => t.value === stakeholder.tipo_contato) || TIPOS_CONTATO[4];
+            const tipoInfo = TIPOS_CONTATO.find(t => t.value === stakeholder.tipo_contato) || TIPOS_CONTATO[TIPOS_CONTATO.length - 1];
             return (
             <div
               key={stakeholder.id || index}
@@ -2716,7 +2315,7 @@ export default function ClienteDetalhe() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                       {stakeholder.nome}
                     </p>
                     {stakeholder.tipo_contato && stakeholder.tipo_contato !== 'outro' && (
@@ -2729,6 +2328,18 @@ export default function ClienteDetalhe() {
                         {tipoInfo.label}
                       </span>
                     )}
+                    <button
+                      onClick={() => handleDeleteStakeholder(stakeholder.id, index)}
+                      title="Remover stakeholder"
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
+                        color: '#64748b', flexShrink: 0, display: 'flex', alignItems: 'center'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+                    >
+                      <Trash2 style={{ width: '14px', height: '14px' }} />
+                    </button>
                   </div>
                   {stakeholder.cargo && (
                     <p style={{ color: '#f97316', fontSize: '12px', margin: '0 0 6px 0' }}>{stakeholder.cargo}</p>
@@ -2758,7 +2369,18 @@ export default function ClienteDetalhe() {
         ) : (
           <div style={{ padding: '32px', textAlign: 'center' }}>
             <Star style={{ width: '32px', height: '32px', color: '#64748b', margin: '0 auto 8px' }} />
-            <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>Nenhum stakeholder cadastrado. Adicione na ficha do cliente.</p>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>Nenhum stakeholder cadastrado.</p>
+            <button
+              onClick={() => setShowStakeholderForm(true)}
+              style={{
+                marginTop: '12px', padding: '8px 16px',
+                background: 'rgba(249, 115, 22, 0.15)', border: '1px solid rgba(249, 115, 22, 0.3)',
+                borderRadius: '10px', color: '#fb923c', fontSize: '13px', cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: '6px'
+              }}
+            >
+              <Plus style={{ width: '14px', height: '14px' }} />Adicionar primeiro stakeholder
+            </button>
           </div>
         )}
       </div>
@@ -2839,16 +2461,6 @@ export default function ClienteDetalhe() {
       </div>
       )}
 
-      {/* Tab Content: Conversas */}
-      {activeTab === 'conversas' && (
-      <ThreadsTimeline
-        threads={threads}
-        onThreadClick={handleThreadClick}
-        onMarcarIrrelevante={handleMarcarIrrelevante}
-        filterConfig={filterConfig}
-        cliente={cliente}
-      />
-      )}
 
       {selectedThread && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '32px' }}>
@@ -3017,7 +2629,7 @@ export default function ClienteDetalhe() {
                     <span style={{ color: '#10b981', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Observações do CS</span>
                   </div>
                   <button
-                    onClick={() => { setSelectedThread(null); setShowManualClassification(false); setActiveTab('observacoes'); }}
+                    onClick={() => { setSelectedThread(null); setShowManualClassification(false); setActiveTab('interacoes'); }}
                     style={{
                       background: 'none',
                       border: 'none',

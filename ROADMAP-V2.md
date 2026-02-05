@@ -1,7 +1,7 @@
 # ROADMAP V2 - CS Hub
 
 **Criado em:** 02/02/2026
-**Atualizado em:** 04/02/2026
+**Atualizado em:** 05/02/2026
 **Objetivo:** Lista de implementações priorizadas com base no feedback do time
 **Fonte:** Reunião 04/02 com Valeria, César, Nathalia Montiel e Natalia Santos
 
@@ -386,11 +386,51 @@ SE tipo_conta == "google_gratuito":
 | Backend proxy para APIs | #3 | ✅ Concluído no 7.5 (classifyThread, clickupProxy, generateSummary) |
 | Validação de domínio server-side | #5 | ✅ `validateDomain` — beforeUserCreated bloqueia emails fora @trakto.io |
 | Custom Claims (RBAC server) | #6 | ✅ `syncUserRole` (trigger Firestore→Claims) + `setUserRole` (admin onCall) |
-| Rate Limiting | #16 | ✅ In-memory rate limiting: 30/min OpenAI, 60/min ClickUp |
+| Rate Limiting | #16 | ✅ Rate limiter distribuido via Firestore (collection `_rate_limits`) |
 
 - `requireRole()` helper com custom claims + fallback Firestore (período de migração)
 - Viewers excluídos das funções (consistente com Firestore rules)
 - 7 Cloud Functions total em `southamerica-east1`
+
+### 7.11 Seguranca adicional (05/02/2026) ✅
+
+Implementado em auditoria de seguranca completa:
+
+| Item | Status |
+|------|--------|
+| Webhook ClickUp com verificacao HMAC-SHA256 | ✅ |
+| Rate limiter distribuido Firestore (substitui in-memory) | ✅ |
+| Rate limiting em setUserRole (20/min) | ✅ |
+| Validacao de tamanho nos inputs (conversa, prompt, IDs) | ✅ |
+| Erro sanitizado no webhook (nunca expoe error.message) | ✅ |
+| CSP headers + X-Frame-Options + referrer policy | ✅ |
+| AdminRoute em /configuracoes/usuarios | ✅ |
+| usuarios_sistema restringido (viewers so proprio doc) | ✅ |
+| Frontend usa .doc(uid) ao inves de where('email') | ✅ |
+| Chamada a api.ipify.org removida | ✅ |
+| CORS desabilitado no webhook | ✅ |
+| Whitelist de actions no clickupProxy | ✅ |
+
+### 7.12 Deploy Cloud Functions ✅ (05/02/2026)
+
+**Deployado com sucesso** em `southamerica-east1` no projeto `cs-hub-8c032`:
+
+| Funcao | Status |
+|--------|--------|
+| classifyThread | ✅ Deployed |
+| clickupProxy | ✅ Deployed |
+| clickupWebhook | ✅ Deployed |
+| generateSummary | ✅ Deployed |
+| setUserRole | ✅ Deployed |
+| syncUserRole | ⚠️ Eventarc propagando (re-deploy necessario) |
+| validateDomain | ⚠️ Requer GCIP habilitado |
+
+**Secrets configurados:**
+- `OPENAI_API_KEY` ✅
+- `CLICKUP_API_KEY` ✅
+- `CLICKUP_WEBHOOK_SECRET` ✅
+
+**Firestore Rules deployadas:** ✅
 
 ---
 
@@ -423,65 +463,42 @@ Wizard que gera plano de onboarding personalizado baseado em questionário de 20
 
 ---
 
-## ⚠️ AÇÕES MANUAIS PENDENTES (DEPLOY / SEGURANÇA / VALIDAÇÃO)
+## ACOES PENDENTES (Atualizado 05/02/2026)
 
-> Itens que requerem ação manual da Marina ou do time. Nenhum depende de código novo.
+### ✅ Deploy Cloud Functions — CONCLUIDO (05/02/2026)
+Todas as Cloud Functions deployadas em `southamerica-east1`. Secrets configurados no Google Secret Manager.
 
-### 🚀 Deploy Cloud Functions (PRIORIDADE ALTA)
-As 7 Cloud Functions estão prontas em `functions/index.js` mas precisam ser deployed:
-
-```bash
-# 1. Configurar secrets (se ainda não feito)
-firebase functions:secrets:set OPENAI_API_KEY
-firebase functions:secrets:set CLICKUP_API_KEY    # usar chave NOVA (ver item 3 abaixo)
-
-# 2. Deploy
-firebase deploy --only functions
-
-# 3. Verificar
-firebase functions:log
-```
-
-**Funções que serão deployadas:**
-| Função | Tipo | Descrição |
-|--------|------|-----------|
-| `classifyThread` | onCall | Classificação de threads via OpenAI |
-| `clickupProxy` | onCall | Proxy para API ClickUp |
-| `generateSummary` | onCall | Geração de resumo executivo via OpenAI |
-| `validateDomain` | beforeUserCreated | Bloqueia cadastro de emails fora @trakto.io |
-| `syncUserRole` | onDocumentWritten | Sincroniza role Firestore → Custom Claims |
-| `setUserRole` | onCall | Admin define role manualmente |
-| `scheduledCleanup` | onSchedule | (se existir) Limpeza periódica |
-
-### 🔑 Segurança — ClickUp Key Exposta (PRIORIDADE ALTA)
-A chave ClickUp `pk_43150128_...` está hardcoded em 3 commits antigos do histórico git.
+### 🔑 Seguranca — ClickUp Key Exposta (PRIORIDADE MEDIA)
+A chave ClickUp `pk_43150128_...` esta hardcoded em 3 commits antigos do historico git.
 
 **Passos:**
-1. **Revogar** a key atual no dashboard ClickUp (Settings → Apps → API Token)
+1. **Revogar** a key atual no dashboard ClickUp (Settings > Apps > API Token)
 2. **Gerar** uma nova API key
-3. **Salvar** via: `firebase functions:secrets:set CLICKUP_API_KEY`
-4. **Deploy**: `firebase deploy --only functions`
-5. **(Opcional)** Limpar histórico: `bfg --replace-text <(echo 'pk_43150128_J7V5F0JC0VC3QQS1TJP2D53F5Q7TFKBE') .`
+3. **Salvar** via: `firebase functions:secrets:set CLICKUP_API_KEY --project cs-hub-8c032`
+4. **Deploy**: `firebase deploy --only functions --project cs-hub-8c032`
+5. **(Opcional)** Limpar historico: `bfg --replace-text <(echo 'pk_43150128_J7V5F0JC0VC3QQS1TJP2D53F5Q7TFKBE') .`
 
-### 👥 Migrar Custom Claims (PRIORIDADE MÉDIA)
-Usuários existentes não têm Custom Claims no Firebase Auth. Duas opções:
+### 👥 Migrar Custom Claims (PRIORIDADE MEDIA)
+Usuarios existentes podem nao ter Custom Claims no Firebase Auth. `syncUserRole` precisa de re-deploy (erro de Eventarc no primeiro deploy). Depois, editar qualquer campo do usuario em `usuarios_sistema` no Firestore dispara o trigger automaticamente.
 
-**Opção A (automática):** Editar qualquer campo do usuário em `usuarios_sistema` no Firestore → trigger `syncUserRole` propagará o role para Custom Claims automaticamente.
+### ⚠️ Re-deploy de 2 funcoes (PRIORIDADE MEDIA)
+- `syncUserRole`: erro de Eventarc na primeira tentativa — rodar `firebase deploy --only functions --project cs-hub-8c032` novamente
+- `validateDomain`: requer Identity Platform (GCIP) habilitado no projeto — habilitar em Firebase Console > Authentication > Settings
 
-**Opção B (manual):** Chamar a Cloud Function `setUserRole` via console ou script:
-```js
-// No console do Firebase ou via httpsCallable
-setUserRole({ uid: 'USER_UID', role: 'admin' })
-```
+### 🧪 Testes Automatizados (PRIORIDADE ALTA)
+- [ ] Testes unitarios dos schemas Zod
+- [ ] Testes da logica de segmentacao CS
+- [ ] Testes da geracao de alertas
+- [ ] Testes dos utilitarios (sanitizeError, logger, audit)
 
-### ✅ Validação Manual (PRIORIDADE BAIXA)
-- [ ] Validar segmentação com 5 contas de teste (Bodega Aurrera, EPA, etc.) — BUG-1
-- [ ] Revisar associações duplicadas de times/clientes usando ferramenta de diagnóstico — BUG-2
+### ✅ Validacao Manual (PRIORIDADE BAIXA)
+- [ ] Validar segmentacao com 5 contas de teste (Bodega Aurrera, EPA, etc.) — BUG-1
+- [ ] Revisar associacoes duplicadas de times/clientes usando ferramenta de diagnostico — BUG-2
 - [ ] Testar Calculadora de Onboarding com cliente real
 
-### 📦 Dependências Externas (NÃO BLOQUEANTES)
-- `xlsx@0.18.5`: sem fix disponível (SheetJS abandonou open-source). Uso atual é write-only (exportação), vulnerabilidades afetam parsing. Risco mitigado.
-- Apollo.io API (item 4.1): requer conta para completar enriquecimento automático de contatos
+### 📦 Dependencias Externas (NAO BLOQUEANTES)
+- `xlsx@0.18.5`: sem fix disponivel (SheetJS abandonou open-source). Uso atual e write-only (exportacao), vulnerabilidades afetam parsing. Risco mitigado.
+- Apollo.io API (item 4.1): requer conta para completar enriquecimento automatico de contatos
 
 ---
 

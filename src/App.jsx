@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { Layout } from './components/Layout'
 import { LoadingPage } from './components/UI/Loading'
-import { collection, query, where, getDocs } from 'firebase/firestore'
+import { doc, getDoc } from 'firebase/firestore'
 import { db } from './services/firebase'
 
 // Eager — páginas críticas (primeiro load)
@@ -22,6 +22,7 @@ const Auditoria = lazy(() => import('./pages/Auditoria'))
 const Playbooks = lazy(() => import('./pages/Playbooks'))
 const PlaybookDetalhe = lazy(() => import('./pages/PlaybookDetalhe'))
 const PlaybookForm = lazy(() => import('./pages/PlaybookForm'))
+const OnGoing = lazy(() => import('./pages/OnGoing'))
 const MinhaCarteira = lazy(() => import('./pages/MinhaCarteira'))
 const Documentos = lazy(() => import('./pages/Documentos'))
 const ResumoExecutivo = lazy(() => import('./pages/ResumoExecutivo'))
@@ -63,21 +64,18 @@ function AdminRoute({ children }) {
 
   useEffect(() => {
     const checkAdminRole = async () => {
-      if (!user?.email) {
+      if (!user?.uid) {
         setIsAdmin(false)
         setCheckingRole(false)
         return
       }
 
       try {
-        const q = query(
-          collection(db, 'usuarios_sistema'),
-          where('email', '==', user.email)
-        )
-        const snapshot = await getDocs(q)
+        const docRef = doc(db, 'usuarios_sistema', user.uid)
+        const snapshot = await getDoc(docRef)
 
-        if (!snapshot.empty) {
-          const userData = snapshot.docs[0].data()
+        if (snapshot.exists()) {
+          const userData = snapshot.data()
           setIsAdmin(userData.role === 'admin' || userData.role === 'super_admin')
         } else {
           setIsAdmin(false)
@@ -95,7 +93,7 @@ function AdminRoute({ children }) {
     } else {
       setCheckingRole(false)
     }
-  }, [user?.email, isAuthenticated])
+  }, [user?.uid, isAuthenticated])
 
   if (loading || checkingRole) {
     return <LoadingPage />
@@ -141,6 +139,7 @@ function AppRoutes() {
         <Route path="/clientes/novo" element={<ClienteForm />} />
         <Route path="/clientes/:id" element={<ClienteDetalhe />} />
         <Route path="/clientes/:id/editar" element={<ClienteForm />} />
+        <Route path="/ongoing" element={<OnGoing />} />
         <Route path="/playbooks" element={<Playbooks />} />
         <Route path="/playbooks/novo" element={<PlaybookForm />} />
         <Route path="/playbooks/:id" element={<PlaybookDetalhe />} />
@@ -152,7 +151,7 @@ function AppRoutes() {
         <Route path="/onboarding/:clienteId" element={<OnboardingCalculadora />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
-        <Route path="/configuracoes/usuarios" element={<Usuarios />} />
+        <Route path="/configuracoes/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
         <Route path="/configuracoes/auditoria" element={<AdminRoute><Auditoria /></AdminRoute>} />
         {/* Debug page - excluída do bundle de produção */}
         {import.meta.env.DEV && (

@@ -101,6 +101,7 @@ export default function Clientes() {
   const [recalcProgress, setRecalcProgress] = useState({ current: 0, total: 0, updated: 0 });
 
   // Estado para dropdowns de filtro
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [showEscopoDropdown, setShowEscopoDropdown] = useState(false);
   const [showSegmentoDropdown, setShowSegmentoDropdown] = useState(false);
   const [showAreaDropdown, setShowAreaDropdown] = useState(false);
@@ -396,7 +397,7 @@ export default function Clientes() {
       }
 
       await fetchData();
-      alert(`Recalculacao concluida! ${updatedCount} segmento(s) atualizado(s) de ${clientesAtivos.length} clientes.`);
+      alert(`Recalculação concluída! ${updatedCount} saúde(s) atualizada(s) de ${clientesAtivos.length} clientes.`);
     } catch (error) {
       console.error('Erro ao recalcular segmentos:', error);
       alert('Erro durante a recalculacao. Verifique o console.');
@@ -426,7 +427,7 @@ export default function Clientes() {
       const nameNormalized = normalizeText(cliente.team_name || '');
       const responsavelNormalized = normalizeText(cliente.responsavel_nome || '');
       const matchesSearch = !searchTerm || nameNormalized.includes(searchNormalized) || responsavelNormalized.includes(searchNormalized);
-      const matchesClienteStatus = filterClienteStatus.length === 0 || filterClienteStatus.includes(cliente.status || 'ativo');
+      const matchesClienteStatus = filterClienteStatus.length === 0 || filterClienteStatus.includes(cliente.status === 'onboarding' ? 'ativo' : (cliente.status || 'ativo'));
       // Filtro de tipo: verifica se algum dos tipos selecionados está contido no team_type do cliente
       const matchesType = filterType.length === 0 || filterType.some(type => cliente.team_type && cliente.team_type.includes(type));
       // Filtro de segmento CS
@@ -460,7 +461,7 @@ export default function Clientes() {
   useEffect(() => { setCurrentPage(1); }, [searchTerm, filterClienteStatus, filterType, filterSegmento, filterAreaAtuacao, filterProblemas, sortOption]);
 
   const exportToCSV = () => {
-    const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Status', 'Segmento CS', 'Área de Atuação', 'Qtd Times'];
+    const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Status', 'Saúde CS', 'Área de Atuação', 'Qtd Times'];
     const rows = filteredClientes.map(cliente => [
       cliente.team_name || cliente.nome || '',
       cliente.responsavel_nome || '',
@@ -816,7 +817,7 @@ export default function Clientes() {
             <RotateCcw style={{ width: '18px', height: '18px' }} />
             {recalculandoSegmentos
               ? `Recalculando... ${recalcProgress.current}/${recalcProgress.total} (${recalcProgress.updated} alterados)`
-              : 'Recalcular Segmentos'
+              : 'Recalcular Saúde'
             }
           </button>
           <button
@@ -841,19 +842,92 @@ export default function Clientes() {
         </div>
       </div>
 
-      {/* Linha 1: Busca, Segmento e Escopo */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-        {/* Busca */}
-        <div style={{ position: 'relative', flex: '1', minWidth: '200px' }}>
+      {/* Linha 1: Busca */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1' }}>
           <Search style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', width: '18px', height: '18px', color: '#64748b' }} />
           <input type="text" placeholder="Buscar por nome ou responsável..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
             style={{ width: '100%', padding: '10px 14px 10px 42px', background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
         </div>
+      </div>
 
-        {/* Segmento CS Dropdown */}
+      {/* Linha 2: Todos os filtros dropdown */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+
+        {/* Status Dropdown */}
         <div style={{ position: 'relative' }}>
           <button
-            onClick={() => { setShowSegmentoDropdown(!showSegmentoDropdown); setShowEscopoDropdown(false); setShowSortDropdown(false); setShowAreaDropdown(false); }}
+            onClick={() => { setShowStatusDropdown(!showStatusDropdown); setShowSegmentoDropdown(false); setShowEscopoDropdown(false); setShowSortDropdown(false); setShowAreaDropdown(false); }}
+            style={{
+              padding: '10px 14px',
+              background: JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort()) ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
+              border: `1px solid ${JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort()) ? '#8b5cf6' : 'rgba(139, 92, 246, 0.2)'}`,
+              borderRadius: '10px',
+              color: JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort()) ? '#a78bfa' : '#94a3b8',
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              minWidth: '130px'
+            }}
+          >
+            {filterClienteStatus.length === STATUS_OPTIONS.length ? 'Status: Todos' : filterClienteStatus.length === 0 ? 'Status: Nenhum' : `Status: ${filterClienteStatus.length}`}
+            <ChevronDown style={{ width: '14px', height: '14px' }} />
+          </button>
+          {showStatusDropdown && (
+            <>
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowStatusDropdown(false)} />
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, marginTop: '8px',
+                background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '12px', padding: '8px', minWidth: '200px',
+                zIndex: 100, boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5)'
+              }}>
+                {STATUS_OPTIONS.map(opt => {
+                  const isSelected = filterClienteStatus.includes(opt.value);
+                  const count = clientes.filter(c => (c.status === 'onboarding' ? 'ativo' : (c.status || 'ativo')) === opt.value).length;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        if (isSelected) setFilterClienteStatus(filterClienteStatus.filter(s => s !== opt.value));
+                        else setFilterClienteStatus([...filterClienteStatus, opt.value]);
+                      }}
+                      style={{
+                        width: '100%', padding: '8px 12px', background: isSelected ? 'rgba(139, 92, 246, 0.1)' : 'transparent',
+                        border: 'none', borderRadius: '8px', color: 'white', fontSize: '13px',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', textAlign: 'left'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{
+                          width: '18px', height: '18px', borderRadius: '4px',
+                          border: `2px solid ${isSelected ? opt.color : 'rgba(139, 92, 246, 0.3)'}`,
+                          background: isSelected ? opt.color : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          {isSelected && <Check style={{ width: '12px', height: '12px', color: 'white' }} />}
+                        </div>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: opt.color }}></span>
+                          {opt.label}
+                        </span>
+                      </div>
+                      <span style={{ color: '#64748b', fontSize: '11px' }}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Saúde CS Dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => { setShowSegmentoDropdown(!showSegmentoDropdown); setShowStatusDropdown(false); setShowEscopoDropdown(false); setShowSortDropdown(false); setShowAreaDropdown(false); }}
             style={{
               padding: '10px 14px',
               background: filterSegmento.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
@@ -869,7 +943,7 @@ export default function Clientes() {
               minWidth: '150px'
             }}
           >
-            {filterSegmento.length === 0 ? 'Segmento: Todos' : `Segmento: ${filterSegmento.length}`}
+            {filterSegmento.length === 0 ? 'Saúde: Todos' : `Saúde: ${filterSegmento.length}`}
             <ChevronDown style={{ width: '14px', height: '14px' }} />
           </button>
 
@@ -914,7 +988,7 @@ export default function Clientes() {
                 )}
                 {SEGMENTO_OPTIONS.map(opt => {
                   const isSelected = filterSegmento.includes(opt.value);
-                  const count = clientes.filter(c => getClienteSegmento(c) === opt.value).length;
+                  const count = clientes.filter(c => filterClienteStatus.includes(c.status === 'onboarding' ? 'ativo' : (c.status || 'ativo')) && getClienteSegmento(c) === opt.value).length;
                   return (
                     <button
                       key={opt.value}
@@ -972,7 +1046,7 @@ export default function Clientes() {
         {teamTypes.length > 0 && (
           <div style={{ position: 'relative' }}>
             <button
-              onClick={() => { setShowEscopoDropdown(!showEscopoDropdown); setShowSegmentoDropdown(false); setShowSortDropdown(false); setShowAreaDropdown(false); }}
+              onClick={() => { setShowEscopoDropdown(!showEscopoDropdown); setShowStatusDropdown(false); setShowSegmentoDropdown(false); setShowSortDropdown(false); setShowAreaDropdown(false); }}
               style={{
                 padding: '10px 14px',
                 background: filterType.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 27, 75, 0.6)',
@@ -1035,7 +1109,7 @@ export default function Clientes() {
                   )}
                   {teamTypes.map(type => {
                     const isSelected = filterType.includes(type);
-                    const count = clientes.filter(c => c.team_type && c.team_type.includes(type)).length;
+                    const count = clientes.filter(c => filterClienteStatus.includes(c.status === 'onboarding' ? 'ativo' : (c.status || 'ativo')) && c.team_type && c.team_type.includes(type)).length;
                     return (
                       <button
                         key={type}
@@ -1090,7 +1164,7 @@ export default function Clientes() {
         {/* Área de Atuação Dropdown */}
         <div style={{ position: 'relative' }}>
           <button
-            onClick={() => { setShowAreaDropdown(!showAreaDropdown); setShowSegmentoDropdown(false); setShowEscopoDropdown(false); setShowSortDropdown(false); }}
+            onClick={() => { setShowAreaDropdown(!showAreaDropdown); setShowStatusDropdown(false); setShowSegmentoDropdown(false); setShowEscopoDropdown(false); setShowSortDropdown(false); }}
             style={{
               padding: '10px 14px',
               background: filterAreaAtuacao.length > 0 ? 'rgba(6, 182, 212, 0.2)' : 'rgba(30, 27, 75, 0.6)',
@@ -1153,7 +1227,7 @@ export default function Clientes() {
                 )}
                 {AREAS_ATUACAO.map(area => {
                   const isSelected = filterAreaAtuacao.includes(area.value);
-                  const count = clientes.filter(c => c.area_atuacao === area.value).length;
+                  const count = clientes.filter(c => filterClienteStatus.includes(c.status === 'onboarding' ? 'ativo' : (c.status || 'ativo')) && c.area_atuacao === area.value).length;
                   if (count === 0 && !isSelected) return null;
                   return (
                     <button
@@ -1208,7 +1282,7 @@ export default function Clientes() {
         {/* Ordenação Dropdown */}
         <div style={{ position: 'relative', marginLeft: 'auto' }}>
           <button
-            onClick={() => { setShowSortDropdown(!showSortDropdown); setShowSegmentoDropdown(false); setShowEscopoDropdown(false); setShowAreaDropdown(false); }}
+            onClick={() => { setShowSortDropdown(!showSortDropdown); setShowStatusDropdown(false); setShowSegmentoDropdown(false); setShowEscopoDropdown(false); setShowAreaDropdown(false); }}
             style={{
               padding: '10px 14px',
               background: 'rgba(30, 27, 75, 0.6)',
@@ -1282,62 +1356,17 @@ export default function Clientes() {
             </>
           )}
         </div>
-      </div>
-
-      {/* Linha 2: Filtro de Status */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ color: '#94a3b8', fontSize: '13px', marginRight: '4px' }}>Status:</span>
-        {STATUS_OPTIONS.map(opt => {
-          const isSelected = filterClienteStatus.includes(opt.value);
-          return (
-            <button
-              key={opt.value}
-              onClick={() => {
-                if (isSelected) {
-                  setFilterClienteStatus(filterClienteStatus.filter(s => s !== opt.value));
-                } else {
-                  setFilterClienteStatus([...filterClienteStatus, opt.value]);
-                }
-              }}
-              style={{
-                padding: '6px 12px',
-                background: isSelected ? `${opt.color}20` : 'transparent',
-                border: `1px solid ${isSelected ? opt.color : 'rgba(139, 92, 246, 0.2)'}`,
-                borderRadius: '16px',
-                color: isSelected ? opt.color : '#64748b',
-                fontSize: '12px',
-                fontWeight: isSelected ? '500' : '400',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.2s'
-              }}
-            >
-              <span style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: opt.color
-              }}></span>
-              {opt.label}
-              <span style={{ color: isSelected ? opt.color : '#64748b', opacity: 0.7 }}>
-                ({clientes.filter(c => (c.status || 'ativo') === opt.value).length})
-              </span>
-            </button>
-          );
-        })}
 
         {/* Filtro: Com problemas */}
         <button
           onClick={() => setFilterProblemas(!filterProblemas)}
           style={{
-            padding: '6px 12px',
+            padding: '10px 14px',
             background: filterProblemas ? 'rgba(239, 68, 68, 0.2)' : 'rgba(30, 27, 75, 0.6)',
             border: `1px solid ${filterProblemas ? '#ef4444' : 'rgba(139, 92, 246, 0.2)'}`,
-            borderRadius: '16px',
+            borderRadius: '10px',
             color: filterProblemas ? '#ef4444' : '#94a3b8',
-            fontSize: '12px',
+            fontSize: '13px',
             fontWeight: '500',
             cursor: 'pointer',
             display: 'flex',
@@ -1346,10 +1375,7 @@ export default function Clientes() {
           }}
         >
           <AlertTriangle style={{ width: '12px', height: '12px' }} />
-          Com problemas
-          <span style={{ opacity: 0.7 }}>
-            ({clientes.filter(c => (c.tags_problema || []).length > 0).length})
-          </span>
+          Problemas
         </button>
 
         {/* Botão limpar todos os filtros */}
@@ -1374,12 +1400,11 @@ export default function Clientes() {
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              marginLeft: '8px'
+              gap: '6px'
             }}
           >
             <X style={{ width: '12px', height: '12px' }} />
-            Limpar filtros
+            Limpar
           </button>
         )}
 

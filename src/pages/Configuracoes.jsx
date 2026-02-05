@@ -1,12 +1,12 @@
 // Configurações do Sistema
 import { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Save, CheckCircle, AlertTriangle, Sliders, Activity, Clock,
   Bell, Link2, Zap, RefreshCw, XCircle, Play, Heart, CloudDownload, Lock, Eye,
-  Mail, Plus, X, EyeOff, Trash2, Shield
+  Mail, Plus, X, EyeOff, Trash2, Shield, Database
 } from 'lucide-react';
 import { SEGMENTOS_CS } from '../utils/segmentoCS';
 import { DEFAULT_EMAIL_FILTERS } from '../utils/emailFilters';
@@ -32,6 +32,10 @@ export default function Configuracoes() {
   const [sincronizandoClickUp, setSincronizandoClickUp] = useState(false);
   const [clickUpSyncResults, setClickUpSyncResults] = useState(null);
   const { sincronizarComClickUp } = useSincronizarClickUp();
+
+  // Estado para status de sync n8n
+  const [syncStatus, setSyncStatus] = useState(null);
+
 
   // Parâmetros de Segmentação CS
   const PARAMETROS_SEGMENTO_PADRAO = {
@@ -101,21 +105,18 @@ export default function Configuracoes() {
   // Verificar se usuário é admin
   useEffect(() => {
     const checkAdminRole = async () => {
-      if (!user?.email) {
+      if (!user?.uid) {
         setIsAdmin(false);
         setCheckingRole(false);
         return;
       }
 
       try {
-        const q = query(
-          collection(db, 'usuarios_sistema'),
-          where('email', '==', user.email)
-        );
-        const snapshot = await getDocs(q);
+        const docRef = doc(db, 'usuarios_sistema', user.uid);
+        const snapshot = await getDoc(docRef);
 
-        if (!snapshot.empty) {
-          const userData = snapshot.docs[0].data();
+        if (snapshot.exists()) {
+          const userData = snapshot.data();
           setIsAdmin(userData.role === 'admin' || userData.role === 'super_admin' || userData.role === 'gestor');
         } else {
           setIsAdmin(false);
@@ -129,7 +130,7 @@ export default function Configuracoes() {
     };
 
     checkAdminRole();
-  }, [user?.email]);
+  }, [user?.uid]);
 
   // Configurações de alertas (sem dias - unificado em parâmetros)
   const [alertaConfig, setAlertaConfig] = useState({
@@ -175,6 +176,13 @@ export default function Configuracoes() {
         const slaDocSnap = await getDoc(slaDocRef);
         if (slaDocSnap.exists()) {
           setSlaConfig(prev => ({ ...prev, ...slaDocSnap.data() }));
+        }
+
+        // Fetch sync status (n8n)
+        const syncStatusRef = doc(db, 'config', 'sync_status');
+        const syncStatusSnap = await getDoc(syncStatusRef);
+        if (syncStatusSnap.exists()) {
+          setSyncStatus(syncStatusSnap.data());
         }
 
         // Check integrations status
@@ -233,6 +241,24 @@ export default function Configuracoes() {
     } finally {
       setSincronizandoClickUp(false);
     }
+  };
+
+  // Formatar data de sync com indicador de freshness
+  const formatSyncInfo = (timestamp) => {
+    if (!timestamp) return { text: 'Nunca sincronizado', color: '#64748b', fresh: false };
+    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+    if (isNaN(date.getTime())) return { text: 'Data inválida', color: '#64748b', fresh: false };
+
+    const now = new Date();
+    const diffMs = now - date;
+    const diffHours = diffMs / (1000 * 60 * 60);
+    const diffDays = diffHours / 24;
+
+    const formatted = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    if (diffHours < 24) return { text: formatted, color: '#10b981', fresh: true };
+    if (diffDays < 3) return { text: formatted, color: '#f59e0b', fresh: true };
+    return { text: formatted, color: '#ef4444', fresh: false };
   };
 
   // Restaurar valores padrão
@@ -548,11 +574,11 @@ export default function Configuracoes() {
           <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
               <Activity style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Segmentos CS</h2>
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Saúde CS</h2>
             </div>
 
             <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              Os clientes são classificados automaticamente em 4 segmentos baseado em dados de uso e engajamento
+              Os clientes são classificados automaticamente em 4 níveis de saúde baseado em dados de uso e engajamento
             </p>
 
             {/* Parâmetros editáveis de segmentação */}
@@ -954,6 +980,7 @@ export default function Configuracoes() {
               Esses valores serão usados futuramente para alertas de SLA próximo de estourar.
             </p>
           </div>
+
         </div>
 
         {/* COLUNA DIREITA */}
@@ -1357,6 +1384,52 @@ export default function Configuracoes() {
 
             <p style={{ color: '#64748b', fontSize: '11px', margin: '16px 0 0 0', fontStyle: 'italic' }}>
               Em meses de baixa temporada (sazonalidade), os thresholds de dias sem uso são automaticamente dobrados.
+            </p>
+          </div>
+
+          {/* SEÇÃO: Status de Sincronização n8n */}
+          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+              <Database style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Sincronização de Dados</h2>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '16px' }}>
+              Última atualização dos dados via n8n
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {[
+                { key: 'times_ultima_sync', label: 'Times', icon: '👥' },
+                { key: 'usuarios_ultima_sync', label: 'Usuários', icon: '👤' },
+                { key: 'metricas_ultima_sync', label: 'Métricas de Uso', icon: '📊' },
+              ].map(item => {
+                const info = formatSyncInfo(syncStatus?.[item.key]);
+                return (
+                  <div key={item.key} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)',
+                    borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '16px' }}>{item.icon}</span>
+                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>{item.label}</p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        width: '8px', height: '8px', borderRadius: '50%',
+                        background: info.color
+                      }} />
+                      <span style={{ color: info.color, fontSize: '12px', fontWeight: '500' }}>
+                        {info.text}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p style={{ color: '#64748b', fontSize: '11px', margin: '12px 0 0 0', fontStyle: 'italic' }}>
+              Verde = atualizado nas últimas 24h · Amarelo = 1-3 dias · Vermelho = mais de 3 dias
             </p>
           </div>
 

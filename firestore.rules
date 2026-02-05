@@ -41,9 +41,11 @@ service cloud.firestore {
     }
 
     // Usuários do Sistema (admins, CS, gestores)
-    // Somente admins podem criar/editar usuários
+    // Leitura: proprio documento (qualquer role) ou todos (CS+)
+    // Escrita: somente admins podem criar/editar/deletar
     match /usuarios_sistema/{userId} {
-      allow read: if isTraktoUser();
+      allow read: if isTraktoUser() &&
+        (request.auth.uid == userId || isCSOrHigher());
       allow create, update: if isAdmin();
       allow delete: if isAdmin() &&
         // Não permite deletar o próprio documento
@@ -89,6 +91,18 @@ service cloud.firestore {
 
       // Playbooks ativos do cliente
       match /playbooks_ativos/{playbookAtivoId} {
+        allow read: if isTraktoUser();
+        allow write: if isCSOrHigher();
+      }
+
+      // Planos de onboarding do cliente
+      match /onboarding_planos/{planoId} {
+        allow read: if isTraktoUser();
+        allow write: if isCSOrHigher();
+      }
+
+      // Ciclos ongoing do cliente
+      match /ongoing_ciclos/{cicloId} {
         allow read: if isTraktoUser();
         allow write: if isCSOrHigher();
       }
@@ -160,6 +174,24 @@ service cloud.firestore {
       allow write: if isCSOrHigher();
     }
 
+    // Observações CS - CS+ podem gerenciar
+    match /observacoes_cs/{obsId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
+    // Interações - CS+ podem gerenciar
+    match /interacoes/{interacaoId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
+    // Documentos - CS+ podem gerenciar
+    match /documentos/{docId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
     // Playbooks (templates) - leitura para todos, escrita para gestores+
     match /playbooks/{playbookId} {
       allow read: if isTraktoUser();
@@ -172,6 +204,12 @@ service cloud.firestore {
       allow create: if isTraktoUser();
       // Logs são imutáveis - não permite update/delete
       allow update, delete: if false;
+    }
+
+    // Rate limits - uso interno das Cloud Functions (Admin SDK)
+    // Nenhum acesso direto do cliente
+    match /_rate_limits/{docId} {
+      allow read, write: if false;
     }
   }
 }

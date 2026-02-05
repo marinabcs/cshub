@@ -1,20 +1,25 @@
 # CLAUDE.md - Diretrizes do CS Hub
 
-## 📋 ESTADO ATUAL DO PROJETO (Atualizado: Janeiro 2026)
+## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 05/02/2026)
 
-### Status: Em desenvolvimento - Firebase configurado ✅
+### Status: Pré-lançamento - Revisão final em andamento ✅
 
 **O que está pronto:**
-- ✅ Frontend React completo com todas as páginas
-- ✅ Segmentacao CS (CRESCIMENTO, ESTAVEL, ALERTA, RESGATE) baseada em metricas diretas
+- ✅ Frontend React completo com todas as 17 páginas
+- ✅ Saúde CS (CRESCIMENTO, ESTAVEL, ALERTA, RESGATE) baseada em métricas diretas
 - ✅ Classificação de threads com IA (OpenAI GPT-4o-mini)
 - ✅ Sistema de auditoria (append-only log)
 - ✅ Política de retenção de dados
 - ✅ Página Analytics com 5 abas (Uso, Conversas, Usuários, Vendas, Churn)
 - ✅ Otimizações de performance (Promise.all, queries paralelas)
-- ✅ Documentação técnica completa
-- ✅ Firebase configurado com índices
-- ✅ Threads e mensagens funcionando
+- ✅ Firebase configurado com índices + Firestore rules com RBAC
+- ✅ 8 Cloud Functions deployadas (segurança completa)
+- ✅ Sistema Ongoing completo (ações recorrentes por saúde)
+- ✅ Minha Carteira com filtros multiselect (Status, Saúde, Responsável)
+- ✅ Seção "Sem Playbook" em Minha Carteira
+- ✅ 350 testes automatizados passando (Vitest)
+- ✅ Status "onboarding" removido (tratado como "ativo")
+- ✅ Label "Segmento" renomeado para "Saúde" em toda a UI
 
 **Índices criados no Firebase:**
 - `threads`: team_id + updated_at
@@ -22,9 +27,24 @@
 - `mensagens`: thread_id + data
 - `alertas`: status + created_at
 
-**Próximos passos:**
-1. Testar outras funcionalidades (Analytics, Alertas, etc)
-2. Criar tutorial operacional para usuários finais
+**Revisão pré-lançamento (em andamento):**
+- ✅ Dashboard — OK
+- ✅ Minha Carteira — OK (filtros refeitos, layout reorganizado)
+- ✅ Clientes (lista) — OK (filtro status virou dropdown multiselect, layout reorganizado: linha 1 busca, linha 2 todos os filtros, contagens respeitam filtro de status)
+- ✅ Cliente Detalhe — OK (abas Conversas+Interações unificadas, Playbooks removida, stakeholders com add/delete, todos responsáveis exibidos)
+- ✅ Cliente Form — OK (removido: Tags de Contexto, Onboarding e Produto, Calendário de Campanhas, Pessoa para Video; Health Score→Saúde CS; Promise.all em queries; serverTimestamp; schema limpo)
+- ✅ Resumo Executivo — OK (queries paralelas com Promise.all; nome||team_name consistente; imports limpos)
+- ✅ Analytics — OK (5 imports limpos; 12x team_name→nome||team_name; responsavel→responsaveis[0]; queries já paralelas)
+- Documentos — pendente
+- Ongoing — pendente
+- Onboarding — pendente
+- Alertas — pendente
+- Configurações — pendente
+- Usuários — pendente
+- Auditoria — pendente
+- Validar segmentação com 5 contas reais — pendente
+- Testar Calculadora de Onboarding com cliente real — pendente
+- Métricas: validar que números/contagens estão corretos em todas as páginas (Dashboard KPIs, contagens de clientes, filtros, totais em Analytics, etc.) — pendente
 
 ### Arquivos de documentação:
 - `/docs/TECHNICAL.md` - Documentação técnica completa (arquitetura, APIs, etc)
@@ -121,13 +141,15 @@ style={{
 - NUNCA fazer loops com `await` dentro (converter para Promise.all)
 - Chunks de queries `in` devem rodar em paralelo
 
-### Segmentacao CS (4 segmentos):
-| Segmento | Descricao |
-|----------|-----------|
+### Saúde CS (4 níveis):
+| Saúde | Descricao |
+|-------|-----------|
 | CRESCIMENTO | Melhores clientes - alto potencial de expansao |
 | ESTAVEL | Clientes estaveis - manter engajamento |
 | ALERTA | Atencao necessaria - sinais de risco |
 | RESGATE | Critico - risco iminente de churn |
+
+> **Nota:** No código, variáveis e campos Firestore usam "segmento" (nome técnico), mas na UI o termo exibido é "Saúde".
 
 Calculo baseado em metricas diretas: dias sem uso, frequencia, reclamacoes, engajamento.
 Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) via LEGACY_SEGMENT_MAP.
@@ -140,7 +162,28 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
 2. **CSS**: Inline styles ao invés de Tailwind para consistência
 3. **Classificação IA**: OpenAI GPT-4o-mini com fallback para classificação manual
 4. **Auditoria**: Append-only, nunca permite update/delete
-5. **Segmentacao CS**: Classificacao direta por metricas (sem Health Score intermediario)
+5. **Saúde CS**: Classificação direta por métricas (sem Health Score intermediário). Na UI usa "Saúde", no código variáveis mantêm "segmento"
+6. **Playbook = plano de atividades gerado por Onboarding ou Ongoing**. Quando o sistema diz "sem playbook", significa que o cliente não tem nenhum onboarding ou ongoing ativo
+7. **Status "onboarding" removido** (05/02/2026). Clientes com status onboarding são tratados como "ativo" em todo o software
+8. **Filtros Minha Carteira**: Dropdown multiselect para Status (default: ativo + aviso_prévio) e Saúde (default: todos). Responsável default: usuário logado
+9. **Clientes (lista)**: Filtro status mudou de chips para dropdown multiselect. Layout: linha 1 = busca, linha 2 = Status + Saúde + Escopo + Área + Ordenar + Problemas + Limpar + contagem. Contagens dos filtros respeitam o filtro de status ativo (não contam inativos/cancelados)
+10. **ClienteDetalhe tabs**: Abas reduzidas de 10 para 6 (resumo, interacoes, onboarding, ongoing, documentos, pessoas). "Conversas"+"Interações"+"Observações" unificadas em timeline única. "Playbooks" e "Bugs" removidas. Tipos: email, reunião, observação, onboarding, feedback, suporte, treinamento, qbr, outro. Timeline tem filtro de texto + filtro de tipo. Dois botões: "+ Observação" e "+ Interação"
+13. **Aba Bugs removida** do ClienteDetalhe. Será readicionada quando houver fluxo com time técnico. Threads classificadas como bug pela IA serão o mecanismo futuro
+14. **Tipo de contato "Time Google"** adicionado aos stakeholders (decisor, operacional, financeiro, técnico, time_google, outro)
+11. **Stakeholders inline**: Botão "Adicionar" direto na aba Pessoas do ClienteDetalhe com formulário inline (nome, email, cargo, telefone, linkedin, tipo_contato). Botão excluir em cada card
+12. **Múltiplos responsáveis**: ClienteDetalhe header mostra todos os nomes do array `cliente.responsaveis` (campo `{ email, nome }[]`), com fallback para `responsavel_nome` legado
+
+---
+
+## 📋 Sistema Ongoing (Ações Recorrentes)
+
+- **Ações padrão**: Configuráveis por saúde em `config/ongoing` (Configurações > Ongoing > Ações Padrão)
+- **Ciclo**: Conjunto de ações atribuídas a um cliente por período (mensal/bimestral), armazenado em `clientes/{id}/ongoing_ciclos/{cicloId}`
+- **Fluxo**: Configurar ações → Atribuir ciclo ao cliente → CS executa ações → Ciclo termina → CS reatribui (cliente pode ter mudado de saúde)
+- **Página Ongoing** (`/ongoing`): 2 abas — "Clientes" (lista com atribuição) e "Ações Padrão" (config por saúde)
+- **ClienteDetalhe** (`/clientes/:id`): aba "Ongoing" mostra ciclo ativo com checklist + histórico
+- **Minha Carteira**: seção "Sem Playbook" lista clientes sem onboarding ou ongoing ativo
+- **Subcollections Firestore**: `ongoing_ciclos`, `onboarding_planos` (regras deployadas)
 
 ---
 
@@ -210,21 +253,49 @@ if (cliente.times && Array.isArray(cliente.times)) {
 
 ---
 
-## 🔒 SEGURANÇA (Atualizado: 30/01/2026)
+## 🔒 SEGURANÇA (Atualizado: 05/02/2026)
 
-### ✅ Implementado:
-1. ✅ Firestore Security Rules completas (`firestore.rules`)
-2. ✅ Console.logs removidos em produção (`vite.config.js` com `esbuild.drop`)
-3. ✅ Utilitário de logging criado (`/src/utils/logger.js`)
-4. ✅ Fallbacks hardcoded removidos do `vite.config.js`
-5. ✅ `.env` no `.gitignore`
+> Documentacao completa: `/SEGURANCA.md`
 
-### ⚠️ Pendente (requer Cloud Functions):
-1. API keys expostas no frontend (VITE_* são visíveis no bundle)
-   - **Solução ideal:** Mover chamadas OpenAI e ClickUp para Firebase Cloud Functions
-   - Ver `/SEGURANCA.md` para detalhes de implementação
-2. Validação de inputs do usuário (usar Zod)
-3. Rate limiting nas APIs
+### ✅ Cloud Functions Deployadas (southamerica-east1):
+- `validateDomain` — bloqueia signup fora do @trakto.io (beforeUserCreated)
+- `syncUserRole` — sincroniza Custom Claims quando role muda (onDocumentWritten)
+- `recalcularSaudeDiaria` — recalcula segmento_cs de todos os clientes ativos (scheduled, 7h BRT)
+- `setUserRole` — admin define roles (onCall, rate limited 20/min)
+- `classifyThread` — proxy OpenAI para classificacao de threads (onCall, rate limited 30/min)
+- `generateSummary` — proxy OpenAI para resumo executivo (onCall, rate limited 30/min)
+- `clickupProxy` — proxy ClickUp API (onCall, rate limited 60/min)
+- `clickupWebhook` — recebe webhooks do ClickUp com verificacao HMAC (onRequest, rate limited 120/min)
+
+### ✅ Segurança Implementada:
+1. ✅ API keys movidas para Firebase Secrets (OpenAI, ClickUp, Webhook)
+2. ✅ Frontend usa `httpsCallable()` — nunca chama APIs externas diretamente
+3. ✅ Rate limiter distribuido via Firestore (persiste entre cold starts)
+4. ✅ Webhook ClickUp com verificacao HMAC-SHA256 + CORS desabilitado
+5. ✅ Validacao de inputs em todas as Cloud Functions (limites de tamanho, tipo, whitelist)
+6. ✅ Firestore Security Rules com RBAC (viewer < cs < gestor < admin < super_admin)
+7. ✅ Content Security Policy (CSP) + X-Frame-Options + referrer policy
+8. ✅ Rotas admin protegidas (`/configuracoes/usuarios`, `/configuracoes/auditoria`)
+9. ✅ `usuarios_sistema` restringido (viewers leem so o proprio doc, CS+ leem todos)
+10. ✅ Erros sanitizados nas Cloud Functions (nunca expoe error.message)
+11. ✅ Console.logs removidos em producao (`esbuild.drop`)
+12. ✅ Pagina debug excluida do bundle de producao
+13. ✅ `.env` no `.gitignore`
+
+### Firebase Secrets (Google Secret Manager):
+- `OPENAI_API_KEY` — chave OpenAI
+- `CLICKUP_API_KEY` — chave ClickUp
+- `CLICKUP_WEBHOOK_SECRET` — secret HMAC do webhook
+
+### Comandos de deploy:
+```bash
+firebase deploy --only functions --project cs-hub-8c032
+firebase deploy --only firestore:rules --project cs-hub-8c032
+firebase functions:log --project cs-hub-8c032
+```
+
+### Console de secrets:
+https://console.cloud.google.com/security/secret-manager?project=cs-hub-8c032
 
 ---
 
@@ -234,8 +305,9 @@ if (cliente.times && Array.isArray(cliente.times)) {
 1. ✅ `useAlertasCount` - Usa queries filtradas por status (não carrega todos alertas)
 2. ✅ Console.logs removidos em produção (menos overhead)
 3. ✅ Índices Firestore configurados para queries comuns
+4. ✅ Paginação em Clientes (30/página)
+5. ✅ Cache client-side com TTL (5-10 min)
+6. ✅ Lazy loading para componentes pesados (bundle reduzido 66%)
 
 ### ⚠️ A otimizar futuramente:
-1. Adicionar paginação em listas grandes (Clientes, Analytics)
-2. Implementar cache client-side para dados frequentes
-3. Lazy loading para componentes pesados
+1. Paginação em Analytics (pode carregar milhares de registros)

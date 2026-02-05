@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History, Briefcase, FileText, Sparkles, ClipboardList, GraduationCap } from 'lucide-react';
 import { useAlertasCount } from '../../hooks/useAlertas';
@@ -20,24 +20,20 @@ export default function Sidebar() {
     return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
   };
 
-  // Buscar dados do perfil do usuário logado
+  // Buscar dados do perfil do usuário logado (por uid direto)
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user?.uid) return;
 
-    const q = query(
-      collection(db, 'usuarios_sistema'),
-      where('email', '==', user.email)
-    );
+    const docRef = doc(db, 'usuarios_sistema', user.uid);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const userData = snapshot.docs[0].data();
-        setUserProfile(userData);
+    const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setUserProfile(snapshot.data());
       }
     });
 
     return () => unsubscribe();
-  }, [user?.email]);
+  }, [user?.uid]);
 
   const handleLogout = async () => {
     try {
@@ -55,7 +51,7 @@ export default function Sidebar() {
     { to: '/resumo-executivo', icon: Sparkles, label: 'Resumo Executivo' },
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/documentos', icon: FileText, label: 'Documentos' },
-    { to: '/playbooks', icon: ClipboardList, label: 'Playbooks' },
+    { to: '/ongoing', icon: ClipboardList, label: 'Ongoing' },
     { to: '/onboarding', icon: GraduationCap, label: 'Onboarding' },
     { to: '/alertas', icon: Bell, label: 'Alertas', badge: alertaCounts.pendentes, urgente: alertaCounts.urgentes > 0 },
   ];

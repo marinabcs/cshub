@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,7 +8,7 @@ import { getThreadsByTeam } from '../services/api';
 import {
   Briefcase, Users, MessageSquare, AlertTriangle, ChevronRight,
   Clock, TrendingUp, TrendingDown, Activity, Bell, CheckCircle,
-  XCircle, Calendar, ArrowUpRight, ChevronDown, Lock
+  XCircle, Calendar, ArrowUpRight, ChevronDown, Lock, ClipboardList
 } from 'lucide-react';
 import { STATUS_OPTIONS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
 import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
@@ -22,8 +22,12 @@ export default function MinhaCarteira() {
   const [loading, setLoading] = useState(true);
   const [responsaveis, setResponsaveis] = useState([]);
   const [selectedResponsavel, setSelectedResponsavel] = useState(null);
-  const [filterStatus, setFilterStatus] = useState(['ativo', 'onboarding', 'aviso_previo']); // Status do cadastro (default: todos menos inativo/cancelado)
+  const [filterStatus, setFilterStatus] = useState(['ativo', 'aviso_previo']);
+  const [filterSegmento, setFilterSegmento] = useState(['CRESCIMENTO', 'ESTAVEL', 'ALERTA', 'RESGATE']);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [showSegmentoDropdown, setShowSegmentoDropdown] = useState(false);
   const [allClientes, setAllClientes] = useState([]); // Todos os clientes sem filtro de status
+  const [clientesSemPlaybook, setClientesSemPlaybook] = useState([]);
   const [stats, setStats] = useState({
     total: 0,
     crescimento: 0,
@@ -62,18 +66,25 @@ export default function MinhaCarteira() {
     fetchData(selectedResponsavel);
   }, [selectedResponsavel]);
 
-  // Filtrar clientes por status do cadastro (client-side) e recalcular stats
+  // Filtrar clientes por status e segmento (client-side) e recalcular stats
   useEffect(() => {
     let filtered = allClientes;
 
-    // Filtrar por status do cadastro (sempre aplica se houver filtros selecionados)
+    // Tratar 'onboarding' como 'ativo'
     if (filterStatus.length > 0) {
-      filtered = filtered.filter(c => filterStatus.includes(c.status || 'ativo'));
+      filtered = filtered.filter(c => {
+        const st = (c.status === 'onboarding') ? 'ativo' : (c.status || 'ativo');
+        return filterStatus.includes(st);
+      });
+    }
+
+    // Filtrar por segmento
+    if (filterSegmento.length > 0 && filterSegmento.length < 4) {
+      filtered = filtered.filter(c => filterSegmento.includes(getClienteSegmento(c)));
     }
 
     setClientes(filtered);
 
-    // Recalcular stats baseado nos clientes filtrados por segmento
     setStats(prev => ({
       ...prev,
       total: filtered.length,
@@ -82,7 +93,7 @@ export default function MinhaCarteira() {
       alerta: filtered.filter(c => getClienteSegmento(c) === 'ALERTA').length,
       resgate: filtered.filter(c => getClienteSegmento(c) === 'RESGATE').length
     }));
-  }, [filterStatus, allClientes]);
+  }, [filterStatus, filterSegmento, allClientes]);
 
   const fetchData = async (responsavelEmail) => {
     try {
@@ -134,10 +145,16 @@ export default function MinhaCarteira() {
       clientesData.sort((a, b) => (segmentoOrder[getClienteSegmento(a)] || 5) - (segmentoOrder[getClienteSegmento(b)] || 5));
       setAllClientes(clientesData);
 
-      // Aplicar filtro de status inicial
+      // Aplicar filtros iniciais
       let filtered = clientesData;
       if (filterStatus.length > 0) {
-        filtered = filtered.filter(c => filterStatus.includes(c.status || 'ativo'));
+        filtered = filtered.filter(c => {
+          const st = (c.status === 'onboarding') ? 'ativo' : (c.status || 'ativo');
+          return filterStatus.includes(st);
+        });
+      }
+      if (filterSegmento.length > 0 && filterSegmento.length < 4) {
+        filtered = filtered.filter(c => filterSegmento.includes(getClienteSegmento(c)));
       }
       setClientes(filtered);
 
@@ -152,7 +169,29 @@ export default function MinhaCarteira() {
         alertasPendentes: 0
       };
 
-      // 2. Buscar threads pendentes dos clientes
+      // 2. Verificar quais clientes NÃO têm onboarding, ongoing ou playbook ativo
+      if (clientesData.length > 0) {
+        const ativos = clientesData.filter(c => c.status !== 'inativo' && c.status !== 'cancelado');
+        const checks = await Promise.all(ativos.map(async (cliente) => {
+          let temOnboarding = false;
+          let temOngoing = false;
+
+          try {
+            const snap = await getDocs(query(collection(db, 'clientes', cliente.id, 'onboarding_planos'), where('status', '==', 'em_andamento'), limit(1)));
+            temOnboarding = !snap.empty;
+          } catch {}
+
+          try {
+            const snap = await getDocs(query(collection(db, 'clientes', cliente.id, 'ongoing_ciclos'), where('status', '==', 'em_andamento'), limit(1)));
+            temOngoing = !snap.empty;
+          } catch {}
+
+          return (temOnboarding || temOngoing) ? null : cliente;
+        }));
+        setClientesSemPlaybook(checks.filter(Boolean));
+      }
+
+      // 3. Buscar threads pendentes dos clientes
       if (clientesData.length > 0) {
         const allTeamIds = clientesData.flatMap(c => c.times || [c.team_id || c.id]).filter(Boolean);
 
@@ -174,7 +213,7 @@ export default function MinhaCarteira() {
         }
       }
 
-      // 3. Buscar alertas pendentes
+      // 4. Buscar alertas pendentes
       const alertasRef = collection(db, 'alertas');
       const alertasQuery = query(
         alertasRef,
@@ -282,9 +321,9 @@ export default function MinhaCarteira() {
           </div>
 
           {/* Filtros */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {/* Filtro por Responsável */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: '#64748b', fontSize: '13px' }}>Responsável:</span>
               <div style={{ position: 'relative' }}>
                 <select
@@ -292,7 +331,7 @@ export default function MinhaCarteira() {
                   onChange={(e) => setSelectedResponsavel(e.target.value)}
                   style={{
                     appearance: 'none',
-                    padding: '10px 36px 10px 14px',
+                    padding: '8px 32px 8px 12px',
                     background: 'rgba(30, 27, 75, 0.6)',
                     border: '1px solid rgba(139, 92, 246, 0.3)',
                     borderRadius: '10px',
@@ -301,7 +340,7 @@ export default function MinhaCarteira() {
                     fontWeight: '500',
                     cursor: 'pointer',
                     outline: 'none',
-                    minWidth: '180px'
+                    minWidth: '160px'
                   }}
                 >
                   <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
@@ -311,51 +350,129 @@ export default function MinhaCarteira() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown style={{
-                  position: 'absolute',
-                  right: '10px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: '16px',
-                  height: '16px',
-                  color: '#8b5cf6',
-                  pointerEvents: 'none'
-                }} />
+                <ChevronDown style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: '#8b5cf6', pointerEvents: 'none' }} />
               </div>
             </div>
 
-            {/* Filtro por Status do Cadastro */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Filtro por Status - Dropdown multiselect */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: '#64748b', fontSize: '13px' }}>Status:</span>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {STATUS_OPTIONS.map((statusOpt) => {
-                  const isSelected = filterStatus.includes(statusOpt.value);
-                  return (
-                    <button
-                      key={statusOpt.value}
-                      onClick={() => {
-                        if (isSelected) {
-                          setFilterStatus(filterStatus.filter(s => s !== statusOpt.value));
-                        } else {
-                          setFilterStatus([...filterStatus, statusOpt.value]);
-                        }
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        background: isSelected ? `${statusOpt.color}20` : 'rgba(30, 27, 75, 0.6)',
-                        border: `1px solid ${isSelected ? statusOpt.color : 'rgba(139, 92, 246, 0.2)'}`,
-                        borderRadius: '8px',
-                        color: isSelected ? statusOpt.color : '#64748b',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      {statusOpt.label}
-                    </button>
-                  );
-                })}
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => { setShowStatusDropdown(!showStatusDropdown); setShowSegmentoDropdown(false); }}
+                  style={{
+                    padding: '8px 32px 8px 12px',
+                    background: 'rgba(30, 27, 75, 0.6)',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '10px',
+                    color: 'white',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    minWidth: '140px',
+                    textAlign: 'left'
+                  }}
+                >
+                  {filterStatus.length === STATUS_OPTIONS.length ? 'Todos' : filterStatus.length === 0 ? 'Nenhum' : `${filterStatus.length} selecionado${filterStatus.length > 1 ? 's' : ''}`}
+                </button>
+                <ChevronDown style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: '#8b5cf6', pointerEvents: 'none' }} />
+                {showStatusDropdown && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, marginTop: '4px',
+                    background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '10px', padding: '8px', zIndex: 50, minWidth: '180px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+                  }}>
+                    {STATUS_OPTIONS.map(opt => {
+                      const checked = filterStatus.includes(opt.value);
+                      return (
+                        <label key={opt.value} style={{
+                          display: 'flex', alignItems: 'center', gap: '8px',
+                          padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
+                          background: checked ? `${opt.color}15` : 'transparent'
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              if (checked) setFilterStatus(filterStatus.filter(s => s !== opt.value));
+                              else setFilterStatus([...filterStatus, opt.value]);
+                            }}
+                            style={{ accentColor: opt.color }}
+                          />
+                          <span style={{ color: checked ? opt.color : '#94a3b8', fontSize: '13px', fontWeight: checked ? '600' : '400' }}>
+                            {opt.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Filtro por Saúde - Dropdown multiselect */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: '#64748b', fontSize: '13px' }}>Saúde:</span>
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => { setShowSegmentoDropdown(!showSegmentoDropdown); setShowStatusDropdown(false); }}
+                  style={{
+                    padding: '8px 32px 8px 12px',
+                    background: 'rgba(30, 27, 75, 0.6)',
+                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '10px',
+                    color: 'white',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    minWidth: '140px',
+                    textAlign: 'left'
+                  }}
+                >
+                  {filterSegmento.length === 4 ? 'Todos' : filterSegmento.length === 0 ? 'Nenhum' : `${filterSegmento.length} selecionado${filterSegmento.length > 1 ? 's' : ''}`}
+                </button>
+                <ChevronDown style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: '#8b5cf6', pointerEvents: 'none' }} />
+                {showSegmentoDropdown && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, marginTop: '4px',
+                    background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '10px', padding: '8px', zIndex: 50, minWidth: '180px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+                  }}>
+                    {[
+                      { value: 'CRESCIMENTO', label: 'Crescimento', color: SEGMENTOS_CS.CRESCIMENTO.color },
+                      { value: 'ESTAVEL', label: 'Estavel', color: SEGMENTOS_CS.ESTAVEL.color },
+                      { value: 'ALERTA', label: 'Alerta', color: SEGMENTOS_CS.ALERTA.color },
+                      { value: 'RESGATE', label: 'Resgate', color: SEGMENTOS_CS.RESGATE.color },
+                    ].map(opt => {
+                      const checked = filterSegmento.includes(opt.value);
+                      return (
+                        <label key={opt.value} style={{
+                          display: 'flex', alignItems: 'center', gap: '8px',
+                          padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
+                          background: checked ? `${opt.color}15` : 'transparent'
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              if (checked) setFilterSegmento(filterSegmento.filter(s => s !== opt.value));
+                              else setFilterSegmento([...filterSegmento, opt.value]);
+                            }}
+                            style={{ accentColor: opt.color }}
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: opt.color }} />
+                            <span style={{ color: checked ? opt.color : '#94a3b8', fontSize: '13px', fontWeight: checked ? '600' : '400' }}>
+                              {opt.label}
+                            </span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -425,281 +542,343 @@ export default function MinhaCarteira() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
-        {/* Lista de Clientes */}
+      {/* Grid 3 colunas: Aguardando Resposta | Alertas | Sem Playbook */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '24px' }}>
+        {/* Threads Pendentes */}
         <div style={{
           background: 'rgba(30, 27, 75, 0.4)',
-          border: '1px solid rgba(139, 92, 246, 0.15)',
+          border: '1px solid rgba(245, 158, 11, 0.2)',
           borderRadius: '20px',
-          padding: '24px'
+          padding: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Activity style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Meus Clientes</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              <MessageSquare style={{ width: '18px', height: '18px', color: '#f59e0b', flexShrink: 0 }} />
+              <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Aguardando Resposta</h3>
             </div>
-            <span style={{ color: '#64748b', fontSize: '13px' }}>Ordenado por prioridade</span>
+            {stats.threadsPendentes > 0 && (
+              <span style={{
+                padding: '2px 8px',
+                background: 'rgba(245, 158, 11, 0.2)',
+                color: '#f59e0b',
+                borderRadius: '10px',
+                fontSize: '12px',
+                fontWeight: '600'
+              }}>
+                {stats.threadsPendentes}
+              </span>
+            )}
           </div>
 
-          {clientes.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {clientes.map((cliente) => {
-                const segmento = getClienteSegmento(cliente);
-                const segmentoColor = getSegmentoColor(segmento);
-                return (
+          {threads.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', flex: 1 }}>
+              {threads.map((thread) => (
                 <div
-                  key={cliente.id}
-                  onClick={() => navigate(`/clientes/${cliente.id}`)}
+                  key={thread.id}
+                  onClick={() => {
+                    const cliente = clientes.find(c =>
+                      c.times?.includes(thread.team_id) || c.team_id === thread.team_id || c.id === thread.team_id
+                    );
+                    if (cliente) navigate(`/clientes/${cliente.id}`);
+                  }}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px',
-                    padding: '16px',
+                    padding: '12px',
                     background: 'rgba(15, 10, 31, 0.6)',
-                    border: `1px solid ${segmentoColor}30`,
-                    borderRadius: '12px',
+                    border: '1px solid rgba(139, 92, 246, 0.1)',
+                    borderRadius: '10px',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+                    minWidth: 0
                   }}
                 >
-                  {/* Segmento Badge */}
-                  <div style={{
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: '12px',
-                    background: `${segmentoColor}20`,
-                    border: `2px solid ${segmentoColor}`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <span style={{ color: segmentoColor, fontSize: '11px', fontWeight: '700' }}>
-                      {segmento}
+                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {thread.assunto || thread.subject || 'Sem assunto'}
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <span style={{ color: '#94a3b8', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {getClienteNameByTeamId(thread.team_id)}
+                    </span>
+                    <span style={{ color: '#64748b', fontSize: '11px', flexShrink: 0 }}>
+                      {formatRelativeDate(thread.updated_at)}
                     </span>
                   </div>
-
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {cliente.team_name}
-                    </p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{
-                        padding: '2px 8px',
-                        background: `${segmentoColor}20`,
-                        color: segmentoColor,
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        fontWeight: '500'
-                      }}>
-                        {getSegmentoLabel(segmento)}
-                      </span>
-                      {cliente.ultima_interacao && (
-                        <span style={{ color: '#64748b', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Clock style={{ width: '12px', height: '12px' }} />
-                          {formatRelativeDate(cliente.ultima_interacao)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Arrow */}
-                  <ChevronRight style={{ width: '20px', height: '20px', color: '#64748b', flexShrink: 0 }} />
                 </div>
-              );})}
+              ))}
             </div>
           ) : (
-            <div style={{ padding: '48px', textAlign: 'center' }}>
-              <Briefcase style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
-              <p style={{ color: '#94a3b8', fontSize: '16px', margin: '0 0 8px 0' }}>Nenhum cliente atribuído</p>
-              <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
-                Peça a um gestor para atribuir clientes à sua carteira
-              </p>
-            </div>
+            <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '16px 0', margin: 0 }}>
+              Nenhuma conversa pendente
+            </p>
           )}
         </div>
 
-        {/* Painel Lateral - Threads e Alertas */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Threads Pendentes */}
-          <div style={{
-            background: 'rgba(30, 27, 75, 0.4)',
-            border: '1px solid rgba(245, 158, 11, 0.2)',
-            borderRadius: '20px',
-            padding: '20px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <MessageSquare style={{ width: '18px', height: '18px', color: '#f59e0b' }} />
-                <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>Aguardando Resposta</h3>
-              </div>
-              {stats.threadsPendentes > 0 && (
-                <span style={{
-                  padding: '2px 8px',
-                  background: 'rgba(245, 158, 11, 0.2)',
-                  color: '#f59e0b',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: '600'
-                }}>
-                  {stats.threadsPendentes}
-                </span>
-              )}
+        {/* Alertas */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: '20px',
+          padding: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Bell style={{ width: '18px', height: '18px', color: '#ef4444' }} />
+              <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>Alertas</h3>
             </div>
+            {stats.alertasPendentes > 0 && (
+              <span style={{
+                padding: '2px 8px',
+                background: 'rgba(239, 68, 68, 0.2)',
+                color: '#ef4444',
+                borderRadius: '10px',
+                fontSize: '12px',
+                fontWeight: '600'
+              }}>
+                {stats.alertasPendentes}
+              </span>
+            )}
+          </div>
 
-            {threads.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {threads.slice(0, 5).map((thread) => (
+          {alertas.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', flex: 1 }}>
+              {alertas.map((alerta) => (
+                <div
+                  key={alerta.id}
+                  onClick={() => navigate('/alertas')}
+                  style={{
+                    padding: '12px',
+                    background: 'rgba(15, 10, 31, 0.6)',
+                    border: `1px solid ${alerta.prioridade === 'urgente' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(139, 92, 246, 0.1)'}`,
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    minWidth: 0
+                  }}
+                >
+                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {alerta.titulo}
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{
+                      padding: '2px 6px',
+                      background: alerta.prioridade === 'urgente' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                      color: alerta.prioridade === 'urgente' ? '#ef4444' : '#f59e0b',
+                      borderRadius: '4px',
+                      fontSize: '10px',
+                      fontWeight: '500'
+                    }}>
+                      {alerta.prioridade?.toUpperCase() || 'NORMAL'}
+                    </span>
+                    <span style={{ color: '#64748b', fontSize: '11px' }}>
+                      {formatRelativeDate(alerta.created_at)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '16px 0', margin: 0 }}>
+              Nenhum alerta pendente
+            </p>
+          )}
+
+          <button
+            onClick={() => navigate('/alertas')}
+            style={{
+              width: '100%',
+              marginTop: '12px',
+              padding: '10px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              borderRadius: '10px',
+              color: '#ef4444',
+              fontSize: '12px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+          >
+            Ver todos os alertas
+            <ArrowUpRight style={{ width: '14px', height: '14px' }} />
+          </button>
+        </div>
+
+        {/* Sem Onboarding/Ongoing */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(139, 92, 246, 0.2)',
+          borderRadius: '20px',
+          padding: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <ClipboardList style={{ width: '18px', height: '18px', color: '#8b5cf6' }} />
+              <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>Sem Playbook</h3>
+            </div>
+            {clientesSemPlaybook.length > 0 && (
+              <span style={{
+                padding: '2px 8px',
+                background: 'rgba(139, 92, 246, 0.2)',
+                color: '#a78bfa',
+                borderRadius: '10px',
+                fontSize: '12px',
+                fontWeight: '600'
+              }}>
+                {clientesSemPlaybook.length}
+              </span>
+            )}
+          </div>
+
+          {clientesSemPlaybook.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', flex: 1 }}>
+              {clientesSemPlaybook.map(cliente => {
+                const seg = getClienteSegmento(cliente);
+                const segColor = getSegmentoColor(seg);
+                return (
                   <div
-                    key={thread.id}
-                    onClick={() => {
-                      const cliente = clientes.find(c =>
-                        c.times?.includes(thread.team_id) || c.team_id === thread.team_id || c.id === thread.team_id
-                      );
-                      if (cliente) navigate(`/clientes/${cliente.id}`);
-                    }}
+                    key={cliente.id}
+                    onClick={() => navigate(`/clientes/${cliente.id}`)}
                     style={{
                       padding: '12px',
                       background: 'rgba(15, 10, 31, 0.6)',
-                      border: '1px solid rgba(139, 92, 246, 0.1)',
+                      border: `1px solid ${segColor}30`,
                       borderRadius: '10px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {thread.assunto || thread.subject || 'Sem assunto'}
-                    </p>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#94a3b8', fontSize: '11px' }}>
-                        {getClienteNameByTeamId(thread.team_id)}
-                      </span>
-                      <span style={{ color: '#64748b', fontSize: '11px' }}>
-                        {formatRelativeDate(thread.updated_at)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {threads.length > 5 && (
-                  <button
-                    onClick={() => navigate('/alertas')}
-                    style={{
-                      padding: '10px',
-                      background: 'transparent',
-                      border: '1px dashed rgba(245, 158, 11, 0.3)',
-                      borderRadius: '10px',
-                      color: '#f59e0b',
-                      fontSize: '12px',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px'
+                      gap: '10px'
                     }}
                   >
-                    Ver mais {threads.length - 5} conversas
-                    <ArrowUpRight style={{ width: '14px', height: '14px' }} />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '16px 0', margin: 0 }}>
-                Nenhuma conversa pendente
-              </p>
-            )}
-          </div>
-
-          {/* Alertas */}
-          <div style={{
-            background: 'rgba(30, 27, 75, 0.4)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-            borderRadius: '20px',
-            padding: '20px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Bell style={{ width: '18px', height: '18px', color: '#ef4444' }} />
-                <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>Alertas</h3>
-              </div>
-              {stats.alertasPendentes > 0 && (
-                <span style={{
-                  padding: '2px 8px',
-                  background: 'rgba(239, 68, 68, 0.2)',
-                  color: '#ef4444',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: '600'
-                }}>
-                  {stats.alertasPendentes}
-                </span>
-              )}
-            </div>
-
-            {alertas.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {alertas.slice(0, 5).map((alerta) => (
-                  <div
-                    key={alerta.id}
-                    onClick={() => navigate('/alertas')}
-                    style={{
-                      padding: '12px',
-                      background: 'rgba(15, 10, 31, 0.6)',
-                      border: `1px solid ${alerta.prioridade === 'urgente' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(139, 92, 246, 0.1)'}`,
-                      borderRadius: '10px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {alerta.titulo}
-                    </p>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{
-                        padding: '2px 6px',
-                        background: alerta.prioridade === 'urgente' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                        color: alerta.prioridade === 'urgente' ? '#ef4444' : '#f59e0b',
-                        borderRadius: '4px',
-                        fontSize: '10px',
-                        fontWeight: '500'
-                      }}>
-                        {alerta.prioridade?.toUpperCase() || 'NORMAL'}
-                      </span>
-                      <span style={{ color: '#64748b', fontSize: '11px' }}>
-                        {formatRelativeDate(alerta.created_at)}
-                      </span>
+                    <div style={{
+                      width: '8px', height: '8px',
+                      borderRadius: '50%',
+                      background: segColor,
+                      flexShrink: 0
+                    }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {cliente.team_name}
+                      </p>
+                      <span style={{ color: segColor, fontSize: '11px' }}>{getSegmentoLabel(seg)}</span>
                     </div>
+                    <ChevronRight style={{ width: '14px', height: '14px', color: '#64748b', flexShrink: 0 }} />
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '16px 0', margin: 0 }}>
-                Nenhum alerta pendente
-              </p>
-            )}
-
-            <button
-              onClick={() => navigate('/alertas')}
-              style={{
-                width: '100%',
-                marginTop: '12px',
-                padding: '10px',
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid rgba(239, 68, 68, 0.2)',
-                borderRadius: '10px',
-                color: '#ef4444',
-                fontSize: '12px',
-                fontWeight: '500',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px'
-              }}
-            >
-              Ver todos os alertas
-              <ArrowUpRight style={{ width: '14px', height: '14px' }} />
-            </button>
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '16px 0', margin: 0 }}>
+              Todos os clientes possuem onboarding ou ongoing ativo
+            </p>
+          )}
         </div>
+      </div>
+
+      {/* Lista de Clientes - Full width abaixo */}
+      <div style={{
+        background: 'rgba(30, 27, 75, 0.4)',
+        border: '1px solid rgba(139, 92, 246, 0.15)',
+        borderRadius: '20px',
+        padding: '24px',
+        display: 'flex',
+        flexDirection: 'column',
+        maxHeight: '500px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Activity style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Meus Clientes</h2>
+          </div>
+          <span style={{ color: '#64748b', fontSize: '13px' }}>Ordenado por prioridade</span>
+        </div>
+
+        {clientes.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', flex: 1 }}>
+            {clientes.map((cliente) => {
+              const segmento = getClienteSegmento(cliente);
+              const segmentoColor = getSegmentoColor(segmento);
+              return (
+              <div
+                key={cliente.id}
+                onClick={() => navigate(`/clientes/${cliente.id}`)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '14px 16px',
+                  background: 'rgba(15, 10, 31, 0.6)',
+                  border: `1px solid ${segmentoColor}30`,
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  flexShrink: 0
+                }}
+              >
+                {/* Segmento Badge */}
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  background: `${segmentoColor}20`,
+                  border: `2px solid ${segmentoColor}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <span style={{ color: segmentoColor, fontSize: '10px', fontWeight: '700' }}>
+                    {segmento}
+                  </span>
+                </div>
+
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {cliente.team_name}
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{
+                      padding: '2px 8px',
+                      background: `${segmentoColor}20`,
+                      color: segmentoColor,
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: '500'
+                    }}>
+                      {getSegmentoLabel(segmento)}
+                    </span>
+                    {cliente.ultima_interacao && (
+                      <span style={{ color: '#64748b', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Clock style={{ width: '12px', height: '12px' }} />
+                        {formatRelativeDate(cliente.ultima_interacao)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Arrow */}
+                <ChevronRight style={{ width: '20px', height: '20px', color: '#64748b', flexShrink: 0 }} />
+              </div>
+            );})}
+          </div>
+        ) : (
+          <div style={{ padding: '48px', textAlign: 'center' }}>
+            <Briefcase style={{ width: '48px', height: '48px', color: '#64748b', margin: '0 auto 16px' }} />
+            <p style={{ color: '#94a3b8', fontSize: '16px', margin: '0 0 8px 0' }}>Nenhum cliente atribuído</p>
+            <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
+              Peça a um gestor para atribuir clientes à sua carteira
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

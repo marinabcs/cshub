@@ -6,16 +6,16 @@ import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
 import * as XLSX from 'xlsx';
 import {
-  BarChart3, Users, TrendingUp, AlertTriangle, MessageSquare,
+  Users, TrendingUp, AlertTriangle, MessageSquare,
   Download, Filter, X, ChevronDown, Activity, Clock,
-  ExternalLink, FileSpreadsheet, RefreshCw, Monitor, UserCheck,
+  ExternalLink, FileSpreadsheet, RefreshCw, UserCheck,
   DollarSign, ShieldAlert, Star, Zap, Award, Target, ArrowUpRight,
-  ArrowDownRight, Mail, Phone, Calendar, Building2, Bug, Tag
+  ArrowDownRight, Phone, Calendar, Building2, Bug, Tag
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-  LineChart, Line, Area, AreaChart
+  Area, AreaChart
 } from 'recharts';
 import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel, getSazonalidadeMesAtual, MESES_KEYS } from '../utils/segmentoCS';
 import { AREAS_ATUACAO, getAreaLabel } from '../utils/areasAtuacao';
@@ -39,7 +39,6 @@ const SENTIMENTO_COLORS = {
 
 const STATUS_CLIENTE_COLORS = {
   ativo: '#10B981',
-  onboarding: '#3B82F6',
   aviso_previo: '#f59e0b',
   inativo: '#64748b',
   cancelado: '#EF4444'
@@ -82,7 +81,9 @@ export default function Analytics() {
   const [responsaveis, setResponsaveisFilter] = useState([]); // multiselect
   const [teamTypes, setTeamTypesFilter] = useState([]); // multiselect
   const [filterArea, setFilterArea] = useState([]); // multiselect áreas de atuação
-  const [showFilters, setShowFilters] = useState(null); // 'resp' | 'type' | 'area' | null
+  const [filterSaude, setFilterSaude] = useState([]); // multiselect saúde
+  const [filterStatus, setFilterStatus] = useState([]); // multiselect status (default: ativo + aviso_previo)
+  const [showFilters, setShowFilters] = useState(null); // 'resp' | 'type' | 'area' | 'saude' | 'status' | null
 
   // Dados de tendência
   const [tendenciaData, setTendenciaData] = useState([]);
@@ -144,8 +145,8 @@ export default function Analytics() {
         return {
           id: doc.id,
           clienteId: cliente?.id,
-          clienteNome: cliente?.team_name,
-          responsavel: cliente?.responsavel_nome,
+          clienteNome: cliente?.nome || cliente?.team_name,
+          responsavel: cliente?.responsaveis?.[0]?.nome || cliente?.responsavel_nome,
           _teamId: data.team_id,
           ...data
         };
@@ -253,17 +254,23 @@ export default function Analytics() {
     return tiposCliente.some(tipo => tiposSelecionados.includes(tipo));
   };
 
-  // Clientes ativos filtrados (exclui inativos/cancelados das métricas principais)
+  // Clientes filtrados (por padrão exclui inativos/cancelados, mas status filter sobrescreve)
   const clientesFiltrados = useMemo(() => {
     return clientes.filter(c => {
-      // Excluir inativos/cancelados das métricas principais
-      if (c.status === 'inativo' || c.status === 'cancelado') return false;
+      // Status: se filtro vazio, exclui inativos/cancelados (comportamento padrão)
+      if (filterStatus.length === 0) {
+        if (c.status === 'inativo' || c.status === 'cancelado') return false;
+      } else {
+        const statusCliente = c.status || 'ativo';
+        if (!filterStatus.includes(statusCliente)) return false;
+      }
       const matchesResponsavel = responsaveis.length === 0 || responsaveis.includes(c.responsavel_nome);
       const matchesType = clienteMatchesTipos(c.team_type, teamTypes);
       const matchesArea = filterArea.length === 0 || filterArea.includes(c.area_atuacao);
-      return matchesResponsavel && matchesType && matchesArea;
+      const matchesSaude = filterSaude.length === 0 || filterSaude.includes(getClienteSegmento(c));
+      return matchesResponsavel && matchesType && matchesArea && matchesSaude;
     });
-  }, [clientes, responsaveis, teamTypes, filterArea]);
+  }, [clientes, responsaveis, teamTypes, filterArea, filterSaude, filterStatus]);
 
   // Clientes inativos/cancelados COM atividade (para aba Inativos)
   const clientesInativos = useMemo(() => {
@@ -298,7 +305,7 @@ export default function Analytics() {
       .sort((a, b) => b.usoNoPeriodo - a.usoNoPeriodo); // Ordenar por uso decrescente
   }, [clientes, threads, metricasDiarias, periodo, periodoCustom]);
 
-  // Threads filtradas por período (exclui inativos/cancelados)
+  // Threads filtradas por período (respeita filtros globais)
   const threadsFiltradas = useMemo(() => {
     const dataLimite = getDataDoPeriodo();
     const dataFim = getDataFimPeriodo();
@@ -306,14 +313,18 @@ export default function Analytics() {
       const threadDate = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
       const matchesPeriodo = threadDate >= dataLimite && threadDate <= dataFim;
       const cliente = clientes.find(c => c.id === t.clienteId);
-      // Excluir threads de clientes inativos/cancelados
-      if (cliente?.status === 'inativo' || cliente?.status === 'cancelado') return false;
+      if (filterStatus.length === 0) {
+        if (cliente?.status === 'inativo' || cliente?.status === 'cancelado') return false;
+      } else {
+        if (!filterStatus.includes(cliente?.status || 'ativo')) return false;
+      }
       const matchesResponsavel = responsaveis.length === 0 || responsaveis.includes(cliente?.responsavel_nome);
       const matchesType = clienteMatchesTipos(cliente?.team_type, teamTypes);
       const matchesArea = filterArea.length === 0 || filterArea.includes(cliente?.area_atuacao);
-      return matchesPeriodo && matchesResponsavel && matchesType && matchesArea;
+      const matchesSaude = filterSaude.length === 0 || filterSaude.includes(getClienteSegmento(cliente));
+      return matchesPeriodo && matchesResponsavel && matchesType && matchesArea && matchesSaude;
     });
-  }, [threads, clientes, periodo, periodoCustom, responsaveis, teamTypes, filterArea]);
+  }, [threads, clientes, periodo, periodoCustom, responsaveis, teamTypes, filterArea, filterSaude, filterStatus]);
 
   // Threads do período anterior (para comparativo)
   const threadsPeriodoAnterior = useMemo(() => {
@@ -327,7 +338,7 @@ export default function Analytics() {
     });
   }, [threads, clientes, periodo, periodoCustom]);
 
-  // Alertas filtrados (exclui inativos/cancelados)
+  // Alertas filtrados (respeita filtros globais)
   const alertasFiltrados = useMemo(() => {
     const dataLimite = getDataDoPeriodo();
     const dataFim = getDataFimPeriodo();
@@ -335,14 +346,18 @@ export default function Analytics() {
       const alertaDate = a.created_at?.toDate ? a.created_at.toDate() : new Date(a.created_at);
       const matchesPeriodo = alertaDate >= dataLimite && alertaDate <= dataFim;
       const cliente = clientes.find(c => c.id === a.cliente_id);
-      // Excluir alertas de clientes inativos/cancelados
-      if (cliente?.status === 'inativo' || cliente?.status === 'cancelado') return false;
+      if (filterStatus.length === 0) {
+        if (cliente?.status === 'inativo' || cliente?.status === 'cancelado') return false;
+      } else {
+        if (!filterStatus.includes(cliente?.status || 'ativo')) return false;
+      }
       const matchesResponsavel = responsaveis.length === 0 || responsaveis.includes(cliente?.responsavel_nome);
       const matchesType = clienteMatchesTipos(cliente?.team_type, teamTypes);
       const matchesArea = filterArea.length === 0 || filterArea.includes(cliente?.area_atuacao);
-      return matchesPeriodo && matchesResponsavel && matchesType && matchesArea;
+      const matchesSaude = filterSaude.length === 0 || filterSaude.includes(getClienteSegmento(cliente));
+      return matchesPeriodo && matchesResponsavel && matchesType && matchesArea && matchesSaude;
     });
-  }, [alertas, clientes, periodo, periodoCustom, responsaveis, teamTypes, filterArea]);
+  }, [alertas, clientes, periodo, periodoCustom, responsaveis, teamTypes, filterArea, filterSaude, filterStatus]);
 
   // Lista de responsáveis disponíveis
   const responsaveisDisponiveis = useMemo(() => {
@@ -458,8 +473,7 @@ export default function Analytics() {
   // ========== SEÇÃO 2: DISTRIBUIÇÃO POR STATUS DO CLIENTE ==========
   const statusClienteData = useMemo(() => {
     const counts = {
-      ativo: clientesFiltrados.filter(c => c.status === 'ativo' || !c.status).length,
-      onboarding: clientesFiltrados.filter(c => c.status === 'onboarding').length,
+      ativo: clientesFiltrados.filter(c => c.status === 'ativo' || !c.status || c.status === 'onboarding').length,
       aviso_previo: clientesFiltrados.filter(c => c.status === 'aviso_previo').length,
       inativo: clientesFiltrados.filter(c => c.status === 'inativo').length,
       cancelado: clientesFiltrados.filter(c => c.status === 'cancelado').length
@@ -467,7 +481,6 @@ export default function Analytics() {
 
     return [
       { name: 'Ativos', value: counts.ativo, color: STATUS_CLIENTE_COLORS.ativo },
-      { name: 'Em Onboarding', value: counts.onboarding, color: STATUS_CLIENTE_COLORS.onboarding },
       { name: 'Aviso Prévio', value: counts.aviso_previo, color: STATUS_CLIENTE_COLORS.aviso_previo },
       { name: 'Inativos', value: counts.inativo, color: STATUS_CLIENTE_COLORS.inativo },
       { name: 'Cancelados', value: counts.cancelado, color: STATUS_CLIENTE_COLORS.cancelado }
@@ -650,7 +663,7 @@ export default function Analytics() {
         const cliente = clientes.find(c => (c.times || []).includes(teamId) || c.id === teamId);
         return {
           teamId,
-          nome: cliente?.team_name || teamId,
+          nome: cliente?.nome || cliente?.team_name || teamId,
           ...uso,
           total: uso.logins + uso.pecas * 2 + uso.downloads + uso.ai * 1.5
         };
@@ -708,7 +721,7 @@ export default function Analytics() {
         const cliente = clientes.find(c => (c.times || []).includes(u.team_id) || c.id === u.team_id);
         return {
           ...u,
-          clienteNome: cliente?.team_name || '-',
+          clienteNome: cliente?.nome || cliente?.team_name || '-',
           clienteStatus: cliente?.status,
           activity_score: u.logins + (u.pecas_criadas * 2) + u.downloads + (u.uso_ai_total * 1.5)
         };
@@ -846,28 +859,28 @@ export default function Analytics() {
       'Total Times': visaoGeral.totalTimes,
       'Threads (período)': visaoGeral.totalThreads,
       'Alertas Pendentes': visaoGeral.alertasPendentes,
-      'Seg. Crescimento': visaoGeral.segmentoCounts.CRESCIMENTO,
-      'Seg. Estável': visaoGeral.segmentoCounts.ESTAVEL,
-      'Seg. Alerta': visaoGeral.segmentoCounts.ALERTA,
-      'Seg. Resgate': visaoGeral.segmentoCounts.RESGATE
+      'Saúde Crescimento': visaoGeral.segmentoCounts.CRESCIMENTO,
+      'Saúde Estável': visaoGeral.segmentoCounts.ESTAVEL,
+      'Saúde Alerta': visaoGeral.segmentoCounts.ALERTA,
+      'Saúde Resgate': visaoGeral.segmentoCounts.RESGATE
     }];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumoData), 'Resumo');
 
     // Aba Clientes
     const clientesExport = clientesFiltrados.map(c => ({
-      'Nome': c.team_name,
+      'Nome': c.nome || c.team_name,
       'Tipo': c.team_type || '-',
       'Status': c.status || 'ativo',
-      'Responsável': c.responsavel_nome || '-',
-      'Segmento': getSegmentoLabel(getClienteSegmento(c))
+      'Responsável': c.responsaveis?.[0]?.nome || c.responsavel_nome || '-',
+      'Saúde': getSegmentoLabel(getClienteSegmento(c))
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clientesExport), 'Clientes');
 
     // Aba Times em Risco
     const riscoExport = timesEmRisco.map(c => ({
-      'Nome': c.team_name,
-      'Segmento': getSegmentoLabel(getClienteSegmento(c)),
-      'Responsável': c.responsavel_nome || '-'
+      'Nome': c.nome || c.team_name,
+      'Saúde': getSegmentoLabel(getClienteSegmento(c)),
+      'Responsável': c.responsaveis?.[0]?.nome || c.responsavel_nome || '-'
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(riscoExport), 'Times em Risco');
 
@@ -896,10 +909,10 @@ export default function Analytics() {
     const perfExport = performancePorResponsavel.map(p => ({
       'Responsável': p.nome,
       'Qtd Clientes': p.qtdClientes,
-      'Seg. Crescimento': p.segmentos.CRESCIMENTO,
-      'Seg. Estável': p.segmentos.ESTAVEL,
-      'Seg. Alerta': p.segmentos.ALERTA,
-      'Seg. Resgate': p.segmentos.RESGATE,
+      'Saúde Crescimento': p.segmentos.CRESCIMENTO,
+      'Saúde Estável': p.segmentos.ESTAVEL,
+      'Saúde Alerta': p.segmentos.ALERTA,
+      'Saúde Resgate': p.segmentos.RESGATE,
       'Alertas Pendentes': p.alertasPendentes,
       'Threads Aguardando': p.threadsAguardando
     }));
@@ -952,15 +965,139 @@ export default function Analytics() {
     if (!contentRef.current) return;
     try {
       const html2pdf = (await import('html2pdf.js')).default;
+
+      // Injetar estilos light para PDF
+      const style = document.createElement('style');
+      style.id = 'pdf-print-styles';
+      style.textContent = `
+        [data-pdf-mode] {
+          background: #ffffff !important;
+          padding: 12px !important;
+          width: 1100px !important;
+          max-width: 1100px !important;
+          overflow: visible !important;
+        }
+        [data-pdf-mode] * {
+          overflow: visible !important;
+          text-overflow: clip !important;
+          white-space: normal !important;
+          box-sizing: border-box !important;
+        }
+        [data-pdf-mode] *:not(.recharts-text):not(.recharts-cartesian-axis-tick-value):not(svg *) {
+          color: #1e1b4b !important;
+        }
+        [data-pdf-mode] p {
+          line-height: 1.4 !important;
+          margin-bottom: 2px !important;
+        }
+        [data-pdf-mode] p[style*="font-weight: bold"],
+        [data-pdf-mode] p[style*="fontWeight"] {
+          line-height: 1.5 !important;
+          padding-bottom: 4px !important;
+        }
+        [data-pdf-mode] div[style*="alignItems: 'center'"],
+        [data-pdf-mode] div[style*="align-items: center"] {
+          min-height: 0 !important;
+        }
+        [data-pdf-mode] .recharts-text,
+        [data-pdf-mode] .recharts-cartesian-axis-tick-value {
+          fill: #334155 !important;
+        }
+        [data-pdf-mode] .recharts-legend-item-text {
+          color: #334155 !important;
+        }
+        [data-pdf-mode] .recharts-wrapper {
+          overflow: visible !important;
+        }
+        [data-pdf-mode] > div > div,
+        [data-pdf-mode] div[style*="background: rgba(30"],
+        [data-pdf-mode] div[style*="background: linear-gradient(135deg, rgba("],
+        [data-pdf-mode] div[style*="background: rgba(15"],
+        [data-pdf-mode] div[style*="background: #0f0a1f"] {
+          background: #f1f5f9 !important;
+          border: 1px solid #cbd5e1 !important;
+        }
+        [data-pdf-mode] div[style*="rgba(139, 92, 246"] {
+          border-color: #cbd5e1 !important;
+        }
+        [data-pdf-mode] p[style*="color: #94a3b8"],
+        [data-pdf-mode] p[style*="color: #64748b"],
+        [data-pdf-mode] span[style*="color: #94a3b8"],
+        [data-pdf-mode] span[style*="color: #64748b"] {
+          color: #475569 !important;
+        }
+        [data-pdf-mode] p[style*="color: white"],
+        [data-pdf-mode] span[style*="color: white"],
+        [data-pdf-mode] h3[style*="color: white"],
+        [data-pdf-mode] h2[style*="color: white"],
+        [data-pdf-mode] td[style*="color: white"],
+        [data-pdf-mode] th[style*="color: white"] {
+          color: #0f172a !important;
+        }
+        [data-pdf-mode] tr[style*="rgba(15"] {
+          background: #f8fafc !important;
+        }
+        [data-pdf-mode] td, [data-pdf-mode] th {
+          border-color: #cbd5e1 !important;
+          font-size: 11px !important;
+          padding: 8px 10px !important;
+        }
+        [data-pdf-mode] table {
+          width: 100% !important;
+          table-layout: fixed !important;
+        }
+        [data-pdf-mode] div[style*="display: grid"] {
+          gap: 10px !important;
+        }
+        [data-pdf-mode] div[style*="gridTemplateColumns: repeat(5"] {
+          grid-template-columns: repeat(5, 1fr) !important;
+        }
+        [data-pdf-mode] div[style*="gridTemplateColumns: 1fr 1fr 1fr"] {
+          grid-template-columns: 1fr 1fr 1fr !important;
+        }
+        [data-pdf-mode] span[style*="background: rgba(16, 185, 129"],
+        [data-pdf-mode] span[style*="background: rgba(239, 68, 68"],
+        [data-pdf-mode] span[style*="background: rgba(245, 158, 11"] {
+          border: 1px solid currentColor !important;
+        }
+        [data-pdf-mode] div[style*="borderRadius"],
+        [data-pdf-mode] div[style*="border-radius"] {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          padding-bottom: 16px !important;
+        }
+        [data-pdf-mode] div[style*="padding: 20px"] {
+          padding: 16px !important;
+          min-height: auto !important;
+        }
+      `;
+      document.head.appendChild(style);
+      contentRef.current.setAttribute('data-pdf-mode', 'true');
+
+      // Aguardar reflow completo
+      await new Promise(r => setTimeout(r, 300));
+
       const opt = {
-        margin: 10,
+        margin: [6, 6, 6, 6],
         filename: `analytics_${activeTab}_${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0f0a1f' },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 1.5,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          width: 1100,
+          windowWidth: 1100
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'], avoid: ['div[style*="borderRadius"]', 'tr', '.recharts-wrapper'] }
       };
       await html2pdf().set(opt).from(contentRef.current).save();
+
+      contentRef.current.removeAttribute('data-pdf-mode');
+      style.remove();
     } catch (err) {
+      contentRef.current?.removeAttribute('data-pdf-mode');
+      document.getElementById('pdf-print-styles')?.remove();
       console.error('Erro ao exportar PDF:', err);
     }
   };
@@ -970,10 +1107,13 @@ export default function Analytics() {
     setPeriodoCustom({ inicio: '', fim: '' });
     setResponsaveisFilter([]);
     setTeamTypesFilter([]);
+    setFilterArea([]);
+    setFilterSaude([]);
+    setFilterStatus([]);
     setShowFilters(null);
   };
 
-  const hasFilters = periodo !== '30' || responsaveis.length > 0 || teamTypes.length > 0;
+  const hasFilters = periodo !== '30' || responsaveis.length > 0 || teamTypes.length > 0 || filterArea.length > 0 || filterSaude.length > 0 || filterStatus.length > 0;
 
   // Fechar dropdown ao clicar fora
   const handleClickOutside = () => {
@@ -996,6 +1136,18 @@ export default function Analytics() {
   const toggleArea = (area) => {
     setFilterArea(prev =>
       prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]
+    );
+  };
+
+  const toggleSaude = (saude) => {
+    setFilterSaude(prev =>
+      prev.includes(saude) ? prev.filter(s => s !== saude) : [...prev, saude]
+    );
+  };
+
+  const toggleStatus = (status) => {
+    setFilterStatus(prev =>
+      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
     );
   };
 
@@ -1115,6 +1267,7 @@ export default function Analytics() {
             <Award style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
             <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Top 5 Mais Engajados</h3>
           </div>
+          <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 12px 0' }}>Score = logins + (peças × 2) + (threads × 3)</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {topClientesEngajados.map((cliente, index) => (
               <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', cursor: 'pointer', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
@@ -1122,7 +1275,7 @@ export default function Analytics() {
                   {index + 1}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cliente.team_name}</p>
+                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cliente.nome || cliente.team_name}</p>
                   <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.totalLogins} logins • {cliente.totalPecas} peças</p>
                 </div>
                 <span style={{ padding: '4px 8px', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>
@@ -1245,7 +1398,7 @@ export default function Analytics() {
               {clientesInativos.map((cliente, index) => (
                 <tr key={cliente.id} style={{ background: index % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
                   <td style={{ padding: '14px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
+                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>{cliente.nome || cliente.team_name}</p>
                     <p style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 0 0' }}>{cliente.team_type || '-'}</p>
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
@@ -1706,12 +1859,12 @@ export default function Analytics() {
             <Target style={{ width: '20px', height: '20px', color: '#10b981' }} />
             <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Oportunidades de Upsell</h3>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes no segmento Crescimento (prontos para expansao)</p>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes na saúde Crescimento (prontos para expansão)</p>
           <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
             {vendasData.oportunidadesUpsell.map((cliente, index) => (
               <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
                 <div>
-                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
+                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.nome || cliente.team_name}</p>
                   <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.team_type || 'Standard'}</p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1734,12 +1887,12 @@ export default function Analytics() {
             <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
             <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Clientes em Crescimento</h3>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes nos segmentos Crescimento ou Estavel com uso crescente</p>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes com saúde Crescimento ou Estável com uso crescente</p>
           <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
             {vendasData.clientesEmCrescimento.map((cliente, index) => (
               <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
                 <div>
-                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
+                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.nome || cliente.team_name}</p>
                   <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.responsavel_nome || '-'}</p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1760,7 +1913,7 @@ export default function Analytics() {
       {/* Distribuição por Segmento CS e Status */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuicao por Segmento CS</h3>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Saúde CS</h3>
           {segmentoDistribuicaoData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={segmentoDistribuicaoData} layout="vertical" margin={{ left: 20, right: 20 }}>
@@ -1858,7 +2011,7 @@ export default function Analytics() {
       {/* Distribuição por segmento */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '24px', marginBottom: '24px' }}>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuicao por Segmento</h3>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Saúde</h3>
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
               <Pie
@@ -1903,7 +2056,7 @@ export default function Analytics() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <SegmentoBadge segmento={seg} size="sm" showLabel={false} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.team_name}</p>
+                    <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.nome || cliente.team_name}</p>
                     <p style={{ color: '#64748b', fontSize: '11px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {cliente.responsaveis?.length > 0
                         ? cliente.responsaveis.join(', ')
@@ -1948,7 +2101,7 @@ export default function Analytics() {
                 <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
               </div>
               <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {cliente.team_name}
+                {cliente.nome || cliente.team_name}
               </p>
               <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>
                 {cliente.ultimo_contato ? (() => {
@@ -2038,8 +2191,8 @@ export default function Analytics() {
 
     // Seção D - Uso Real vs Esperado (mês atual)
     const clientesEmAlta = clientesFiltrados.filter(c => getSazonalidadeMesAtual(c) === 'alta');
-    const ativosEmAlta = clientesEmAlta.filter(c => c.status === 'ativo' || c.status === 'onboarding');
-    const inativosEmAlta = clientesEmAlta.filter(c => c.status !== 'ativo' && c.status !== 'onboarding');
+    const ativosEmAlta = clientesEmAlta.filter(c => c.status === 'ativo' || c.status === 'onboarding' || !c.status);
+    const inativosEmAlta = clientesEmAlta.filter(c => c.status !== 'ativo' && c.status !== 'onboarding' && c.status);
 
     // Seção E - Alertas de Sazonalidade
     const alertasSazonalidade = alertas.filter(a =>
@@ -2776,7 +2929,7 @@ export default function Analytics() {
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: periodo === 'custom' ? '180px 150px 150px 1fr 1fr' : '180px 1fr 1fr', gap: '16px', alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: periodo === 'custom' ? '160px 130px 130px 1fr 1fr 1fr 1fr 1fr' : '160px 1fr 1fr 1fr 1fr 1fr', gap: '12px', alignItems: 'end' }}>
           {/* Período */}
           <div>
             <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Período</label>
@@ -2999,6 +3152,131 @@ export default function Analytics() {
                 {areasDisponiveis.length === 0 && (
                   <div style={{ padding: '10px 14px', color: '#64748b', fontSize: '13px' }}>Nenhuma área</div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Saúde - Dropdown Multiselect */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>
+              Saúde {filterSaude.length > 0 && <span style={{ color: '#10b981' }}>({filterSaude.length})</span>}
+            </label>
+            <div
+              onClick={() => setShowFilters(showFilters === 'saude' ? false : 'saude')}
+              style={{
+                padding: '10px 14px',
+                background: '#0f0a1f',
+                border: '1px solid #3730a3',
+                borderRadius: '10px',
+                color: filterSaude.length > 0 ? 'white' : '#64748b',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {filterSaude.length === 0 ? 'Todas' : filterSaude.length === 1 ? getSegmentoLabel(filterSaude[0]) : `${filterSaude.length} selecionadas`}
+              </span>
+              <ChevronDown style={{ width: '16px', height: '16px', color: '#64748b', flexShrink: 0 }} />
+            </div>
+            {showFilters === 'saude' && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#1e1b4b', border: '1px solid #3730a3', borderRadius: '10px', zIndex: 50, maxHeight: '200px', overflowY: 'auto' }}>
+                {['CRESCIMENTO', 'ESTAVEL', 'ALERTA', 'RESGATE'].map(s => (
+                  <div
+                    key={s}
+                    onClick={(e) => { e.stopPropagation(); toggleSaude(s); }}
+                    style={{
+                      padding: '10px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      background: filterSaude.includes(s) ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+                      borderBottom: '1px solid rgba(139, 92, 246, 0.1)'
+                    }}
+                  >
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '4px',
+                      border: filterSaude.includes(s) ? `2px solid ${getSegmentoColor(s)}` : '2px solid #64748b',
+                      background: filterSaude.includes(s) ? getSegmentoColor(s) : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {filterSaude.includes(s) && <span style={{ color: 'white', fontSize: '10px', fontWeight: 'bold' }}>✓</span>}
+                    </div>
+                    <span style={{ color: 'white', fontSize: '13px' }}>{getSegmentoLabel(s)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Status - Dropdown Multiselect */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>
+              Status {filterStatus.length > 0 && <span style={{ color: '#f59e0b' }}>({filterStatus.length})</span>}
+            </label>
+            <div
+              onClick={() => setShowFilters(showFilters === 'status' ? false : 'status')}
+              style={{
+                padding: '10px 14px',
+                background: '#0f0a1f',
+                border: '1px solid #3730a3',
+                borderRadius: '10px',
+                color: filterStatus.length > 0 ? 'white' : '#64748b',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {filterStatus.length === 0 ? 'Ativo + Aviso' : filterStatus.length === 1 ? filterStatus[0].replace('_', ' ') : `${filterStatus.length} selecionados`}
+              </span>
+              <ChevronDown style={{ width: '16px', height: '16px', color: '#64748b', flexShrink: 0 }} />
+            </div>
+            {showFilters === 'status' && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', background: '#1e1b4b', border: '1px solid #3730a3', borderRadius: '10px', zIndex: 50, maxHeight: '200px', overflowY: 'auto' }}>
+                {[
+                  { value: 'ativo', label: 'Ativo', color: '#10b981' },
+                  { value: 'aviso_previo', label: 'Aviso Prévio', color: '#f59e0b' },
+                  { value: 'inativo', label: 'Inativo', color: '#64748b' },
+                  { value: 'cancelado', label: 'Cancelado', color: '#ef4444' }
+                ].map(s => (
+                  <div
+                    key={s.value}
+                    onClick={(e) => { e.stopPropagation(); toggleStatus(s.value); }}
+                    style={{
+                      padding: '10px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      background: filterStatus.includes(s.value) ? `${s.color}33` : 'transparent',
+                      borderBottom: '1px solid rgba(139, 92, 246, 0.1)'
+                    }}
+                  >
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '4px',
+                      border: filterStatus.includes(s.value) ? `2px solid ${s.color}` : '2px solid #64748b',
+                      background: filterStatus.includes(s.value) ? s.color : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {filterStatus.includes(s.value) && <span style={{ color: 'white', fontSize: '10px', fontWeight: 'bold' }}>✓</span>}
+                    </div>
+                    <span style={{ color: 'white', fontSize: '13px' }}>{s.label}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

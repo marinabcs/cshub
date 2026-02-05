@@ -42,10 +42,11 @@ export default function Dashboard() {
     fetchClientes();
   }, []);
 
-  // Filtrar apenas clientes ativos (excluir inativos e cancelados)
-  const clientesAtivos = clientes.filter(c =>
-    c.status !== 'inativo' && c.status !== 'cancelado'
-  );
+  // Filtrar apenas clientes ativos (excluir inativos e cancelados; onboarding = ativo)
+  const clientesAtivos = clientes.filter(c => {
+    const st = c.status === 'onboarding' ? 'ativo' : (c.status || 'ativo');
+    return st !== 'inativo' && st !== 'cancelado';
+  });
 
   // Stats baseado em clientes ativos por segmento
   const stats = {
@@ -58,8 +59,7 @@ export default function Dashboard() {
 
   // Stats por status do cliente (ciclo de vida) - inclui todos
   const statusStats = {
-    ativo: clientes.filter(c => (c.status || 'ativo') === 'ativo').length,
-    onboarding: clientes.filter(c => c.status === 'onboarding').length,
+    ativo: clientes.filter(c => (c.status || 'ativo') === 'ativo' || c.status === 'onboarding').length,
     aviso_previo: clientes.filter(c => c.status === 'aviso_previo').length,
     inativo: clientes.filter(c => c.status === 'inativo').length,
     cancelado: clientes.filter(c => c.status === 'cancelado').length
@@ -466,7 +466,7 @@ export default function Dashboard() {
           }}>
             <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
             <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>
-              Distribuição por Segmento
+              Distribuição por Saúde
             </h2>
           </div>
 

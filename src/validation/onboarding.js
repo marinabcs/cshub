@@ -2,25 +2,15 @@ import { z } from 'zod';
 
 export const onboardingRespostasSchema = z.object({
   qtd_pessoas: z.string().min(1, 'Selecione uma opção'),
-  ferramentas: z.array(z.string()).default([]),
-  maior_desafio: z.string().min(1, 'Selecione uma opção'),
   materiais: z.array(z.string()).min(1, 'Selecione ao menos um tipo'),
-  formatos_campanha: z.string().min(1, 'Selecione uma opção'),
-  catalogo: z.string().min(1, 'Selecione uma opção'),
-  video: z.string().min(1, 'Selecione uma opção'),
-  pessoa_video: z.string().min(1, 'Selecione uma opção'),
-  html5: z.string().min(1, 'Selecione uma opção'),
+  video_producao: z.string().min(1, 'Selecione uma opção'),
   uso_ia: z.string().min(1, 'Selecione uma opção'),
   video_ia: z.string().min(1, 'Selecione uma opção'),
   consistencia_marca: z.string().min(1, 'Selecione uma opção'),
   publicam: z.array(z.string()).min(1, 'Selecione ao menos uma opção'),
-  analytics: z.string().min(1, 'Selecione uma opção'),
-  campanhas_rodando: z.string().min(1, 'Selecione uma opção'),
-  '3d': z.string().min(1, 'Selecione uma opção'),
-  nomenclatura: z.string().min(1, 'Selecione uma opção'),
-  urgencia: z.string().min(1, 'Selecione uma opção'),
-  kv_disponivel: z.string().min(1, 'Selecione uma opção'),
-  participantes: z.string().optional().default('')
+  analytics_performance: z.string().min(1, 'Selecione uma opção'),
+  extras: z.array(z.string()).default([]),
+  urgencia: z.string().min(1, 'Selecione uma opção')
 });
 
 export const onboardingAjusteSchema = z.object({

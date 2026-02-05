@@ -13,7 +13,8 @@ export default function Layout() {
         flex: 1,
         marginLeft: '260px',
         minHeight: '100vh',
-        background: '#0f0a1f'
+        background: '#0f0a1f',
+        overflow: 'hidden'
       }}>
         <Outlet />
       </main>
