@@ -112,12 +112,30 @@ export const REUNIAO_STATUS = {
 // ============================================
 
 /**
+ * Converte string YYYY-MM-DD para Date local (evita problema de timezone)
+ */
+function parseLocalDate(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/**
+ * Formata Date para string YYYY-MM-DD
+ */
+function formatToDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Gera o cronograma de reuniões a partir de uma data de início
  * @param {string} dataInicio - Data de início (YYYY-MM-DD)
  * @returns {Array} Lista de reuniões com datas sugeridas
  */
 export function gerarCronograma(dataInicio) {
-  const inicio = new Date(dataInicio);
+  const inicio = parseLocalDate(dataInicio);
 
   return REUNIOES_ORDEM.map((id, index) => {
     const reuniao = REUNIOES_V1[id];
@@ -132,7 +150,7 @@ export function gerarCronograma(dataInicio) {
     return {
       ...reuniao,
       numero: index + 1,
-      data_sugerida: dataSugerida.toISOString().split('T')[0],
+      data_sugerida: formatToDateString(dataSugerida),
       status: 'pendente'
     };
   });

@@ -84,7 +84,9 @@ export default function Onboarding() {
   }
 
   function formatDate(dateStr) {
-    const date = new Date(dateStr);
+    // Parse como data local para evitar problema de timezone
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('pt-BR', {
       weekday: 'short',
       day: '2-digit',
@@ -388,7 +390,7 @@ export default function Onboarding() {
             O onboarding de <strong style={{ color: 'white' }}>{clienteNome}</strong> foi criado.
           </p>
           <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px' }}>
-            {duracao.totalReunioes} reuniões • Início em {new Date(dataInicio).toLocaleDateString('pt-BR')}
+            {duracao.totalReunioes} reuniões • Início em {formatDate(dataInicio)}
           </p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
             <button
