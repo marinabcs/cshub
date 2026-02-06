@@ -6,6 +6,38 @@
  * - ESTAVEL: Clientes estaveis para manter
  * - ALERTA: Clientes com sinais de alerta
  * - RESGATE: Clientes criticos em risco de churn
+ *
+ * ============================================
+ * HIERARQUIA DE CLASSIFICACAO (ordem de prioridade)
+ * ============================================
+ *
+ * A classificacao segue uma ordem estrita de prioridade:
+ *
+ * 1. RECLAMACOES EM ABERTO (veto absoluto)
+ *    - Se houver reclamacao em aberto: ALERTA ou RESGATE
+ *    - Ignora os outros pilares
+ *    - 3+ reclamacoes em aberto = RESGATE direto
+ *
+ * 2. DIAS ATIVOS (base da classificacao)
+ *    - Se nao houver reclamacao e >= X dias ativos: ESTAVEL
+ *    - Independente do engajamento
+ *
+ * 3. ENGAJAMENTO (elevacao)
+ *    - Se nao houver reclamacao + >= Y dias ativos + score >= Z: CRESCIMENTO
+ *    - Unico caminho para CRESCIMENTO
+ *
+ * Os valores X, Y, Z sao configuraveis em Configuracoes > Saude CS
+ *
+ * ============================================
+ * AJUSTE POR SAZONALIDADE
+ * ============================================
+ *
+ * O software considera que clientes tem campanhas sazonais.
+ * - Mes de ALTA: thresholds normais
+ * - Mes de BAIXA: thresholds divididos por 2 (mais leniente)
+ * - Mes NORMAL: thresholds normais
+ *
+ * Configurado no calendario_campanhas do cliente.
  */
 
 // Mapa de compatibilidade para valores antigos (ingles -> portugues)
@@ -35,10 +67,9 @@ export const SEGMENTOS_CS = {
     icon: 'TrendingUp',
     priority: 1,
     criterios: [
-      'Uso frequente (semanal+)',
-      'Responde rapido',
-      'Engajado com features',
-      'Sem reclamacoes'
+      'Uso frequente',
+      'Alto engajamento',
+      'Sem reclamacoes em aberto'
     ],
     acoes: [
       'Propor upsell de licencas',
@@ -58,8 +89,7 @@ export const SEGMENTOS_CS = {
     priority: 2,
     criterios: [
       'Uso regular',
-      'Sem reclamacoes',
-      'Time estavel',
+      'Sem reclamacoes em aberto',
       'Relacionamento saudavel'
     ],
     acoes: [
@@ -79,10 +109,9 @@ export const SEGMENTOS_CS = {
     icon: 'Eye',
     priority: 3,
     criterios: [
-      'Uso caindo ou irregular',
-      'Demora a responder',
-      'Reclamacoes recentes',
-      '14+ dias sem atividade'
+      'Reclamacoes em aberto',
+      'Poucos dias ativos',
+      'Uso irregular'
     ],
     acoes: [
       'Agendar call de discovery',
@@ -101,10 +130,9 @@ export const SEGMENTOS_CS = {
     icon: 'AlertTriangle',
     priority: 4,
     criterios: [
-      'Sem uso 30+ dias',
-      'Nao responde',
-      'Mencionou cancelar',
-      'Reclamacao grave'
+      '3+ reclamacoes em aberto',
+      'Sem dias ativos no mes',
+      'Em aviso previo'
     ],
     acoes: [
       'Ligar urgente para stakeholder',
@@ -160,7 +188,7 @@ export function getSegmentoLabel(segmento) {
 }
 
 /**
- * Ações padrão por segmento (usado como fallback se config/ongoing não existir)
+ * Acoes padrao por segmento (usado como fallback se config/ongoing nao existir)
  */
 export const DEFAULT_ONGOING_ACOES = {
   CRESCIMENTO: SEGMENTOS_CS.CRESCIMENTO.acoes,
@@ -179,128 +207,10 @@ export function getSegmentoAcoes(segmento, ongoingConfig) {
 }
 
 // ============================================
-// CALCULO SIMPLIFICADO - BASEADO EM METRICAS DIRETAS
+// FUNCOES AUXILIARES
 // ============================================
 
-/**
- * Calcular dias desde ultima atividade
- */
-function calcularDiasSemUso(cliente, metricas) {
-  const now = new Date();
-  let ultimaAtividade = null;
-
-  // Tentar pegar de metricas
-  if (metricas?.ultima_atividade) {
-    ultimaAtividade = metricas.ultima_atividade?.toDate?.()
-      || new Date(metricas.ultima_atividade);
-  }
-
-  // Fallback para campos do cliente
-  if (!ultimaAtividade && cliente?.ultima_interacao) {
-    ultimaAtividade = cliente.ultima_interacao?.toDate?.()
-      || new Date(cliente.ultima_interacao);
-  }
-
-  if (!ultimaAtividade && cliente?.updated_at) {
-    ultimaAtividade = cliente.updated_at?.toDate?.()
-      || new Date(cliente.updated_at);
-  }
-
-  if (!ultimaAtividade) return 999;
-
-  const diff = Math.floor((now - ultimaAtividade) / (1000 * 60 * 60 * 24));
-  return Math.max(0, diff);
-}
-
-/**
- * Verificar frequencia de uso
- * Retorna: 'frequente' | 'regular' | 'irregular' | 'raro' | 'sem_uso'
- */
-function calcularFrequenciaUso(metricas, totalUsers = 1) {
-  if (!metricas) return 'sem_uso';
-
-  const { logins = 0, dias_ativos = 0 } = metricas;
-  const loginsPerUser = logins / Math.max(totalUsers, 1);
-
-  // Frequente: uso semanal (20+ dias ativos ou 15+ logins/user)
-  if (dias_ativos >= 20 || loginsPerUser >= 15) return 'frequente';
-  // Regular: uso quinzenal/mensal consistente
-  if (dias_ativos >= 8 || loginsPerUser >= 6) return 'regular';
-  // Irregular: algum uso mas inconsistente
-  if (dias_ativos >= 3 || loginsPerUser >= 2) return 'irregular';
-  // Raro: muito pouco uso
-  if (dias_ativos >= 1 || logins > 0) return 'raro';
-
-  return 'sem_uso';
-}
-
-/**
- * Verificar reclamacoes recentes (ultimos 30 dias)
- */
-function temReclamacoesRecentes(threads) {
-  if (!threads || threads.length === 0) return false;
-
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-  return threads.some(t => {
-    const date = t.updated_at?.toDate?.()
-      || (t.updated_at?.seconds ? new Date(t.updated_at.seconds * 1000) : null)
-      || new Date(t.updated_at);
-
-    const isRecent = date && date >= thirtyDaysAgo;
-    const isNegative = t.sentimento === 'negativo' || t.sentimento === 'urgente';
-    const isComplaint = t.categoria === 'reclamacao' || t.categoria === 'erro_bug';
-
-    return isRecent && (isNegative || isComplaint);
-  });
-}
-
-/**
- * Verificar reclamacao grave (urgente nos ultimos 7 dias)
- */
-function temReclamacaoGrave(threads) {
-  if (!threads || threads.length === 0) return false;
-
-  const now = new Date();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-  return threads.some(t => {
-    const date = t.updated_at?.toDate?.()
-      || (t.updated_at?.seconds ? new Date(t.updated_at.seconds * 1000) : null)
-      || new Date(t.updated_at);
-
-    const isRecent = date && date >= sevenDaysAgo;
-    return isRecent && t.sentimento === 'urgente';
-  });
-}
-
-/**
- * Verificar engajamento com features
- */
-function calcularEngajamento(metricas) {
-  if (!metricas) return 'baixo';
-
-  const { pecas_criadas = 0, uso_ai_total = 0, downloads = 0 } = metricas;
-  const score = (pecas_criadas * 2) + (uso_ai_total * 1.5) + downloads;
-
-  if (score >= 50) return 'alto';
-  if (score >= 15) return 'medio';
-  return 'baixo';
-}
-
-/**
- * FUNCAO PRINCIPAL: Calcular segmento do cliente
- *
- * Usa dados diretos de metricas
- *
- * @param {Object} cliente - Documento do cliente
- * @param {Array} threads - Threads recentes
- * @param {Object} metricas - Metricas agregadas (ultimos 30 dias)
- * @param {number} totalUsers - Total de usuarios
- * @returns {Object} { segmento, motivo, fatores }
- */
-// Mapa mês JS (0-11) → chave do calendário de campanhas
+// Mapa mes JS (0-11) -> chave do calendario de campanhas
 export const MESES_KEYS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 export function getSazonalidadeMesAtual(cliente) {
@@ -310,123 +220,246 @@ export function getSazonalidadeMesAtual(cliente) {
   return calendario[mesKey] || 'normal';
 }
 
-export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUsers = 1) {
-  // Calcular fatores
-  const diasSemUso = calcularDiasSemUso(cliente, metricas);
-  const frequenciaUso = calcularFrequenciaUso(metricas, totalUsers);
-  const reclamacoesRecentes = temReclamacoesRecentes(threads);
-  const reclamacaoGrave = temReclamacaoGrave(threads);
-  const engajamento = calcularEngajamento(metricas);
+/**
+ * Verificar reclamacoes em aberto (nao resolvidas)
+ * Considera threads com sentimento negativo/urgente ou categoria reclamacao/erro
+ * que ainda nao foram marcadas como resolvidas
+ */
+function temReclamacoesEmAberto(threads) {
+  if (!threads || threads.length === 0) return false;
 
-  // Tipo de conta: google_gratuito tem thresholds mais lenientes
-  const tipoConta = cliente?.tipo_conta || 'pagante';
-  const isGratuito = tipoConta === 'google_gratuito';
-  const baseResgate = isGratuito ? 60 : 30;
-  const baseAlerta = isGratuito ? 28 : 14;
+  return threads.some(t => {
+    const isNegative = t.sentimento === 'negativo' || t.sentimento === 'urgente';
+    const isComplaint = t.categoria === 'reclamacao' || t.categoria === 'erro_bug';
+    const isOpen = !t.resolvido && t.status !== 'resolvido' && t.status !== 'fechado' && t.status !== 'closed';
 
-  // Sazonalidade
+    return (isNegative || isComplaint) && isOpen;
+  });
+}
+
+/**
+ * Contar reclamacoes em aberto
+ */
+function contarReclamacoesEmAberto(threads) {
+  if (!threads || threads.length === 0) return 0;
+
+  return threads.filter(t => {
+    const isNegative = t.sentimento === 'negativo' || t.sentimento === 'urgente';
+    const isComplaint = t.categoria === 'reclamacao' || t.categoria === 'erro_bug';
+    const isOpen = !t.resolvido && t.status !== 'resolvido' && t.status !== 'fechado' && t.status !== 'closed';
+
+    return (isNegative || isComplaint) && isOpen;
+  }).length;
+}
+
+/**
+ * Calcular score de engajamento
+ * Score = (pecas x peso_pecas) + (IA x peso_ia) + (downloads x peso_downloads)
+ * Os pesos sao configuraveis
+ */
+function calcularEngajamentoScore(metricas, config = {}) {
+  if (!metricas) return 0;
+  const pesoPecas = config.peso_pecas ?? 2;
+  const pesoIA = config.peso_ia ?? 1.5;
+  const pesoDownloads = config.peso_downloads ?? 1;
+  const { pecas_criadas = 0, uso_ai_total = 0, downloads = 0 } = metricas;
+  return (pecas_criadas * pesoPecas) + (uso_ai_total * pesoIA) + (downloads * pesoDownloads);
+}
+
+/**
+ * Configuracao padrao para os thresholds de Saude CS
+ * Estes valores podem ser sobrescritos pela config do Firestore
+ */
+export const DEFAULT_SAUDE_CONFIG = {
+  // Dias ativos no mes (por nivel)
+  dias_ativos_crescimento: 20,
+  dias_ativos_estavel: 8,
+  dias_ativos_alerta: 3,
+  dias_ativos_resgate: 0,
+  // Score de engajamento (por nivel)
+  engajamento_crescimento: 50,
+  engajamento_estavel: 15,
+  engajamento_alerta: 1,
+  engajamento_resgate: 0,
+  // Reclamacoes em aberto - se TRUE, esse nivel considera reclamacoes
+  reclamacoes_crescimento: false,  // CRESCIMENTO nao pode ter reclamacoes
+  reclamacoes_estavel: false,      // ESTAVEL nao pode ter reclamacoes
+  reclamacoes_alerta: true,        // ALERTA pode ter reclamacoes
+  reclamacoes_resgate: true,       // RESGATE pode ter reclamacoes
+  // Thresholds adicionais
+  reclamacoes_max_resgate: 3,      // Qtd de reclamacoes que manda direto para RESGATE
+  bugs_max_alerta: 3,              // Qtd de bugs abertos que dispara ALERTA
+  // Toggles de regras especiais
+  aviso_previo_resgate: true,      // Aviso previo = RESGATE automatico
+  champion_saiu_alerta: true,      // Champion saiu = ALERTA
+  tags_problema_alerta: true,      // Tags de problema = ALERTA
+  zero_producao_alerta: true,      // Zero producao = ALERTA
+  // Pesos do score de engajamento
+  peso_pecas: 2,                   // Peso para pecas criadas
+  peso_ia: 1.5,                    // Peso para uso de IA
+  peso_downloads: 1,               // Peso para downloads
+};
+
+/**
+ * FUNCAO PRINCIPAL: Calcular segmento do cliente
+ *
+ * HIERARQUIA DE PRIORIDADE:
+ * 1. Reclamacoes em aberto (veto) -> ALERTA/RESGATE
+ * 2. Dias ativos (base) -> Define nivel base
+ * 3. Engajamento (elevacao) -> Pode subir para CRESCIMENTO
+ *
+ * @param {Object} cliente - Documento do cliente
+ * @param {Array} threads - Threads do cliente
+ * @param {Object} metricas - Metricas agregadas (ultimos 30 dias)
+ * @param {number} totalUsers - Total de usuarios
+ * @param {Object} config - Configuracao de thresholds (opcional)
+ * @returns {Object} { segmento, motivo, fatores }
+ */
+export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUsers = 1, config = {}) {
+  // Mesclar config com defaults
+  const cfg = { ...DEFAULT_SAUDE_CONFIG, ...config };
+
+  // ============================================
+  // CALCULAR FATORES
+  // ============================================
+
+  const diasAtivos = metricas?.dias_ativos || 0;
+  const engajamentoScore = calcularEngajamentoScore(metricas, cfg);
+  const reclamacoesEmAberto = temReclamacoesEmAberto(threads);
+  const qtdReclamacoes = contarReclamacoesEmAberto(threads);
+
+  // Sazonalidade: mes de baixa divide thresholds por 2 (mais leniente)
   const sazonalidade = getSazonalidadeMesAtual(cliente);
-  const emBaixa = sazonalidade === 'baixa';
-  const emAlta = sazonalidade === 'alta';
+  const divisorSazonalidade = sazonalidade === 'baixa' ? 2 : 1;
 
-  // Thresholds ajustados: tipo_conta define base, sazonalidade baixa dobra
-  const thresholdResgate = emBaixa ? baseResgate * 2 : baseResgate;
-  const thresholdAlerta = emBaixa ? baseAlerta * 2 : baseAlerta;
+  // Tipo de conta: google_gratuito divide thresholds por 2
+  const tipoConta = cliente?.tipo_conta || 'pagante';
+  const divisorConta = tipoConta === 'google_gratuito' ? 2 : 1;
+
+  // Divisor total
+  const divisor = divisorSazonalidade * divisorConta;
+
+  // Thresholds ajustados
+  const thDiasAtivosCrescimento = Math.ceil(cfg.dias_ativos_crescimento / divisor);
+  const thDiasAtivosEstavel = Math.ceil(cfg.dias_ativos_estavel / divisor);
+  const thDiasAtivosAlerta = Math.ceil(cfg.dias_ativos_alerta / divisor);
+
+  const thEngajamentoCrescimento = Math.ceil(cfg.engajamento_crescimento / divisor);
+  const thEngajamentoEstavel = Math.ceil(cfg.engajamento_estavel / divisor);
 
   // Flags especiais
   const emAvisoPrevio = cliente?.status === 'aviso_previo';
   const championSaiu = cliente?.champion_saiu === true;
+  const temTagsProblema = (cliente?.tags_problema || []).length > 0;
+  const bugsAbertos = (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length;
 
-  // Dias sem interação CS
-  const ultimaInteracao = cliente?.ultima_interacao_data;
-  const diasSemInteracao = ultimaInteracao
-    ? Math.floor((Date.now() - (ultimaInteracao.toDate ? ultimaInteracao.toDate() : new Date(ultimaInteracao)).getTime()) / (1000 * 60 * 60 * 24))
-    : null;
+  // Zero producao
+  const zeroProd = (metricas?.pecas_criadas || 0) === 0 &&
+                   (metricas?.downloads || 0) === 0 &&
+                   (metricas?.uso_ai_total || 0) === 0;
 
-  // Montar objeto de fatores
+  // Montar objeto de fatores para debug/exibicao
   const fatores = {
-    dias_sem_uso: diasSemUso,
-    frequencia_uso: frequenciaUso,
-    reclamacoes_recentes: reclamacoesRecentes,
-    reclamacao_grave: reclamacaoGrave,
-    engajamento: engajamento,
+    dias_ativos: diasAtivos,
+    engajamento_score: engajamentoScore,
+    reclamacoes_em_aberto: reclamacoesEmAberto,
+    qtd_reclamacoes: qtdReclamacoes,
+    sazonalidade: sazonalidade,
+    tipo_conta: tipoConta,
     em_aviso_previo: emAvisoPrevio,
     champion_saiu: championSaiu,
-    tags_problema_count: (cliente?.tags_problema || []).length,
-    bugs_abertos_count: (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length,
-    dias_sem_interacao: diasSemInteracao,
-    sazonalidade_mes_atual: sazonalidade,
-    tipo_conta: tipoConta
+    zero_producao: zeroProd,
+    thresholds: {
+      dias_ativos: { crescimento: thDiasAtivosCrescimento, estavel: thDiasAtivosEstavel, alerta: thDiasAtivosAlerta },
+      engajamento: { crescimento: thEngajamentoCrescimento, estavel: thEngajamentoEstavel }
+    }
   };
 
   // ============================================
-  // LOGICA DE CLASSIFICACAO (ordem de prioridade)
+  // 1. PRIORIDADE MAXIMA: CONDICOES DE RESGATE
   // ============================================
 
-  // 1. RESGATE - Critico (verificar primeiro)
-  if (emAvisoPrevio) {
+  // Aviso previo = RESGATE automatico (se toggle ativo)
+  if (cfg.aviso_previo_resgate && emAvisoPrevio) {
     return { segmento: 'RESGATE', motivo: 'Em aviso previo', fatores };
   }
-  if (diasSemUso >= thresholdResgate) {
-    return { segmento: 'RESGATE', motivo: `${diasSemUso} dias sem uso${emBaixa ? ' (mês de baixa, threshold ajustado)' : ''}`, fatores };
-  }
-  if (reclamacaoGrave) {
-    return { segmento: 'RESGATE', motivo: 'Reclamacao grave recente', fatores };
-  }
-  if (frequenciaUso === 'sem_uso' && reclamacoesRecentes) {
-    return { segmento: 'RESGATE', motivo: 'Sem uso + reclamacoes', fatores };
+
+  // X+ reclamacoes em aberto = RESGATE (threshold configuravel)
+  const thReclamacoesResgate = cfg.reclamacoes_max_resgate ?? 3;
+  if (qtdReclamacoes >= thReclamacoesResgate) {
+    return { segmento: 'RESGATE', motivo: `${qtdReclamacoes} reclamacoes em aberto (limite: ${thReclamacoesResgate})`, fatores };
   }
 
-  // 2. ALERTA - Atencao
-  if (diasSemUso >= thresholdAlerta) {
-    return { segmento: 'ALERTA', motivo: `${diasSemUso} dias sem uso${emBaixa ? ' (mês de baixa, threshold ajustado)' : ''}`, fatores };
+  // Zero dias ativos + zero producao = RESGATE
+  if (diasAtivos === 0 && zeroProd) {
+    return { segmento: 'RESGATE', motivo: 'Sem atividade e sem producao no mes', fatores };
   }
-  if (reclamacoesRecentes) {
-    return { segmento: 'ALERTA', motivo: 'Reclamacoes recentes', fatores };
-  }
-  if (championSaiu) {
+
+  // ============================================
+  // 2. PRIORIDADE MEDIA: OUTRAS CONDICOES DE ALERTA
+  // ============================================
+
+  // Champion saiu (se toggle ativo)
+  if (cfg.champion_saiu_alerta && championSaiu) {
     return { segmento: 'ALERTA', motivo: 'Champion saiu', fatores };
   }
-  if (frequenciaUso === 'raro' || frequenciaUso === 'sem_uso') {
-    return { segmento: 'ALERTA', motivo: 'Uso raro ou inexistente', fatores };
-  }
-  if (frequenciaUso === 'irregular') {
-    return { segmento: 'ALERTA', motivo: 'Uso irregular', fatores };
-  }
-  if ((cliente?.tags_problema || []).some(t => t.tag === 'Risco de Churn')) {
-    return { segmento: 'ALERTA', motivo: 'Tag "Risco de Churn" ativa', fatores };
-  }
-  const bugsAbertos = (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length;
-  if (bugsAbertos >= 3) {
-    return { segmento: 'ALERTA', motivo: `${bugsAbertos} bugs abertos`, fatores };
-  }
-  // Mês de alta mas cliente inativo → alerta
-  if (emAlta && diasSemUso >= 7 && (frequenciaUso === 'raro' || frequenciaUso === 'irregular' || frequenciaUso === 'sem_uso')) {
-    return { segmento: 'ALERTA', motivo: 'Mês de alta temporada mas cliente inativo', fatores };
+
+  // Tags de problema ativas (se toggle ativo)
+  if (cfg.tags_problema_alerta && temTagsProblema) {
+    return { segmento: 'ALERTA', motivo: 'Tags de problema ativas', fatores };
   }
 
-  // 2.5 GUARDA: Zero producao real nao pode ser ESTAVEL ou CRESCIMENTO
-  // Cliente pode ter logins mas nao produz nada na plataforma
-  if ((metricas?.pecas_criadas || 0) === 0 && (metricas?.downloads || 0) === 0 && (metricas?.uso_ai_total || 0) === 0) {
-    if (diasSemUso >= 7) {
-      return { segmento: 'RESGATE', motivo: 'Sem producao e sem uso recente', fatores };
-    }
+  // Muitos bugs abertos (threshold configuravel)
+  const thBugsAlerta = cfg.bugs_max_alerta ?? 3;
+  if (bugsAbertos >= thBugsAlerta) {
+    return { segmento: 'ALERTA', motivo: `${bugsAbertos} bugs abertos (limite: ${thBugsAlerta})`, fatores };
+  }
+
+  // Zero producao (se toggle ativo - logou sem produzir)
+  if (cfg.zero_producao_alerta && zeroProd) {
     return { segmento: 'ALERTA', motivo: 'Login sem producao (0 pecas, 0 downloads, 0 AI)', fatores };
   }
 
-  // 3. CRESCIMENTO - Potencial de expansao (sem tags de problema, sem bugs, com contato recente)
-  const temTagsProblema = (cliente?.tags_problema || []).length > 0;
-  const temBugsAbertos = bugsAbertos > 0;
-  const semContatoRecente = diasSemInteracao !== null && diasSemInteracao > 60;
-  if (frequenciaUso === 'frequente' && engajamento === 'alto' && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos && !semContatoRecente) {
-    return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + alto engajamento', fatores };
-  }
-  if (frequenciaUso === 'frequente' && engajamento === 'medio' && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos && !semContatoRecente) {
-    return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + bom engajamento', fatores };
+  // Poucos dias ativos
+  if (diasAtivos < thDiasAtivosAlerta) {
+    return { segmento: 'ALERTA', motivo: `Apenas ${diasAtivos} dias ativos (minimo: ${thDiasAtivosAlerta})`, fatores };
   }
 
-  // 4. ESTAVEL - Default (clientes estaveis)
-  return { segmento: 'ESTAVEL', motivo: 'Cliente estavel', fatores };
+  // ============================================
+  // 3. CLASSIFICACAO POSITIVA: ESTAVEL ou CRESCIMENTO
+  // Reclamacoes sao verificadas conforme config (toggles)
+  // ============================================
+
+  // Verificar se atende criterios de CRESCIMENTO:
+  // - Dias ativos >= threshold de crescimento
+  // - Engajamento >= threshold de crescimento
+  // - Se reclamacoes_crescimento = false (Não), ter reclamação impede CRESCIMENTO
+  const podeSerCrescimento = !reclamacoesEmAberto || cfg.reclamacoes_crescimento;
+
+  if (podeSerCrescimento && diasAtivos >= thDiasAtivosCrescimento && engajamentoScore >= thEngajamentoCrescimento) {
+    return { segmento: 'CRESCIMENTO', motivo: `${diasAtivos} dias ativos + engajamento ${engajamentoScore}`, fatores };
+  }
+
+  // Verificar se atende criterios de ESTAVEL:
+  // - Dias ativos >= threshold de estavel
+  // - Se reclamacoes_estavel = false (Não), ter reclamação impede ESTÁVEL
+  const podeSerEstavel = !reclamacoesEmAberto || cfg.reclamacoes_estavel;
+
+  if (podeSerEstavel && diasAtivos >= thDiasAtivosEstavel) {
+    return { segmento: 'ESTAVEL', motivo: `${diasAtivos} dias ativos no mes`, fatores };
+  }
+
+  // ============================================
+  // 4. ALERTA (fallback quando não atinge CRESCIMENTO/ESTÁVEL)
+  // ============================================
+
+  // Se tem reclamação e não pode ser ESTÁVEL, vai para ALERTA
+  if (reclamacoesEmAberto) {
+    return { segmento: 'ALERTA', motivo: `${qtdReclamacoes} reclamacao(es) em aberto`, fatores };
+  }
+
+  // Fallback para ALERTA (dias ativos entre alerta e estavel)
+  return { segmento: 'ALERTA', motivo: `${diasAtivos} dias ativos (abaixo do ideal: ${thDiasAtivosEstavel})`, fatores };
 }
 
 /**

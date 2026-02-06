@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, deleteDoc, updateDoc, writeBatch, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, deleteDoc, updateDoc, writeBatch, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs, invalidateCache } from '../services/cache';
 import { getUsuariosCountByTeam, getThreadsByTeam } from '../services/api';
@@ -296,6 +296,10 @@ export default function Clientes() {
     setRecalculandoSegmentos(true);
     setRecalcProgress({ current: 0, total: clientesAtivos.length, updated: 0 });
 
+    // Buscar config de Saúde CS antes do loop (config/geral.segmentoConfig)
+    const configSnap = await getDoc(doc(db, 'config', 'geral')).catch(() => null);
+    const saudeConfig = configSnap?.exists() ? (configSnap.data().segmentoConfig || {}) : {};
+
     let updatedCount = 0;
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const CONCURRENT_LIMIT = 5;
@@ -349,7 +353,7 @@ export default function Clientes() {
               };
             }, { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0, dias_ativos: 0, ultima_atividade: null });
 
-            const resultado = calcularSegmentoCS(cliente, threadsResult, aggregated, usuariosSnap.length || 1);
+            const resultado = calcularSegmentoCS(cliente, threadsResult, aggregated, usuariosSnap.length || 1, saudeConfig);
             const segmentoAtual = getClienteSegmento(cliente);
 
             return {

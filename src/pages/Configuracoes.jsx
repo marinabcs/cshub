@@ -1,23 +1,24 @@
 // Configurações do Sistema
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  Save, CheckCircle, AlertTriangle, Sliders, Activity, Clock,
-  Bell, Link2, Zap, RefreshCw, XCircle, Play, Heart, CloudDownload, Lock, Eye,
-  Mail, Plus, X, EyeOff, Trash2, Shield, Database
+  CheckCircle, Activity,
+  Zap, RefreshCw, XCircle, CloudDownload, Lock,
+  Mail, ChevronRight
 } from 'lucide-react';
 import { SEGMENTOS_CS } from '../utils/segmentoCS';
-import { DEFAULT_EMAIL_FILTERS } from '../utils/emailFilters';
 import { isClickUpConfigured } from '../services/clickup';
 import { useSincronizarClickUp } from '../hooks/useAlertas';
-import { sincronizarPlaybooksComClickUp } from '../services/playbooks';
+import { sincronizarOngoingComClickUp } from '../services/ongoing';
 import { validateForm } from '../validation';
-import { configGeralSchema, configSlaSchema } from '../validation/configuracoes';
+import { configGeralSchema } from '../validation/configuracoes';
 
 export default function Configuracoes() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -37,70 +38,65 @@ export default function Configuracoes() {
   const [syncStatus, setSyncStatus] = useState(null);
 
 
-  // Parâmetros de Segmentação CS
+  // Parâmetros de Segmentação CS (todos editáveis)
+  // HIERARQUIA DE PRIORIDADE:
+  // 1. Reclamações em aberto (veto) → Se houver, máximo ALERTA
+  // 2. Dias ativos (base) → Define nível base
+  // 3. Engajamento (elevação) → Pode subir para CRESCIMENTO
   const PARAMETROS_SEGMENTO_PADRAO = {
-    // Thresholds de dias sem uso
-    dias_sem_uso_watch: 14,
-    dias_sem_uso_rescue: 30,
-    // Thresholds de reclamações
-    dias_reclamacao_grave: 7,
-    dias_reclamacoes_recentes: 30,
-    // Thresholds de frequência (dias ativos no mês)
-    dias_ativos_frequente: 20,
-    dias_ativos_regular: 8,
-    dias_ativos_irregular: 3,
-    // Thresholds de engajamento (score)
-    engajamento_alto: 50,
-    engajamento_medio: 15
-  };
-
-  const PARAMETROS_PADRAO = {
-    dias_sem_contato_alerta: 7,
-    dias_sem_contato_critico: 14,
-    dias_periodo_analise: 30
+    // Dias ativos no mês
+    dias_ativos_crescimento: 20,
+    dias_ativos_estavel: 8,
+    dias_ativos_alerta: 3,
+    dias_ativos_resgate: 0,
+    // Score de engajamento
+    engajamento_crescimento: 50,
+    engajamento_estavel: 15,
+    engajamento_alerta: 1,
+    engajamento_resgate: 0,
+    // Reclamações em aberto (toggle por nível)
+    reclamacoes_crescimento: false,
+    reclamacoes_estavel: false,
+    reclamacoes_alerta: true,
+    reclamacoes_resgate: true,
+    // Thresholds adicionais
+    reclamacoes_max_resgate: 3,
+    bugs_max_alerta: 3,
+    // Toggles de regras especiais
+    aviso_previo_resgate: true,
+    champion_saiu_alerta: true,
+    tags_problema_alerta: true,
+    zero_producao_alerta: true,
+    // Pesos do score de engajamento
+    peso_pecas: 2,
+    peso_ia: 1.5,
+    peso_downloads: 1,
   };
 
   // Parâmetros de segmentação editáveis
   const [segmentoConfig, setSegmentoConfig] = useState({
-    dias_sem_uso_watch: 14,
-    dias_sem_uso_rescue: 30,
-    dias_reclamacao_grave: 7,
-    dias_reclamacoes_recentes: 30,
-    dias_ativos_frequente: 20,
-    dias_ativos_regular: 8,
-    dias_ativos_irregular: 3,
-    engajamento_alto: 50,
-    engajamento_medio: 15
+    dias_ativos_crescimento: 20,
+    dias_ativos_estavel: 8,
+    dias_ativos_alerta: 3,
+    dias_ativos_resgate: 0,
+    engajamento_crescimento: 50,
+    engajamento_estavel: 15,
+    engajamento_alerta: 1,
+    engajamento_resgate: 0,
+    reclamacoes_crescimento: false,
+    reclamacoes_estavel: false,
+    reclamacoes_alerta: true,
+    reclamacoes_resgate: true,
+    reclamacoes_max_resgate: 3,
+    bugs_max_alerta: 3,
+    aviso_previo_resgate: true,
+    champion_saiu_alerta: true,
+    tags_problema_alerta: true,
+    zero_producao_alerta: true,
+    peso_pecas: 2,
+    peso_ia: 1.5,
+    peso_downloads: 1,
   });
-
-  // Parâmetros de análise
-  const [parametros, setParametros] = useState({
-    dias_sem_contato_alerta: 7,
-    dias_sem_contato_critico: 14,
-    dias_periodo_analise: 30
-  });
-
-  // Configurações de tipo de conta
-  const TIPO_CONTA_CONFIG_PADRAO = {
-    pagante_dias_alerta: 14,
-    pagante_dias_resgate: 30,
-    pagante_periodo_analise: 30,
-    gratuito_dias_alerta: 28,
-    gratuito_dias_resgate: 60,
-    gratuito_periodo_analise: 60
-  };
-  const [tipoContaConfig, setTipoContaConfig] = useState(TIPO_CONTA_CONFIG_PADRAO);
-
-  // Configurações de SLA
-  const SLA_CONFIG_PADRAO = {
-    resposta_dias_uteis: 8,
-    resposta_final_semana: 0,
-    resposta_campanha_ativa: 4,
-    resposta_bug_critico: 2,
-    horario_comercial_inicio: '09:00',
-    horario_comercial_fim: '18:00'
-  };
-  const [slaConfig, setSlaConfig] = useState(SLA_CONFIG_PADRAO);
 
   // Verificar se usuário é admin
   useEffect(() => {
@@ -132,17 +128,6 @@ export default function Configuracoes() {
     checkAdminRole();
   }, [user?.uid]);
 
-  // Configurações de alertas (sem dias - unificado em parâmetros)
-  const [alertaConfig, setAlertaConfig] = useState({
-    alerta_sentimento_negativo: true,
-    alerta_erro_bug: true,
-    alerta_urgente_automatico: true
-  });
-
-  // Configurações de filtros de email
-  const [emailFilterConfig, setEmailFilterConfig] = useState(DEFAULT_EMAIL_FILTERS);
-  const [novoItemFiltro, setNovoItemFiltro] = useState({ dominios_bloqueados: '', dominios_completos_bloqueados: '', palavras_chave_assunto: '' });
-
   useEffect(() => {
     const fetchConfig = async () => {
       try {
@@ -151,31 +136,7 @@ export default function Configuracoes() {
         const configDocSnap = await getDoc(configDocRef);
         if (configDocSnap.exists()) {
           const data = configDocSnap.data();
-          if (data.parametros) setParametros(data.parametros);
           if (data.segmentoConfig) setSegmentoConfig(data.segmentoConfig);
-          if (data.tipoContaConfig) setTipoContaConfig(prev => ({ ...prev, ...data.tipoContaConfig }));
-        }
-
-        // Fetch Alert config
-        const alertDocRef = doc(db, 'config', 'alertas');
-        const alertDocSnap = await getDoc(alertDocRef);
-        if (alertDocSnap.exists()) {
-          const data = alertDocSnap.data();
-          setAlertaConfig(prev => ({ ...prev, ...data }));
-        }
-
-        // Fetch Email Filter config
-        const filterDocRef = doc(db, 'config', 'email_filters');
-        const filterDocSnap = await getDoc(filterDocRef);
-        if (filterDocSnap.exists()) {
-          setEmailFilterConfig(prev => ({ ...prev, ...filterDocSnap.data() }));
-        }
-
-        // Fetch SLA config
-        const slaDocRef = doc(db, 'config', 'sla');
-        const slaDocSnap = await getDoc(slaDocRef);
-        if (slaDocSnap.exists()) {
-          setSlaConfig(prev => ({ ...prev, ...slaDocSnap.data() }));
         }
 
         // Fetch sync status (n8n)
@@ -220,15 +181,15 @@ export default function Configuracoes() {
     setClickUpSyncResults(null);
 
     try {
-      // Sincronizar alertas e playbooks em paralelo
-      const [alertasResult, playbooksResult] = await Promise.all([
+      // Sincronizar alertas e ongoing em paralelo
+      const [alertasResult, ongoingResult] = await Promise.all([
         sincronizarComClickUp(),
-        sincronizarPlaybooksComClickUp()
+        sincronizarOngoingComClickUp()
       ]);
 
       setClickUpSyncResults({
         alertas: alertasResult,
-        playbooks: playbooksResult
+        ongoing: ongoingResult
       });
 
       // Salvar timestamp da última sincronização
@@ -261,112 +222,67 @@ export default function Configuracoes() {
     return { text: formatted, color: '#ef4444', fresh: false };
   };
 
-  // Restaurar valores padrão
-  const restaurarPadroes = () => {
-    setParametros(PARAMETROS_PADRAO);
-    setSegmentoConfig(PARAMETROS_SEGMENTO_PADRAO);
-    setTipoContaConfig(TIPO_CONTA_CONFIG_PADRAO);
-    setSlaConfig(SLA_CONFIG_PADRAO);
-    setEmailFilterConfig(DEFAULT_EMAIL_FILTERS);
-  };
+  // Ref para controlar se é a primeira carga (não salvar automaticamente)
+  const isInitialLoad = useRef(true);
+  const saveTimeoutRef = useRef(null);
 
-  // Helpers para listas de filtros de email
-  const adicionarItemFiltro = (campo) => {
-    const valor = novoItemFiltro[campo]?.trim();
-    if (!valor) return;
-    if (emailFilterConfig[campo]?.includes(valor)) return;
-    setEmailFilterConfig(prev => ({
-      ...prev,
-      [campo]: [...(prev[campo] || []), valor]
-    }));
-    setNovoItemFiltro(prev => ({ ...prev, [campo]: '' }));
-  };
-
-  const removerItemFiltro = (campo, index) => {
-    setEmailFilterConfig(prev => ({
-      ...prev,
-      [campo]: prev[campo].filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleSave = async () => {
+  // Auto-save com debounce
+  const autoSave = useCallback(async (config) => {
     if (!isAdmin) return;
 
     // Validar configurações numéricas
-    const configData = { ...parametros, ...segmentoConfig, ...tipoContaConfig };
-    const validationErrors = validateForm(configGeralSchema, configData);
+    const validationErrors = validateForm(configGeralSchema, config);
     if (validationErrors) {
-      alert('Erro de validação:\n' + Object.values(validationErrors).join('\n'));
-      return;
+      return; // Não salva se inválido, mas não mostra alerta
     }
 
     setSaving(true);
     setSaveSuccess(false);
     try {
-      // Save config geral (inclui segmentoConfig)
       const configDocRef = doc(db, 'config', 'geral');
       await setDoc(configDocRef, {
-        parametros,
-        segmentoConfig,
-        tipoContaConfig,
-        updated_at: new Date()
-      });
-
-      // Save Alert config
-      const alertDocRef = doc(db, 'config', 'alertas');
-      await setDoc(alertDocRef, {
-        ...alertaConfig,
-        updated_at: new Date()
-      });
-
-      // Save Email Filters config
-      const filterDocRef = doc(db, 'config', 'email_filters');
-      await setDoc(filterDocRef, {
-        ...emailFilterConfig,
-        updated_at: new Date()
-      });
-
-      // Save SLA config
-      const slaValidation = validateForm(configSlaSchema, slaConfig);
-      if (slaValidation) {
-        alert('Erro de validação SLA:\n' + Object.values(slaValidation).join('\n'));
-        setSaving(false);
-        return;
-      }
-      const slaDocRef = doc(db, 'config', 'sla');
-      await setDoc(slaDocRef, {
-        ...slaConfig,
+        segmentoConfig: config,
         updated_at: new Date()
       });
 
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error) {
       console.error('Erro ao salvar configurações:', error);
-      alert('Erro ao salvar configurações');
     } finally {
       setSaving(false);
     }
-  };
+  }, [isAdmin]);
 
-  const handleParametroChange = (field, value) => {
-    setParametros(prev => ({ ...prev, [field]: Number(value) || 0 }));
-  };
+  // useEffect para auto-save quando segmentoConfig muda
+  useEffect(() => {
+    // Não salvar na primeira carga
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      return;
+    }
+
+    // Limpar timeout anterior
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce de 1.5 segundos
+    saveTimeoutRef.current = setTimeout(() => {
+      autoSave(segmentoConfig);
+    }, 1500);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [segmentoConfig, autoSave]);
 
   const handleSegmentoConfigChange = (field, value) => {
-    setSegmentoConfig(prev => ({ ...prev, [field]: Number(value) || 0 }));
-  };
-
-  const handleTipoContaConfigChange = (field, value) => {
-    setTipoContaConfig(prev => ({ ...prev, [field]: Number(value) || 0 }));
-  };
-
-  const handleSlaConfigChange = (field, value) => {
-    setSlaConfig(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleAlertaConfigChange = (field, value) => {
-    setAlertaConfig(prev => ({ ...prev, [field]: value }));
+    // Se for booleano, usa direto; senão converte para número
+    const newValue = typeof value === 'boolean' ? value : (Number(value) || 0);
+    setSegmentoConfig(prev => ({ ...prev, [field]: newValue }));
   };
 
   if (loading || checkingRole) {
@@ -405,1101 +321,392 @@ export default function Configuracoes() {
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>Configurações</h1>
           <p style={{ color: '#94a3b8', margin: 0 }}>Configure os parâmetros do sistema</p>
         </div>
-        {isAdmin && (
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={restaurarPadroes}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 20px',
-                background: 'rgba(100, 116, 139, 0.2)',
-                border: '1px solid rgba(100, 116, 139, 0.3)',
-                borderRadius: '12px',
-                color: '#94a3b8',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer'
-              }}
-            >
-              <RefreshCw style={{ width: '16px', height: '16px' }} />
-              Restaurar Padrões
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 24px',
-                background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-                border: 'none',
-                borderRadius: '12px',
-                color: 'white',
-                fontSize: '14px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                opacity: saving ? 0.7 : 1,
-                boxShadow: '0 4px 20px rgba(139, 92, 246, 0.3)'
-              }}
-            >
-              {saveSuccess ? <CheckCircle style={{ width: '18px', height: '18px' }} /> : <Save style={{ width: '18px', height: '18px' }} />}
-              {saving ? 'Salvando...' : saveSuccess ? 'Salvo!' : 'Salvar Configurações'}
-            </button>
+        {/* Indicador de auto-save */}
+        {isAdmin && (saving || saveSuccess) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: saveSuccess ? 'rgba(16, 185, 129, 0.1)' : 'rgba(139, 92, 246, 0.1)', borderRadius: '8px' }}>
+            {saving ? (
+              <>
+                <div style={{ width: '14px', height: '14px', border: '2px solid rgba(139, 92, 246, 0.3)', borderTopColor: '#8b5cf6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <span style={{ color: '#a78bfa', fontSize: '13px' }}>Salvando...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle style={{ width: '14px', height: '14px', color: '#10b981' }} />
+                <span style={{ color: '#10b981', fontSize: '13px' }}>Salvo</span>
+              </>
+            )}
           </div>
         )}
       </div>
 
-      {/* Sincronização com ClickUp */}
-      {isClickUpConfigured() && (
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '20px', padding: '24px', marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{
-                width: '44px',
-                height: '44px',
-                background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-                borderRadius: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <CloudDownload style={{ width: '22px', height: '22px', color: 'white' }} />
-              </div>
-              <div>
-                <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 4px 0' }}>Sincronizar com ClickUp</h2>
-                <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
-                  Atualiza status de alertas e etapas de playbooks a partir do ClickUp
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={runClickUpSync}
-              disabled={sincronizandoClickUp}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 24px',
-                background: sincronizandoClickUp ? 'rgba(6, 182, 212, 0.3)' : 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-                border: 'none',
-                borderRadius: '12px',
-                color: 'white',
-                fontSize: '14px',
-                fontWeight: '600',
-                cursor: sincronizandoClickUp ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {sincronizandoClickUp ? (
-                <RefreshCw style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
-              ) : (
-                <RefreshCw style={{ width: '18px', height: '18px' }} />
-              )}
-              {sincronizandoClickUp ? 'Sincronizando...' : 'Sincronizar Agora'}
-            </button>
-          </div>
-
-          {/* Results */}
-          {clickUpSyncResults && !clickUpSyncResults.erro && (
-            <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                <CheckCircle style={{ width: '18px', height: '18px', color: '#06b6d4' }} />
-                <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>Sincronização concluída!</span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-                {/* Alertas */}
-                <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                  <p style={{ color: '#8b5cf6', fontSize: '12px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Alertas</p>
-                  <div style={{ display: 'flex', gap: '16px' }}>
-                    <div>
-                      <p style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{clickUpSyncResults.alertas?.atualizados || 0}</p>
-                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Atualizados</p>
-                    </div>
-                    <div>
-                      <p style={{ color: '#64748b', fontSize: '20px', fontWeight: '700', margin: 0 }}>{clickUpSyncResults.alertas?.total || 0}</p>
-                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Verificados</p>
-                    </div>
-                  </div>
-                </div>
-                {/* Playbooks */}
-                <div style={{ padding: '16px', background: 'rgba(6, 182, 212, 0.1)', borderRadius: '12px', border: '1px solid rgba(6, 182, 212, 0.2)' }}>
-                  <p style={{ color: '#06b6d4', fontSize: '12px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Playbooks</p>
-                  <div style={{ display: 'flex', gap: '16px' }}>
-                    <div>
-                      <p style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: 0 }}>{clickUpSyncResults.playbooks?.etapasAtualizadas || 0}</p>
-                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Etapas Atualizadas</p>
-                    </div>
-                    <div>
-                      <p style={{ color: '#64748b', fontSize: '20px', fontWeight: '700', margin: 0 }}>{clickUpSyncResults.playbooks?.totalPlaybooks || 0}</p>
-                      <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Playbooks</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detalhes das atualizações */}
-              {((clickUpSyncResults.alertas?.detalhes?.length > 0) || (clickUpSyncResults.playbooks?.detalhes?.length > 0)) && (
-                <div style={{ marginTop: '16px', maxHeight: '150px', overflowY: 'auto' }}>
-                  <p style={{ color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Alterações:</p>
-                  {clickUpSyncResults.alertas?.detalhes?.map((d, i) => (
-                    <div key={`alerta-${i}`} style={{ fontSize: '12px', color: '#94a3b8', padding: '4px 0', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                      <span style={{ color: '#8b5cf6' }}>[Alerta]</span> {d.titulo}: {d.de} → {d.para}
-                    </div>
-                  ))}
-                  {clickUpSyncResults.playbooks?.detalhes?.map((d, i) => (
-                    <div key={`playbook-${i}`} style={{ fontSize: '12px', color: '#94a3b8', padding: '4px 0', borderBottom: '1px solid rgba(6, 182, 212, 0.1)' }}>
-                      <span style={{ color: '#06b6d4' }}>[Playbook]</span> {d.cliente} - {d.etapa}: {d.de} → {d.para}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {clickUpSyncResults?.erro && (
-            <div style={{ marginTop: '16px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <XCircle style={{ width: '18px', height: '18px', color: '#ef4444' }} />
-              <span style={{ color: '#ef4444', fontSize: '14px' }}>Erro: {clickUpSyncResults.erro}</span>
-            </div>
-          )}
+      {/* SEÇÃO: Saúde CS (largura total) */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+          <Activity style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Saúde CS</h2>
         </div>
-      )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-        {/* COLUNA ESQUERDA */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* SEÇÃO 1: Segmentos CS */}
-          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-              <Activity style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Saúde CS</h2>
+        {/* Hierarquia de regras */}
+        <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, lineHeight: '1.6' }}>
+            <strong style={{ color: '#a78bfa' }}>Ordem de prioridade:</strong>{' '}
+            <span style={{ color: '#ef4444' }}>1º Reclamações</span> (veto: impede CRESCIMENTO/ESTÁVEL) →{' '}
+            <span style={{ color: '#3b82f6' }}>2º Dias ativos</span> (base da classificação) →{' '}
+            <span style={{ color: '#10b981' }}>3º Engajamento</span> (eleva para CRESCIMENTO)
+          </p>
+        </div>
+
+        {/* Tabela de Thresholds - 100% editável */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+          <thead>
+            <tr style={{ background: 'rgba(15, 10, 31, 0.6)' }}>
+              <th style={{ textAlign: 'left', padding: '12px 16px', color: '#64748b', fontWeight: '600', borderBottom: '1px solid rgba(139, 92, 246, 0.2)', width: '180px' }}>Métrica</th>
+              <th style={{ textAlign: 'center', padding: '12px 16px', color: '#10b981', fontWeight: '600', borderBottom: '1px solid rgba(139, 92, 246, 0.2)' }}>Crescimento</th>
+              <th style={{ textAlign: 'center', padding: '12px 16px', color: '#3b82f6', fontWeight: '600', borderBottom: '1px solid rgba(139, 92, 246, 0.2)' }}>Estável</th>
+              <th style={{ textAlign: 'center', padding: '12px 16px', color: '#f59e0b', fontWeight: '600', borderBottom: '1px solid rgba(139, 92, 246, 0.2)' }}>Alerta</th>
+              <th style={{ textAlign: 'center', padding: '12px 16px', color: '#ef4444', fontWeight: '600', borderBottom: '1px solid rgba(139, 92, 246, 0.2)' }}>Resgate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Reclamações em aberto (VETO - maior prioridade) */}
+            <tr>
+              <td style={{ padding: '12px 16px', color: 'white', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                Reclamações em aberto
+                <span style={{ display: 'block', fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                  (veto: impede níveis superiores)
+                </span>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <button onClick={() => isAdmin && handleSegmentoConfigChange('reclamacoes_crescimento', !segmentoConfig.reclamacoes_crescimento)} disabled={!isAdmin} style={{ padding: '4px 10px', background: segmentoConfig.reclamacoes_crescimento ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.reclamacoes_crescimento ? 'rgba(16, 185, 129, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '6px', color: segmentoConfig.reclamacoes_crescimento ? '#10b981' : '#64748b', fontSize: '12px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                  {segmentoConfig.reclamacoes_crescimento ? 'Sim' : 'Não'}
+                </button>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <button onClick={() => isAdmin && handleSegmentoConfigChange('reclamacoes_estavel', !segmentoConfig.reclamacoes_estavel)} disabled={!isAdmin} style={{ padding: '4px 10px', background: segmentoConfig.reclamacoes_estavel ? 'rgba(59, 130, 246, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.reclamacoes_estavel ? 'rgba(59, 130, 246, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '6px', color: segmentoConfig.reclamacoes_estavel ? '#3b82f6' : '#64748b', fontSize: '12px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                  {segmentoConfig.reclamacoes_estavel ? 'Sim' : 'Não'}
+                </button>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <button onClick={() => isAdmin && handleSegmentoConfigChange('reclamacoes_alerta', !segmentoConfig.reclamacoes_alerta)} disabled={!isAdmin} style={{ padding: '4px 10px', background: segmentoConfig.reclamacoes_alerta ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.reclamacoes_alerta ? 'rgba(245, 158, 11, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '6px', color: segmentoConfig.reclamacoes_alerta ? '#f59e0b' : '#64748b', fontSize: '12px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                  {segmentoConfig.reclamacoes_alerta ? 'Sim' : 'Não'}
+                </button>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <button onClick={() => isAdmin && handleSegmentoConfigChange('reclamacoes_resgate', !segmentoConfig.reclamacoes_resgate)} disabled={!isAdmin} style={{ padding: '4px 10px', background: segmentoConfig.reclamacoes_resgate ? 'rgba(239, 68, 68, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.reclamacoes_resgate ? 'rgba(239, 68, 68, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '6px', color: segmentoConfig.reclamacoes_resgate ? '#ef4444' : '#64748b', fontSize: '12px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                  {segmentoConfig.reclamacoes_resgate ? 'Sim' : 'Não'}
+                </button>
+              </td>
+            </tr>
+            {/* Dias ativos/mês (BASE) */}
+            <tr>
+              <td style={{ padding: '12px 16px', color: 'white', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                Dias ativos/mês
+                <span style={{ display: 'block', fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                  (base da classificação)
+                </span>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <input type="number" min="1" value={segmentoConfig.dias_ativos_crescimento} onChange={(e) => handleSegmentoConfigChange('dias_ativos_crescimento', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#10b981' }}>+</span>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <input type="number" min="1" value={segmentoConfig.dias_ativos_estavel} onChange={(e) => handleSegmentoConfigChange('dias_ativos_estavel', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#3b82f6', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#3b82f6' }}>+</span>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <input type="number" min="1" value={segmentoConfig.dias_ativos_alerta} onChange={(e) => handleSegmentoConfigChange('dias_ativos_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#f59e0b' }}>+</span>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <span style={{ color: '#ef4444' }}>até </span>
+                <input type="number" min="0" value={segmentoConfig.dias_ativos_resgate} onChange={(e) => handleSegmentoConfigChange('dias_ativos_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#ef4444', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+              </td>
+            </tr>
+            {/* Score engajamento (ELEVAÇÃO) */}
+            <tr>
+              <td style={{ padding: '12px 16px', color: 'white' }}>
+                Score engajamento
+                <span style={{ display: 'block', fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                  (eleva para Crescimento)
+                </span>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                <input type="number" min="1" value={segmentoConfig.engajamento_crescimento} onChange={(e) => handleSegmentoConfigChange('engajamento_crescimento', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#10b981' }}>+</span>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                <input type="number" min="1" value={segmentoConfig.engajamento_estavel} onChange={(e) => handleSegmentoConfigChange('engajamento_estavel', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#3b82f6', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#3b82f6' }}>+</span>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                <input type="number" min="0" value={segmentoConfig.engajamento_alerta} onChange={(e) => handleSegmentoConfigChange('engajamento_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#f59e0b' }}>+</span>
+              </td>
+              <td style={{ textAlign: 'center', padding: '12px 16px' }}>
+                <span style={{ color: '#ef4444' }}>até </span>
+                <input type="number" min="0" value={segmentoConfig.engajamento_resgate} onChange={(e) => handleSegmentoConfigChange('engajamento_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#ef4444', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        {/* Seção: Pesos do Score de Engajamento */}
+        <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
+          <p style={{ color: '#a78bfa', fontSize: '13px', fontWeight: '600', margin: '0 0 12px 0' }}>Fórmula do Score de Engajamento</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ color: '#94a3b8', fontSize: '13px' }}>Score = (peças ×</span>
+            <input type="number" min="0.1" step="0.1" value={segmentoConfig.peso_pecas} onChange={(e) => handleSegmentoConfigChange('peso_pecas', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', color: '#a78bfa', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+            <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (IA ×</span>
+            <input type="number" min="0.1" step="0.1" value={segmentoConfig.peso_ia} onChange={(e) => handleSegmentoConfigChange('peso_ia', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', color: '#a78bfa', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+            <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (downloads ×</span>
+            <input type="number" min="0.1" step="0.1" value={segmentoConfig.peso_downloads} onChange={(e) => handleSegmentoConfigChange('peso_downloads', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', color: '#a78bfa', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+            <span style={{ color: '#94a3b8', fontSize: '13px' }}>)</span>
+          </div>
+        </div>
+
+        {/* Seção: Regras Especiais (Toggles e Thresholds) */}
+        <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
+          <p style={{ color: '#a78bfa', fontSize: '13px', fontWeight: '600', margin: '0 0 12px 0' }}>Regras Especiais de Classificação</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            {/* Coluna 1: Regras de RESGATE */}
+            <div>
+              <p style={{ color: '#ef4444', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Condições de Resgate</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* Aviso prévio */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                  <span style={{ color: 'white', fontSize: '12px' }}>Aviso prévio = RESGATE</span>
+                  <button onClick={() => isAdmin && handleSegmentoConfigChange('aviso_previo_resgate', !segmentoConfig.aviso_previo_resgate)} disabled={!isAdmin} style={{ padding: '3px 8px', background: segmentoConfig.aviso_previo_resgate ? 'rgba(239, 68, 68, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.aviso_previo_resgate ? 'rgba(239, 68, 68, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '4px', color: segmentoConfig.aviso_previo_resgate ? '#ef4444' : '#64748b', fontSize: '11px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                    {segmentoConfig.aviso_previo_resgate ? 'Ativo' : 'Inativo'}
+                  </button>
+                </div>
+                {/* Reclamações máximas */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                  <span style={{ color: 'white', fontSize: '12px' }}>Reclamações ≥ X = RESGATE</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input type="number" min="1" value={segmentoConfig.reclamacoes_max_resgate} onChange={(e) => handleSegmentoConfigChange('reclamacoes_max_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '40px', padding: '3px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '4px', color: '#ef4444', fontSize: '12px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              Os clientes são classificados automaticamente em 4 níveis de saúde baseado em dados de uso e engajamento
-            </p>
-
-            {/* Parâmetros editáveis de segmentação */}
-            <div style={{ marginBottom: '24px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-              <p style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600', margin: '0 0 16px 0', textTransform: 'uppercase' }}>Parâmetros de Classificação</p>
-
-              {/* Seção: Dias sem uso */}
-              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dias sem Atividade</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                {/* Dias sem uso - WATCH */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                  <div>
-                    <p style={{ color: '#f59e0b', fontSize: '13px', fontWeight: '500', margin: 0 }}>Dias sem uso → Alerta</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={segmentoConfig.dias_sem_uso_watch}
-                      onChange={(e) => handleSegmentoConfigChange('dias_sem_uso_watch', e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '60px',
-                        padding: '6px 10px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid rgba(245, 158, 11, 0.3)',
-                        borderRadius: '6px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '13px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
-                  </div>
-                </div>
-
-                {/* Dias sem uso - RESCUE */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                  <div>
-                    <p style={{ color: '#ef4444', fontSize: '13px', fontWeight: '500', margin: 0 }}>Dias sem uso → Resgate</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={segmentoConfig.dias_sem_uso_rescue}
-                      onChange={(e) => handleSegmentoConfigChange('dias_sem_uso_rescue', e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '60px',
-                        padding: '6px 10px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        borderRadius: '6px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '13px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Seção: Reclamações */}
-              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Janela de Reclamações</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                {/* Reclamação grave */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                  <div>
-                    <p style={{ color: '#ef4444', fontSize: '13px', fontWeight: '500', margin: 0 }}>Reclamação grave (urgente)</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={segmentoConfig.dias_reclamacao_grave}
-                      onChange={(e) => handleSegmentoConfigChange('dias_reclamacao_grave', e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '60px',
-                        padding: '6px 10px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        borderRadius: '6px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '13px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
-                  </div>
-                </div>
-
-                {/* Reclamações recentes */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                  <div>
-                    <p style={{ color: '#f59e0b', fontSize: '13px', fontWeight: '500', margin: 0 }}>Reclamações recentes</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={segmentoConfig.dias_reclamacoes_recentes}
-                      onChange={(e) => handleSegmentoConfigChange('dias_reclamacoes_recentes', e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '60px',
-                        padding: '6px 10px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid rgba(245, 158, 11, 0.3)',
-                        borderRadius: '6px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '13px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Seção: Frequência de Uso */}
-              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Frequência de Uso (dias ativos/mês)</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                {/* Frequente */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                  <div>
-                    <p style={{ color: '#10b981', fontSize: '13px', fontWeight: '500', margin: 0 }}>Uso Frequente (Crescimento)</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={segmentoConfig.dias_ativos_frequente}
-                      onChange={(e) => handleSegmentoConfigChange('dias_ativos_frequente', e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '60px',
-                        padding: '6px 10px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
-                        borderRadius: '6px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '13px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias+</span>
-                  </div>
-                </div>
-
-                {/* Regular */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                  <div>
-                    <p style={{ color: '#3b82f6', fontSize: '13px', fontWeight: '500', margin: 0 }}>Uso Regular (Estavel)</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={segmentoConfig.dias_ativos_regular}
-                      onChange={(e) => handleSegmentoConfigChange('dias_ativos_regular', e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '60px',
-                        padding: '6px 10px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                        borderRadius: '6px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '13px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias+</span>
-                  </div>
-                </div>
-
-                {/* Irregular */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '10px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                  <div>
-                    <p style={{ color: '#f59e0b', fontSize: '13px', fontWeight: '500', margin: 0 }}>Uso Irregular (Alerta)</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={segmentoConfig.dias_ativos_irregular}
-                      onChange={(e) => handleSegmentoConfigChange('dias_ativos_irregular', e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '60px',
-                        padding: '6px 10px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid rgba(245, 158, 11, 0.3)',
-                        borderRadius: '6px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '13px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>dias+</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Seção: Engajamento */}
-              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Score de Engajamento</p>
+            {/* Coluna 2: Regras de ALERTA */}
+            <div>
+              <p style={{ color: '#f59e0b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Condições de Alerta</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {/* Engajamento Alto */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '10px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                  <div>
-                    <p style={{ color: '#10b981', fontSize: '13px', fontWeight: '500', margin: 0 }}>Engajamento Alto</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={segmentoConfig.engajamento_alto}
-                      onChange={(e) => handleSegmentoConfigChange('engajamento_alto', e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '60px',
-                        padding: '6px 10px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
-                        borderRadius: '6px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '13px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>pts+</span>
-                  </div>
+                {/* Champion saiu */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.1)' }}>
+                  <span style={{ color: 'white', fontSize: '12px' }}>Champion saiu = ALERTA</span>
+                  <button onClick={() => isAdmin && handleSegmentoConfigChange('champion_saiu_alerta', !segmentoConfig.champion_saiu_alerta)} disabled={!isAdmin} style={{ padding: '3px 8px', background: segmentoConfig.champion_saiu_alerta ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.champion_saiu_alerta ? 'rgba(245, 158, 11, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '4px', color: segmentoConfig.champion_saiu_alerta ? '#f59e0b' : '#64748b', fontSize: '11px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                    {segmentoConfig.champion_saiu_alerta ? 'Ativo' : 'Inativo'}
+                  </button>
                 </div>
-
-                {/* Engajamento Médio */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                  <div>
-                    <p style={{ color: '#3b82f6', fontSize: '13px', fontWeight: '500', margin: 0 }}>Engajamento Médio</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={segmentoConfig.engajamento_medio}
-                      onChange={(e) => handleSegmentoConfigChange('engajamento_medio', e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '60px',
-                        padding: '6px 10px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                        borderRadius: '6px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '13px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '12px' }}>pts+</span>
+                {/* Tags problema */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.1)' }}>
+                  <span style={{ color: 'white', fontSize: '12px' }}>Tags de problema = ALERTA</span>
+                  <button onClick={() => isAdmin && handleSegmentoConfigChange('tags_problema_alerta', !segmentoConfig.tags_problema_alerta)} disabled={!isAdmin} style={{ padding: '3px 8px', background: segmentoConfig.tags_problema_alerta ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.tags_problema_alerta ? 'rgba(245, 158, 11, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '4px', color: segmentoConfig.tags_problema_alerta ? '#f59e0b' : '#64748b', fontSize: '11px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                    {segmentoConfig.tags_problema_alerta ? 'Ativo' : 'Inativo'}
+                  </button>
+                </div>
+                {/* Zero produção */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.1)' }}>
+                  <span style={{ color: 'white', fontSize: '12px' }}>Zero produção = ALERTA</span>
+                  <button onClick={() => isAdmin && handleSegmentoConfigChange('zero_producao_alerta', !segmentoConfig.zero_producao_alerta)} disabled={!isAdmin} style={{ padding: '3px 8px', background: segmentoConfig.zero_producao_alerta ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.zero_producao_alerta ? 'rgba(245, 158, 11, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '4px', color: segmentoConfig.zero_producao_alerta ? '#f59e0b' : '#64748b', fontSize: '11px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                    {segmentoConfig.zero_producao_alerta ? 'Ativo' : 'Inativo'}
+                  </button>
+                </div>
+                {/* Bugs máximos */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.1)' }}>
+                  <span style={{ color: 'white', fontSize: '12px' }}>Bugs abertos ≥ X = ALERTA</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input type="number" min="1" value={segmentoConfig.bugs_max_alerta} onChange={(e) => handleSegmentoConfigChange('bugs_max_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '40px', padding: '3px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px', color: '#f59e0b', fontSize: '12px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
 
-              {/* Nota explicativa */}
-              <p style={{ color: '#64748b', fontSize: '11px', margin: '16px 0 0 0', fontStyle: 'italic' }}>
-                Score de engajamento = (peças criadas × 2) + (uso de IA × 1.5) + downloads
+        <p style={{ color: '#64748b', fontSize: '11px', margin: '12px 0 0 0', fontStyle: 'italic' }}>
+          Reclamação = thread negativa/urgente ou erro/reclamação não resolvida
+        </p>
+      </div>
+
+      {/* SEÇÃO: Filtros de Email (largura total) */}
+      <div
+        onClick={() => navigate('/configuracoes/filtros-email')}
+        style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '20px',
+          padding: '20px 24px',
+          marginBottom: '24px',
+          cursor: 'pointer',
+          transition: 'all 0.2s ease'
+        }}
+        onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(249, 115, 22, 0.4)'}
+        onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.15)'}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '40px', height: '40px',
+              background: 'rgba(249, 115, 22, 0.15)',
+              borderRadius: '10px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Mail style={{ width: '20px', height: '20px', color: '#f97316' }} />
+            </div>
+            <div>
+              <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Filtros de Email</h3>
+              <p style={{ color: '#64748b', fontSize: '13px', margin: '2px 0 0 0' }}>
+                Configurar filtros de spam, newsletters e auto-replies
               </p>
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {Object.values(SEGMENTOS_CS).map(segmento => (
-                <div key={segmento.value} style={{ padding: '16px', background: segmento.bgColor, borderRadius: '12px', border: `1px solid ${segmento.borderColor}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                    <div style={{ width: '12px', height: '12px', background: segmento.color, borderRadius: '50%' }}></div>
-                    <p style={{ color: segmento.color, fontSize: '15px', fontWeight: '600', margin: 0 }}>{segmento.label}</p>
-                  </div>
-                  <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 8px 0' }}>{segmento.description}</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {segmento.criterios.map((criterio, idx) => (
-                      <span key={idx} style={{ padding: '4px 8px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '6px', fontSize: '11px', color: '#64748b' }}>
-                        {criterio}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
+          <ChevronRight style={{ width: '20px', height: '20px', color: '#64748b' }} />
+        </div>
+      </div>
 
-          {/* SEÇÃO: SLA de Atendimento */}
-          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-              <Shield style={{ width: '20px', height: '20px', color: '#10b981' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>SLA de Atendimento</h2>
-            </div>
-
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              Defina os tempos máximos de primeira resposta para cada situação. Valor 0 = próximo dia útil.
-            </p>
-
-            {/* Horário Comercial */}
-            <div style={{ marginBottom: '16px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-              <p style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600', margin: '0 0 14px 0', textTransform: 'uppercase' }}>Horário Comercial</p>
-              <div style={{ display: 'flex', gap: '16px' }}>
-                <div style={{ flex: 1 }}>
-                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 6px 0' }}>Início</p>
-                  <input
-                    type="time"
-                    value={slaConfig.horario_comercial_inicio}
-                    onChange={(e) => handleSlaConfigChange('horario_comercial_inicio', e.target.value)}
-                    disabled={!isAdmin}
-                    style={{
-                      width: '100%', padding: '10px 14px',
-                      background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                      border: '1px solid #3730a3', borderRadius: '10px',
-                      color: isAdmin ? 'white' : '#64748b', fontSize: '14px',
-                      outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed'
-                    }}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 6px 0' }}>Fim</p>
-                  <input
-                    type="time"
-                    value={slaConfig.horario_comercial_fim}
-                    onChange={(e) => handleSlaConfigChange('horario_comercial_fim', e.target.value)}
-                    disabled={!isAdmin}
-                    style={{
-                      width: '100%', padding: '10px 14px',
-                      background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                      border: '1px solid #3730a3', borderRadius: '10px',
-                      color: isAdmin ? 'white' : '#64748b', fontSize: '14px',
-                      outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed'
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Tempos de Resposta */}
-            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-              <p style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600', margin: '0 0 14px 0', textTransform: 'uppercase' }}>Primeira Resposta</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {[
-                  { key: 'resposta_dias_uteis', label: 'Dias úteis (horário comercial)', desc: 'Tempo padrão de primeira resposta', color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.2)' },
-                  { key: 'resposta_final_semana', label: 'Final de semana / fora do horário', desc: '0 = próximo dia útil', color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.1)', borderColor: 'rgba(100, 116, 139, 0.2)' },
-                  { key: 'resposta_campanha_ativa', label: 'Cliente em campanha ativa', desc: 'Prioridade maior durante campanhas', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.2)' },
-                  { key: 'resposta_bug_critico', label: 'Bug crítico / bloqueante', desc: 'Máxima urgência', color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' }
-                ].map(item => (
-                  <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: item.bgColor, borderRadius: '10px', border: `1px solid ${item.borderColor}` }}>
-                    <div>
-                      <p style={{ color: item.color, fontSize: '13px', fontWeight: '500', margin: 0 }}>{item.label}</p>
-                      <p style={{ color: '#64748b', fontSize: '11px', margin: '2px 0 0 0' }}>{item.desc}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="number"
-                        min="0"
-                        value={slaConfig[item.key]}
-                        onChange={(e) => handleSlaConfigChange(item.key, Number(e.target.value) || 0)}
-                        disabled={!isAdmin}
-                        style={{
-                          width: '60px', padding: '6px 10px',
-                          background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                          border: `1px solid ${item.borderColor}`,
-                          borderRadius: '6px', color: isAdmin ? 'white' : '#64748b',
-                          fontSize: '13px', textAlign: 'center', outline: 'none',
-                          cursor: isAdmin ? 'text' : 'not-allowed'
-                        }}
-                      />
-                      <span style={{ color: '#64748b', fontSize: '12px' }}>horas</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <p style={{ color: '#64748b', fontSize: '11px', margin: '16px 0 0 0', fontStyle: 'italic' }}>
-              Esses valores serão usados futuramente para alertas de SLA próximo de estourar.
-            </p>
-          </div>
-
+      {/* SEÇÃO: Sincronização / Status (largura total) */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <RefreshCw style={{ width: '20px', height: '20px', color: '#06b6d4' }} />
+          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Sincronização / Status</h2>
         </div>
 
-        {/* COLUNA DIREITA */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* SEÇÃO 3: Configurações de Alertas */}
-          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-              <Bell style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Configurações de Alertas</h2>
-            </div>
-
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              Configure quando alertas devem ser criados automaticamente
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Alerta para sentimento negativo */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div>
-                  <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Alerta para sentimento negativo</p>
-                  <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Criar alerta quando thread tiver sentimento negativo</p>
-                </div>
-                <button
-                  onClick={() => isAdmin && handleAlertaConfigChange('alerta_sentimento_negativo', !alertaConfig.alerta_sentimento_negativo)}
-                  disabled={!isAdmin}
-                  style={{
-                    width: '48px',
-                    height: '28px',
-                    borderRadius: '14px',
-                    background: alertaConfig.alerta_sentimento_negativo ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
-                    border: 'none',
-                    cursor: isAdmin ? 'pointer' : 'not-allowed',
-                    position: 'relative',
-                    transition: 'all 0.2s ease',
-                    opacity: isAdmin ? 1 : 0.6
-                  }}
-                >
-                  <div style={{
-                    width: '22px',
-                    height: '22px',
-                    borderRadius: '50%',
-                    background: 'white',
-                    position: 'absolute',
-                    top: '3px',
-                    left: alertaConfig.alerta_sentimento_negativo ? '23px' : '3px',
-                    transition: 'all 0.2s ease'
-                  }}></div>
-                </button>
-              </div>
-
-              {/* Alerta para erro/bug */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div>
-                  <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Alerta para erro/bug</p>
-                  <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Criar alerta quando thread for categorizada como bug</p>
-                </div>
-                <button
-                  onClick={() => isAdmin && handleAlertaConfigChange('alerta_erro_bug', !alertaConfig.alerta_erro_bug)}
-                  disabled={!isAdmin}
-                  style={{
-                    width: '48px',
-                    height: '28px',
-                    borderRadius: '14px',
-                    background: alertaConfig.alerta_erro_bug ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
-                    border: 'none',
-                    cursor: isAdmin ? 'pointer' : 'not-allowed',
-                    position: 'relative',
-                    transition: 'all 0.2s ease',
-                    opacity: isAdmin ? 1 : 0.6
-                  }}
-                >
-                  <div style={{
-                    width: '22px',
-                    height: '22px',
-                    borderRadius: '50%',
-                    background: 'white',
-                    position: 'absolute',
-                    top: '3px',
-                    left: alertaConfig.alerta_erro_bug ? '23px' : '3px',
-                    transition: 'all 0.2s ease'
-                  }}></div>
-                </button>
-              </div>
-
-              {/* Alerta urgente automático */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div>
-                  <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Alerta urgente automático</p>
-                  <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Criar alerta urgente para sentimento "urgente"</p>
-                </div>
-                <button
-                  onClick={() => isAdmin && handleAlertaConfigChange('alerta_urgente_automatico', !alertaConfig.alerta_urgente_automatico)}
-                  disabled={!isAdmin}
-                  style={{
-                    width: '48px',
-                    height: '28px',
-                    borderRadius: '14px',
-                    background: alertaConfig.alerta_urgente_automatico ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
-                    border: 'none',
-                    cursor: isAdmin ? 'pointer' : 'not-allowed',
-                    position: 'relative',
-                    transition: 'all 0.2s ease',
-                    opacity: isAdmin ? 1 : 0.6
-                  }}
-                >
-                  <div style={{
-                    width: '22px',
-                    height: '22px',
-                    borderRadius: '50%',
-                    background: 'white',
-                    position: 'absolute',
-                    top: '3px',
-                    left: alertaConfig.alerta_urgente_automatico ? '23px' : '3px',
-                    transition: 'all 0.2s ease'
-                  }}></div>
-                </button>
-              </div>
-            </div>
+        {/* Erro de sync ClickUp */}
+        {clickUpSyncResults?.erro && (
+          <div style={{ marginBottom: '16px', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <XCircle style={{ width: '14px', height: '14px', color: '#ef4444' }} />
+            <span style={{ color: '#ef4444', fontSize: '12px' }}>Erro: {clickUpSyncResults.erro}</span>
           </div>
+        )}
 
-          {/* SEÇÃO: Filtros de Email */}
-          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-              <Mail style={{ width: '20px', height: '20px', color: '#f97316' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Filtros de Email</h2>
-            </div>
-
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              Filtre emails irrelevantes (newsletters, auto-replies, spam) das conversas com clientes
-            </p>
-
-            {/* Toggles */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
-              {/* Filtro ativo */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div>
-                  <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Filtro de email ativo</p>
-                  <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Ocultar automaticamente emails irrelevantes</p>
-                </div>
-                <button
-                  onClick={() => isAdmin && setEmailFilterConfig(prev => ({ ...prev, filtro_ativo: !prev.filtro_ativo }))}
-                  disabled={!isAdmin}
-                  style={{
-                    width: '48px', height: '28px', borderRadius: '14px',
-                    background: emailFilterConfig.filtro_ativo ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
-                    border: 'none', cursor: isAdmin ? 'pointer' : 'not-allowed',
-                    position: 'relative', transition: 'all 0.2s ease', opacity: isAdmin ? 1 : 0.6
-                  }}
-                >
-                  <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: emailFilterConfig.filtro_ativo ? '23px' : '3px', transition: 'all 0.2s ease' }}></div>
-                </button>
-              </div>
-
-              {/* Detectar auto-reply */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div>
-                  <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Detectar auto-reply</p>
-                  <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Filtrar respostas automáticas e "out of office"</p>
-                </div>
-                <button
-                  onClick={() => isAdmin && setEmailFilterConfig(prev => ({ ...prev, detectar_auto_reply: !prev.detectar_auto_reply }))}
-                  disabled={!isAdmin}
-                  style={{
-                    width: '48px', height: '28px', borderRadius: '14px',
-                    background: emailFilterConfig.detectar_auto_reply ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
-                    border: 'none', cursor: isAdmin ? 'pointer' : 'not-allowed',
-                    position: 'relative', transition: 'all 0.2s ease', opacity: isAdmin ? 1 : 0.6
-                  }}
-                >
-                  <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: emailFilterConfig.detectar_auto_reply ? '23px' : '3px', transition: 'all 0.2s ease' }}></div>
-                </button>
-              </div>
-
-              {/* Detectar bulk email */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div>
-                  <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Detectar email em massa</p>
-                  <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Filtrar emails de remetentes tipo noreply com 1 mensagem</p>
-                </div>
-                <button
-                  onClick={() => isAdmin && setEmailFilterConfig(prev => ({ ...prev, detectar_bulk_email: !prev.detectar_bulk_email }))}
-                  disabled={!isAdmin}
-                  style={{
-                    width: '48px', height: '28px', borderRadius: '14px',
-                    background: emailFilterConfig.detectar_bulk_email ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
-                    border: 'none', cursor: isAdmin ? 'pointer' : 'not-allowed',
-                    position: 'relative', transition: 'all 0.2s ease', opacity: isAdmin ? 1 : 0.6
-                  }}
-                >
-                  <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: emailFilterConfig.detectar_bulk_email ? '23px' : '3px', transition: 'all 0.2s ease' }}></div>
-                </button>
-              </div>
-            </div>
-
-            {/* Listas editáveis */}
-            {[
-              { campo: 'dominios_bloqueados', label: 'Prefixos de email bloqueados', placeholder: 'Ex: noreply@', desc: 'Bloqueia emails que começam com estes prefixos' },
-              { campo: 'dominios_completos_bloqueados', label: 'Domínios bloqueados', placeholder: 'Ex: mailchimp.com', desc: 'Bloqueia todos os emails destes domínios' },
-              { campo: 'palavras_chave_assunto', label: 'Palavras-chave no assunto', placeholder: 'Ex: newsletter', desc: 'Filtra emails com estas palavras no assunto' }
-            ].map(({ campo, label, placeholder, desc }) => (
-              <div key={campo} style={{ marginBottom: '16px' }}>
-                <p style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', margin: '0 0 4px 0', textTransform: 'uppercase' }}>{label}</p>
-                <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 10px 0' }}>{desc}</p>
-
-                {/* Chips */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-                  {(emailFilterConfig[campo] || []).map((item, idx) => (
-                    <span key={idx} style={{
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                      padding: '4px 10px',
-                      background: 'rgba(249, 115, 22, 0.1)',
-                      border: '1px solid rgba(249, 115, 22, 0.2)',
-                      borderRadius: '8px',
-                      color: '#f97316',
-                      fontSize: '12px'
-                    }}>
-                      {item}
-                      {isAdmin && (
-                        <button
-                          onClick={() => removerItemFiltro(campo, idx)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center' }}
-                        >
-                          <X style={{ width: '12px', height: '12px', color: '#f97316' }} />
-                        </button>
-                      )}
-                    </span>
-                  ))}
-                  {(emailFilterConfig[campo] || []).length === 0 && (
-                    <span style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>Nenhum item configurado</span>
-                  )}
-                </div>
-
-                {/* Input para adicionar */}
-                {isAdmin && (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder={placeholder}
-                      value={novoItemFiltro[campo] || ''}
-                      onChange={(e) => setNovoItemFiltro(prev => ({ ...prev, [campo]: e.target.value }))}
-                      onKeyDown={(e) => e.key === 'Enter' && adicionarItemFiltro(campo)}
-                      style={{
-                        flex: 1, padding: '8px 12px',
-                        background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.2)',
-                        borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none'
-                      }}
-                    />
-                    <button
-                      onClick={() => adicionarItemFiltro(campo)}
-                      style={{
-                        padding: '8px 14px',
-                        background: 'rgba(249, 115, 22, 0.15)',
-                        border: '1px solid rgba(249, 115, 22, 0.3)',
-                        borderRadius: '8px', color: '#f97316',
-                        fontSize: '13px', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: '4px'
-                      }}
-                    >
-                      <Plus style={{ width: '14px', height: '14px' }} />
-                      Adicionar
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* SEÇÃO 4: Parâmetros de Análise */}
-          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-              <Clock style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Parâmetros de Análise</h2>
-            </div>
-
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              Configure os períodos para alertas e análises
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* Grid de 3 colunas */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+          {/* Coluna 1: Dados (n8n) */}
+          <div>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 10px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dados</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {[
-                { key: 'dias_sem_contato_alerta', label: 'Dias sem contato (Alerta)', desc: 'Gera alerta de atenção' },
-                { key: 'dias_sem_contato_critico', label: 'Dias sem contato (Crítico)', desc: 'Gera alerta crítico' },
-                { key: 'dias_periodo_analise', label: 'Período de análise', desc: 'Janela para cálculo de métricas' }
-              ].map(item => (
-                <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                  <div>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>{item.label}</p>
-                    <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>{item.desc}</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="number"
-                      min="1"
-                      value={parametros[item.key]}
-                      onChange={(e) => handleParametroChange(item.key, e.target.value)}
-                      disabled={!isAdmin}
-                      style={{
-                        width: '70px',
-                        padding: '8px 12px',
-                        background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                        border: '1px solid #3730a3',
-                        borderRadius: '8px',
-                        color: isAdmin ? 'white' : '#64748b',
-                        fontSize: '14px',
-                        textAlign: 'center',
-                        outline: 'none',
-                        cursor: isAdmin ? 'text' : 'not-allowed'
-                      }}
-                    />
-                    <span style={{ color: '#64748b', fontSize: '14px' }}>dias</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* SEÇÃO: Períodos por Tipo de Conta */}
-          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-              <Sliders style={{ width: '20px', height: '20px', color: '#f97316' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Períodos por Tipo de Conta</h2>
-            </div>
-
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
-              Contas gratuitas usam thresholds mais lenientes na segmentação. Meses de baixa temporada dobram esses valores automaticamente.
-            </p>
-
-            {/* Pagante */}
-            <div style={{ marginBottom: '16px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <div style={{ width: '8px', height: '8px', background: '#8b5cf6', borderRadius: '50%' }}></div>
-                <p style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600', margin: 0, textTransform: 'uppercase' }}>Conta Pagante</p>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {[
-                  { key: 'pagante_dias_alerta', label: 'Dias sem uso → Alerta', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.2)' },
-                  { key: 'pagante_dias_resgate', label: 'Dias sem uso → Resgate', color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' },
-                  { key: 'pagante_periodo_analise', label: 'Período de análise', color: '#94a3b8', bgColor: 'rgba(100, 116, 139, 0.1)', borderColor: 'rgba(100, 116, 139, 0.2)' }
-                ].map(item => (
-                  <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: item.bgColor, borderRadius: '10px', border: `1px solid ${item.borderColor}` }}>
-                    <p style={{ color: item.color, fontSize: '13px', fontWeight: '500', margin: 0 }}>{item.label}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="number"
-                        min="1"
-                        value={tipoContaConfig[item.key]}
-                        onChange={(e) => handleTipoContaConfigChange(item.key, e.target.value)}
-                        disabled={!isAdmin}
-                        style={{
-                          width: '60px', padding: '6px 10px',
-                          background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                          border: `1px solid ${item.borderColor}`,
-                          borderRadius: '6px', color: isAdmin ? 'white' : '#64748b',
-                          fontSize: '13px', textAlign: 'center', outline: 'none',
-                          cursor: isAdmin ? 'text' : 'not-allowed'
-                        }}
-                      />
-                      <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Google Gratuito */}
-            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(6, 182, 212, 0.2)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <div style={{ width: '8px', height: '8px', background: '#06b6d4', borderRadius: '50%' }}></div>
-                <p style={{ color: '#06b6d4', fontSize: '13px', fontWeight: '600', margin: 0, textTransform: 'uppercase' }}>Google Gratuito</p>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {[
-                  { key: 'gratuito_dias_alerta', label: 'Dias sem uso → Alerta', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.2)' },
-                  { key: 'gratuito_dias_resgate', label: 'Dias sem uso → Resgate', color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)' },
-                  { key: 'gratuito_periodo_analise', label: 'Período de análise', color: '#94a3b8', bgColor: 'rgba(100, 116, 139, 0.1)', borderColor: 'rgba(100, 116, 139, 0.2)' }
-                ].map(item => (
-                  <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: item.bgColor, borderRadius: '10px', border: `1px solid ${item.borderColor}` }}>
-                    <p style={{ color: item.color, fontSize: '13px', fontWeight: '500', margin: 0 }}>{item.label}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="number"
-                        min="1"
-                        value={tipoContaConfig[item.key]}
-                        onChange={(e) => handleTipoContaConfigChange(item.key, e.target.value)}
-                        disabled={!isAdmin}
-                        style={{
-                          width: '60px', padding: '6px 10px',
-                          background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                          border: `1px solid ${item.borderColor}`,
-                          borderRadius: '6px', color: isAdmin ? 'white' : '#64748b',
-                          fontSize: '13px', textAlign: 'center', outline: 'none',
-                          cursor: isAdmin ? 'text' : 'not-allowed'
-                        }}
-                      />
-                      <span style={{ color: '#64748b', fontSize: '12px' }}>dias</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <p style={{ color: '#64748b', fontSize: '11px', margin: '16px 0 0 0', fontStyle: 'italic' }}>
-              Em meses de baixa temporada (sazonalidade), os thresholds de dias sem uso são automaticamente dobrados.
-            </p>
-          </div>
-
-          {/* SEÇÃO: Status de Sincronização n8n */}
-          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-              <Database style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Sincronização de Dados</h2>
-            </div>
-            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '16px' }}>
-              Última atualização dos dados via n8n
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {[
-                { key: 'times_ultima_sync', label: 'Times', icon: '👥' },
-                { key: 'usuarios_ultima_sync', label: 'Usuários', icon: '👤' },
-                { key: 'metricas_ultima_sync', label: 'Métricas de Uso', icon: '📊' },
+                { key: 'times_ultima_sync', label: 'Times' },
+                { key: 'usuarios_ultima_sync', label: 'Usuários' },
+                { key: 'metricas_ultima_sync', label: 'Métricas' },
               ].map(item => {
                 const info = formatSyncInfo(syncStatus?.[item.key]);
                 return (
                   <div key={item.key} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)',
-                    borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)'
+                    padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
+                    borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.1)'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '16px' }}>{item.icon}</span>
-                      <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>{item.label}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{
-                        width: '8px', height: '8px', borderRadius: '50%',
-                        background: info.color
-                      }} />
-                      <span style={{ color: info.color, fontSize: '12px', fontWeight: '500' }}>
-                        {info.text}
-                      </span>
+                    <p style={{ color: 'white', fontSize: '13px', margin: 0 }}>{item.label}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: info.color }} />
+                      <span style={{ color: info.color, fontSize: '11px', fontWeight: '500' }}>{info.text}</span>
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            <p style={{ color: '#64748b', fontSize: '11px', margin: '12px 0 0 0', fontStyle: 'italic' }}>
-              Verde = atualizado nas últimas 24h · Amarelo = 1-3 dias · Vermelho = mais de 3 dias
-            </p>
           </div>
 
-          {/* SEÇÃO 5: Integrações (simplificado) */}
-          <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-              <Link2 style={{ width: '20px', height: '20px', color: '#06b6d4' }} />
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Status das Integrações</h2>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {/* OpenAI */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: '36px',
-                    height: '36px',
-                    background: openAIStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Zap style={{ width: '18px', height: '18px', color: openAIStatus?.configured ? '#10b981' : '#ef4444' }} />
-                  </div>
-                  <div>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>OpenAI</p>
-                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Classificação de threads</p>
-                  </div>
-                </div>
-                <span style={{
-                  padding: '4px 10px',
-                  background: openAIStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                  color: openAIStatus?.configured ? '#10b981' : '#ef4444',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  fontWeight: '500'
-                }}>
-                  {openAIStatus?.configured ? 'Ativo' : 'Inativo'}
+          {/* Coluna 2: Atualização */}
+          <div>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 10px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Atualização</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
+                borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.1)'
+              }}>
+                <p style={{ color: 'white', fontSize: '13px', margin: 0 }}>Alertas</p>
+                <span style={{ color: '#a78bfa', fontSize: '11px', fontWeight: '500' }}>
+                  {syncStatus?.ultima_verificacao_alertas
+                    ? (syncStatus.ultima_verificacao_alertas.toDate
+                        ? syncStatus.ultima_verificacao_alertas.toDate()
+                        : new Date(syncStatus.ultima_verificacao_alertas)
+                      ).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : 'Nunca'}
                 </span>
               </div>
-
-              {/* ClickUp */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: '36px',
-                    height: '36px',
-                    background: clickUpStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.2)',
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
+                borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.1)'
+              }}>
+                <p style={{ color: 'white', fontSize: '13px', margin: 0 }}>ClickUp</p>
+                <span style={{ color: syncStatus?.clickup_ativo ? '#a78bfa' : '#64748b', fontSize: '11px', fontWeight: '500' }}>
+                  {syncStatus?.ultima_sync_clickup
+                    ? (syncStatus.ultima_sync_clickup.toDate
+                        ? syncStatus.ultima_sync_clickup.toDate()
+                        : new Date(syncStatus.ultima_sync_clickup)
+                      ).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : 'Nunca'}
+                </span>
+              </div>
+              {/* Botão Sync Manual */}
+              {isClickUpConfigured() && (
+                <button
+                  onClick={runClickUpSync}
+                  disabled={sincronizandoClickUp}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    padding: '8px 12px',
+                    background: sincronizandoClickUp ? 'rgba(6, 182, 212, 0.2)' : 'rgba(6, 182, 212, 0.1)',
+                    border: '1px solid rgba(6, 182, 212, 0.3)',
                     borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Zap style={{ width: '18px', height: '18px', color: clickUpStatus?.configured ? '#10b981' : '#64748b' }} />
-                  </div>
-                  <div>
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>ClickUp</p>
-                    <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Alertas e Playbooks</p>
-                  </div>
+                    color: '#06b6d4',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: sincronizandoClickUp ? 'not-allowed' : 'pointer',
+                    marginTop: '4px'
+                  }}
+                >
+                  <RefreshCw style={{ width: '12px', height: '12px', animation: sincronizandoClickUp ? 'spin 1s linear infinite' : 'none' }} />
+                  {sincronizandoClickUp ? 'Sincronizando...' : 'Sincronizar Agora'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Coluna 3: APIs */}
+          <div>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', margin: '0 0 10px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>APIs</p>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <div style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
+                borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.1)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Zap style={{ width: '14px', height: '14px', color: openAIStatus?.configured ? '#10b981' : '#ef4444' }} />
+                  <p style={{ color: 'white', fontSize: '13px', margin: 0 }}>OpenAI</p>
                 </div>
                 <span style={{
-                  padding: '4px 10px',
+                  padding: '2px 6px',
+                  background: openAIStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                  color: openAIStatus?.configured ? '#10b981' : '#ef4444',
+                  borderRadius: '4px', fontSize: '10px', fontWeight: '500'
+                }}>
+                  {openAIStatus?.configured ? 'OK' : 'OFF'}
+                </span>
+              </div>
+              <div style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
+                borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.1)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Zap style={{ width: '14px', height: '14px', color: clickUpStatus?.configured ? '#10b981' : '#64748b' }} />
+                  <p style={{ color: 'white', fontSize: '13px', margin: 0 }}>ClickUp</p>
+                </div>
+                <span style={{
+                  padding: '2px 6px',
                   background: clickUpStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.2)',
                   color: clickUpStatus?.configured ? '#10b981' : '#64748b',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  fontWeight: '500'
+                  borderRadius: '4px', fontSize: '10px', fontWeight: '500'
                 }}>
-                  {clickUpStatus?.configured ? 'Ativo' : 'Inativo'}
+                  {clickUpStatus?.configured ? 'OK' : 'OFF'}
                 </span>
               </div>
             </div>

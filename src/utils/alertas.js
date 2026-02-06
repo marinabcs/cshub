@@ -1,13 +1,15 @@
 import { applyFiltersToThreads } from './emailFilters';
 
 // Tipos de alertas
+// ATIVOS: sentimento_negativo, problema_reclamacao, entrou_resgate
+// sem_uso_plataforma já é tratado pela Saúde CS (14d→ALERTA, 30d→RESGATE)
 export const ALERTA_TIPOS = {
-  sem_uso_plataforma: {
-    value: 'sem_uso_plataforma',
-    label: 'Sem Uso da Plataforma',
-    description: 'Cliente sem usar a plataforma há 15 dias ou mais',
-    icon: 'Clock',
-    color: '#f59e0b', // amarelo
+  sentimento_negativo: {
+    value: 'sentimento_negativo',
+    label: 'Sentimento Negativo',
+    description: 'Conversa detectada com sentimento negativo ou urgente',
+    icon: 'Frown',
+    color: '#dc2626', // vermelho escuro
   },
   problema_reclamacao: {
     value: 'problema_reclamacao',
@@ -16,12 +18,20 @@ export const ALERTA_TIPOS = {
     icon: 'AlertTriangle',
     color: '#ef4444', // vermelho
   },
-  sentimento_negativo: {
-    value: 'sentimento_negativo',
-    label: 'Sentimento Negativo',
-    description: 'Conversa detectada com sentimento negativo ou urgente',
-    icon: 'Frown',
+  entrou_resgate: {
+    value: 'entrou_resgate',
+    label: 'Cliente em Resgate',
+    description: 'Cliente entrou no segmento RESGATE - ação urgente necessária',
+    icon: 'AlertOctagon',
     color: '#dc2626', // vermelho escuro
+  },
+  // DESATIVADOS (mantidos para alertas históricos):
+  sem_uso_plataforma: {
+    value: 'sem_uso_plataforma',
+    label: 'Sem Uso da Plataforma',
+    description: 'Cliente sem usar a plataforma há 15 dias ou mais',
+    icon: 'Clock',
+    color: '#f59e0b', // amarelo
   },
   sazonalidade_alta_inativo: {
     value: 'sazonalidade_alta_inativo',
@@ -30,9 +40,6 @@ export const ALERTA_TIPOS = {
     icon: 'Calendar',
     color: '#f97316', // laranja
   },
-  // DESATIVADOS TEMPORARIAMENTE:
-  // resposta_pendente: aguardando resposta da equipe
-  // creditos_baixos: créditos AI baixos
 };
 
 // Prioridades
@@ -520,6 +527,55 @@ export function gerarAlertasSazonalidade(clientes, metricas, alertasExistentes) 
   return alertas;
 }
 
+// Gerar alertas quando cliente entra em RESGATE
+export function gerarAlertasEntrouResgate(clientes, alertasExistentes) {
+  const alertas = [];
+
+  for (const cliente of clientes) {
+    // Pular clientes que não estão em RESGATE
+    if (cliente.segmento_cs !== 'RESGATE') continue;
+
+    // Pular clientes inativos/cancelados
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') continue;
+
+    // Verificar se já existe alerta pendente para este cliente
+    const alertaExistente = alertasExistentes.find(
+      a => a.tipo === 'entrou_resgate' &&
+           a.cliente_id === cliente.id &&
+           (a.status === 'pendente' || a.status === 'em_andamento')
+    );
+    if (alertaExistente) continue;
+
+    const clienteNome = cliente.team_name || cliente.nome;
+
+    // Pegar todos os responsáveis
+    const responsaveis = (cliente.responsaveis && cliente.responsaveis.length > 0)
+      ? cliente.responsaveis
+      : (cliente.responsavel_email ? [{ email: cliente.responsavel_email, nome: cliente.responsavel_nome }] : []);
+
+    // Pegar motivo do RESGATE se disponível
+    const motivo = cliente.segmento_motivo || 'Critérios de risco atingidos';
+
+    alertas.push({
+      tipo: 'entrou_resgate',
+      titulo: `🚨 ${clienteNome} entrou em RESGATE`,
+      mensagem: `Cliente entrou no segmento crítico RESGATE. Motivo: ${motivo}. Ação urgente necessária.`,
+      prioridade: 'urgente',
+      status: 'pendente',
+      time_id: cliente.team_id || cliente.times?.[0] || null,
+      time_name: clienteNome,
+      cliente_id: cliente.id,
+      cliente_nome: clienteNome,
+      thread_id: null,
+      responsaveis: responsaveis,
+      responsavel_email: responsaveis[0]?.email || null,
+      responsavel_nome: responsaveis.map(r => r.nome).join(', ') || null,
+    });
+  }
+
+  return alertas;
+}
+
 // Executar todas as verificações
 export function verificarTodosAlertas(clientes, threads, alertasExistentes, metricas = [], filterConfig = null) {
   console.log(`[Alertas] ========== INICIO VERIFICACAO ==========`);
@@ -614,12 +670,18 @@ export function verificarTodosAlertas(clientes, threads, alertasExistentes, metr
   // Excluir threads marcadas manualmente como irrelevantes
   threadsRelevantes = threadsRelevantes.filter(t => !t.filtrado_manual);
 
+  // ALERTAS ATIVOS:
+  // 1. sentimento_negativo - Conversas com sentimento negativo/urgente (todos os clientes)
+  // 2. problema_reclamacao - Threads categorizadas como problema/reclamação (todos os clientes)
+  // 3. entrou_resgate - Cliente entrou no segmento RESGATE (alerta específico urgente)
+  // NOTA: sem_uso_plataforma já é tratado pela Saúde CS (14d→ALERTA, 30d→RESGATE)
   const novosAlertas = [
-    ...gerarAlertasSemUso(clientes, metricas, alertasExistentes, threadsMap),
-    ...gerarAlertasProblemaReclamacao(threadsRelevantes, alertasExistentes, clientesMap),
     ...gerarAlertasSentimentoNegativo(threadsRelevantes, alertasExistentes, clientesMap),
-    ...gerarAlertasSazonalidade(clientes, metricas, alertasExistentes),
-    // DESATIVADOS TEMPORARIAMENTE:
+    ...gerarAlertasProblemaReclamacao(threadsRelevantes, alertasExistentes, clientesMap),
+    ...gerarAlertasEntrouResgate(clientes, alertasExistentes),
+    // DESATIVADOS:
+    // ...gerarAlertasSemUso(clientes, metricas, alertasExistentes, threadsMap),
+    // ...gerarAlertasSazonalidade(clientes, metricas, alertasExistentes),
     // ...gerarAlertasRespostaPendente(threads, alertasExistentes),
     // ...gerarAlertasCreditosBaixos(clientes, alertasExistentes),
   ];

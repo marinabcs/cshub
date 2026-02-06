@@ -1,26 +1,45 @@
 import { z } from 'zod';
 
-const posInt = z.number().int().positive('Deve ser um número positivo');
+const posInt = z.number().int().positive('Deve ser um numero positivo');
+const nonNegInt = z.number().int().nonnegative('Deve ser zero ou positivo');
+const posNum = z.number().positive('Deve ser um numero positivo');
 
+/**
+ * Schema de validacao para configuracoes de Saude CS
+ *
+ * Pilares (ordem de prioridade):
+ * 1. Reclamacoes em aberto (veto absoluto)
+ * 2. Dias ativos no mes (base da classificacao)
+ * 3. Engajamento (elevacao para CRESCIMENTO)
+ */
 export const configGeralSchema = z.object({
-  dias_sem_contato_alerta: posInt,
-  dias_sem_contato_critico: posInt,
-  dias_periodo_analise: posInt,
-  dias_sem_uso_watch: posInt,
-  dias_sem_uso_rescue: posInt,
-  dias_reclamacao_grave: posInt,
-  dias_reclamacoes_recentes: posInt,
-  dias_ativos_frequente: posInt,
-  dias_ativos_regular: posInt,
-  dias_ativos_irregular: posInt,
-  engajamento_alto: posInt,
-  engajamento_medio: posInt,
-  pagante_dias_alerta: posInt.optional(),
-  pagante_dias_resgate: posInt.optional(),
-  pagante_periodo_analise: posInt.optional(),
-  gratuito_dias_alerta: posInt.optional(),
-  gratuito_dias_resgate: posInt.optional(),
-  gratuito_periodo_analise: posInt.optional()
+  // Dias ativos no mes (thresholds por nivel)
+  dias_ativos_crescimento: posInt,
+  dias_ativos_estavel: posInt,
+  dias_ativos_alerta: posInt,
+  dias_ativos_resgate: nonNegInt,
+  // Score de engajamento (thresholds por nivel)
+  engajamento_crescimento: posInt,
+  engajamento_estavel: posInt,
+  engajamento_alerta: nonNegInt,
+  engajamento_resgate: nonNegInt,
+  // Reclamacoes em aberto (toggles por nivel - se TRUE, esse nivel aceita reclamacoes)
+  reclamacoes_crescimento: z.boolean(),
+  reclamacoes_estavel: z.boolean(),
+  reclamacoes_alerta: z.boolean(),
+  reclamacoes_resgate: z.boolean(),
+  // Thresholds adicionais
+  reclamacoes_max_resgate: posInt.optional(),
+  bugs_max_alerta: posInt.optional(),
+  // Toggles de regras especiais
+  aviso_previo_resgate: z.boolean().optional(),
+  champion_saiu_alerta: z.boolean().optional(),
+  tags_problema_alerta: z.boolean().optional(),
+  zero_producao_alerta: z.boolean().optional(),
+  // Pesos do score de engajamento
+  peso_pecas: posNum.optional(),
+  peso_ia: posNum.optional(),
+  peso_downloads: posNum.optional(),
 });
 
 export const configAlertasSchema = z.object({
@@ -29,8 +48,7 @@ export const configAlertasSchema = z.object({
   alerta_urgente_automatico: z.boolean()
 });
 
-const posNum = z.number().nonnegative('Deve ser zero ou positivo');
-const horaStr = z.string().regex(/^\d{2}:\d{2}$/, 'Formato inválido (HH:MM)');
+const horaStr = z.string().regex(/^\d{2}:\d{2}$/, 'Formato invalido (HH:MM)');
 
 export const configSlaSchema = z.object({
   resposta_dias_uteis: posNum,

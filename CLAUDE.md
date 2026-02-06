@@ -34,11 +34,12 @@
 - ✅ Cliente Detalhe — OK (abas Conversas+Interações unificadas, Playbooks removida, stakeholders com add/delete, todos responsáveis exibidos)
 - ✅ Cliente Form — OK (removido: Tags de Contexto, Onboarding e Produto, Calendário de Campanhas, Pessoa para Video; Health Score→Saúde CS; Promise.all em queries; serverTimestamp; schema limpo)
 - ✅ Resumo Executivo — OK (queries paralelas com Promise.all; nome||team_name consistente; imports limpos)
-- ✅ Analytics — OK (5 imports limpos; 12x team_name→nome||team_name; responsavel→responsaveis[0]; queries já paralelas)
-- Documentos — pendente
-- Ongoing — pendente
-- Onboarding — pendente
-- Alertas — pendente
+- ✅ Analytics — OK (imports limpos; nome||team_name; filtros globais Saúde+Status adicionados; fórmula score exibida; PDF tema claro)
+- ⚠️ Analytics PDF — tema claro funciona mas números grandes ainda cortam na parte inferior (precisa ajuste no clipping do html2canvas)
+- Documentos — oculto (disponível dentro do cliente)
+- ✅ Ongoing — OK (cards, D+X, nome clicável)
+- ✅ Onboarding — OK
+- ✅ Alertas — OK (reduzido para: sentimento_negativo, problema_reclamacao, entrou_resgate)
 - Configurações — pendente
 - Usuários — pendente
 - Auditoria — pendente
@@ -224,6 +225,32 @@ VITE_CLICKUP_TEAM_ID=xxxxxxx
 
 ---
 
+## 🔔 Sistema de Alertas (Atualizado: 06/02/2026)
+
+### Tipos de Alertas ATIVOS:
+| Tipo | Descrição | Prioridade |
+|------|-----------|------------|
+| `sentimento_negativo` | Conversa com sentimento negativo/urgente | Alta/Urgente |
+| `problema_reclamacao` | Thread categorizada como erro/bug/reclamação | Alta |
+| `entrou_resgate` | Cliente entrou no segmento RESGATE | Urgente |
+
+### Tipos DESATIVADOS (mantidos para histórico):
+- `sem_uso_plataforma` — Já tratado pela Saúde CS (14d→ALERTA, 30d→RESGATE)
+- `sazonalidade_alta_inativo` — Desativado temporariamente
+
+### Verificação Automática:
+- **Cloud Function:** `verificarAlertasAutomatico`
+- **Horários:** 9h, 13h, 17h (seg-sex, horário de Brasília)
+- **Lógica:** Verifica threads dos últimos 7 dias + clientes em RESGATE
+- **ClickUp:** Cria tarefas automaticamente para cada alerta (requer `CLICKUP_LIST_ID` secret)
+
+### Arquivos relevantes:
+- `/src/utils/alertas.js` — Funções de geração de alertas
+- `/src/pages/Alertas.jsx` — Interface de gerenciamento
+- `/functions/index.js` — Cloud Function scheduled
+
+---
+
 ## ✅ BUG RESOLVIDO - Alertas não encontravam clientes (30/01/2026)
 
 ### Problema original:
@@ -261,6 +288,7 @@ if (cliente.times && Array.isArray(cliente.times)) {
 - `validateDomain` — bloqueia signup fora do @trakto.io (beforeUserCreated)
 - `syncUserRole` — sincroniza Custom Claims quando role muda (onDocumentWritten)
 - `recalcularSaudeDiaria` — recalcula segmento_cs de todos os clientes ativos (scheduled, 7h BRT)
+- `verificarAlertasAutomatico` — gera alertas automaticamente (scheduled, 9h/13h/17h seg-sex BRT)
 - `setUserRole` — admin define roles (onCall, rate limited 20/min)
 - `classifyThread` — proxy OpenAI para classificacao de threads (onCall, rate limited 30/min)
 - `generateSummary` — proxy OpenAI para resumo executivo (onCall, rate limited 30/min)
@@ -285,6 +313,7 @@ if (cliente.times && Array.isArray(cliente.times)) {
 ### Firebase Secrets (Google Secret Manager):
 - `OPENAI_API_KEY` — chave OpenAI
 - `CLICKUP_API_KEY` — chave ClickUp
+- `CLICKUP_LIST_ID` — ID da lista do ClickUp para criar tarefas automáticas
 - `CLICKUP_WEBHOOK_SECRET` — secret HMAC do webhook
 
 ### Comandos de deploy:

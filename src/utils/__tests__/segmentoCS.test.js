@@ -293,7 +293,7 @@ describe('isSegmentoOverride', () => {
 // ============================================
 
 describe('calcularSegmentoCS', () => {
-  // RESGATE
+  // RESGATE - Condições críticas
 
   describe('RESGATE', () => {
     it('cliente em aviso_previo => RESGATE', () => {
@@ -303,88 +303,30 @@ describe('calcularSegmentoCS', () => {
       expect(result.motivo).toContain('aviso previo');
     });
 
-    it('30+ dias sem uso (pagante) => RESGATE', () => {
-      const trintaDiasAtras = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
-      const cliente = makeCliente({ updated_at: trintaDiasAtras });
-      const metricas = { ultima_atividade: trintaDiasAtras };
+    it('3+ reclamações em aberto => RESGATE', () => {
+      const cliente = makeCliente();
+      const threads = [
+        makeThread({ sentimento: 'negativo', status: 'aberto' }),
+        makeThread({ sentimento: 'negativo', status: 'aberto' }),
+        makeThread({ categoria: 'reclamacao', status: 'aberto' }),
+      ];
+      const result = calcularSegmentoCS(cliente, threads, makeMetricas(), 1);
+      expect(result.segmento).toBe('RESGATE');
+      expect(result.motivo).toContain('reclamacoes em aberto');
+    });
+
+    it('zero dias ativos + zero produção => RESGATE', () => {
+      const cliente = makeCliente();
+      const metricas = { dias_ativos: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 };
       const result = calcularSegmentoCS(cliente, [], metricas, 1);
       expect(result.segmento).toBe('RESGATE');
-      expect(result.motivo).toContain('dias sem uso');
-    });
-
-    it('reclamação grave (urgente nos últimos 7 dias) => RESGATE', () => {
-      const cliente = makeCliente();
-      const thread = makeThread({
-        sentimento: 'urgente',
-        updated_at: new Date(), // hoje
-      });
-      const metricas = makeMetricas();
-      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
-      expect(result.segmento).toBe('RESGATE');
-      expect(result.motivo).toContain('Reclamacao grave');
-    });
-
-    it('sem uso + reclamações recentes => RESGATE', () => {
-      const cliente = makeCliente();
-      const thread = makeThread({
-        sentimento: 'negativo',
-        updated_at: new Date(),
-      });
-      const metricas = { logins: 0, dias_ativos: 0 }; // sem_uso
-      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
-      expect(result.segmento).toBe('RESGATE');
-    });
-
-    it('sem produção e sem uso recente => RESGATE', () => {
-      const oitoDiasAtras = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
-      const cliente = makeCliente({ updated_at: oitoDiasAtras });
-      const metricas = {
-        ultima_atividade: oitoDiasAtras,
-        logins: 15,
-        dias_ativos: 10,
-        pecas_criadas: 0,
-        downloads: 0,
-        uso_ai_total: 0,
-      };
-      // frequencia = 'regular' (dias_ativos >= 8), mas sem produção + 8 dias sem uso
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('RESGATE');
-      expect(result.motivo).toContain('Sem producao');
+      expect(result.motivo).toContain('Sem atividade');
     });
   });
 
-  // ALERTA
+  // ALERTA - Sinais de atenção
 
   describe('ALERTA', () => {
-    it('14+ dias sem uso (pagante) => ALERTA', () => {
-      const quinzeDiasAtras = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000);
-      const cliente = makeCliente();
-      const metricas = {
-        ultima_atividade: quinzeDiasAtras,
-        logins: 10,
-        dias_ativos: 10,
-        pecas_criadas: 5,
-        downloads: 2,
-        uso_ai_total: 1,
-      };
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('dias sem uso');
-    });
-
-    it('reclamações recentes (sem ser urgente) => ALERTA', () => {
-      const cliente = makeCliente();
-      const thread = makeThread({
-        sentimento: 'negativo',
-        categoria: 'reclamacao',
-        updated_at: new Date(),
-      });
-      const metricas = makeMetricas();
-      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
-      expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('Reclamacoes recentes');
-    });
-
     it('champion saiu => ALERTA', () => {
       const cliente = makeCliente({ champion_saiu: true });
       const metricas = makeMetricas();
@@ -393,40 +335,14 @@ describe('calcularSegmentoCS', () => {
       expect(result.motivo).toContain('Champion saiu');
     });
 
-    it('uso raro => ALERTA', () => {
-      const cliente = makeCliente();
-      const metricas = {
-        ...makeMetricas(),
-        logins: 1,
-        dias_ativos: 1,
-        pecas_criadas: 1,
-      };
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('Uso raro');
-    });
-
-    it('uso irregular => ALERTA', () => {
-      const cliente = makeCliente();
-      const metricas = {
-        ...makeMetricas(),
-        logins: 3,
-        dias_ativos: 4,
-        pecas_criadas: 5,
-      };
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('irregular');
-    });
-
-    it('tag Risco de Churn => ALERTA', () => {
+    it('tags de problema => ALERTA', () => {
       const cliente = makeCliente({
-        tags_problema: [{ tag: 'Risco de Churn' }],
+        tags_problema: [{ tag: 'Problema X' }],
       });
       const metricas = makeMetricas();
       const result = calcularSegmentoCS(cliente, [], metricas, 1);
       expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('Risco de Churn');
+      expect(result.motivo).toContain('Tags de problema');
     });
 
     it('3+ bugs abertos => ALERTA', () => {
@@ -443,11 +359,9 @@ describe('calcularSegmentoCS', () => {
       expect(result.motivo).toContain('bugs abertos');
     });
 
-    it('login sem produção => ALERTA', () => {
+    it('zero produção (com dias ativos) => ALERTA', () => {
       const cliente = makeCliente();
       const metricas = {
-        ultima_atividade: new Date(),
-        logins: 10,
         dias_ativos: 10,
         pecas_criadas: 0,
         downloads: 0,
@@ -457,125 +371,159 @@ describe('calcularSegmentoCS', () => {
       expect(result.segmento).toBe('ALERTA');
       expect(result.motivo).toContain('Login sem producao');
     });
-  });
 
-  // TIPO DE CONTA E SAZONALIDADE
-
-  describe('google_gratuito - thresholds lenientes', () => {
-    it('60+ dias sem uso para RESGATE (ao invés de 30)', () => {
-      const quarentaDiasAtras = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
-      const cliente = makeCliente({ tipo_conta: 'google_gratuito' });
+    it('poucos dias ativos => ALERTA', () => {
+      const cliente = makeCliente();
       const metricas = {
-        ultima_atividade: quarentaDiasAtras,
-        logins: 10,
-        dias_ativos: 10,
+        dias_ativos: 2, // abaixo do threshold de alerta (3)
         pecas_criadas: 5,
         downloads: 2,
         uso_ai_total: 1,
       };
-      // 40 dias sem uso: pagante seria RESGATE, gratuito é ALERTA
       const result = calcularSegmentoCS(cliente, [], metricas, 1);
       expect(result.segmento).toBe('ALERTA');
+      expect(result.motivo).toContain('dias ativos');
     });
-  });
 
-  describe('sazonalidade', () => {
-    it('mês de baixa dobra thresholds', () => {
-      const mesAtual = MESES_KEYS[new Date().getMonth()];
-      const vinteDiasAtras = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
-      const cliente = makeCliente({
-        calendario_campanhas: { [mesAtual]: 'baixa' },
+    it('reclamação em aberto impede CRESCIMENTO/ESTÁVEL => ALERTA', () => {
+      const cliente = makeCliente();
+      const thread = makeThread({
+        sentimento: 'negativo',
+        status: 'aberto',
       });
-      const metricas = {
-        ultima_atividade: vinteDiasAtras,
-        logins: 10,
-        dias_ativos: 10,
-        pecas_criadas: 5,
-        downloads: 2,
-        uso_ai_total: 1,
-      };
-      // 20 dias: threshold normal ALERTA = 14, mas com baixa = 28, então não é alerta
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).not.toBe('RESGATE');
+      // Métricas boas, mas tem reclamação
+      const metricas = makeMetricas({ dias_ativos: 25, pecas_criadas: 100, uso_ai_total: 50, downloads: 30 });
+      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
+      expect(result.segmento).toBe('ALERTA');
+      expect(result.motivo).toContain('reclamacao');
     });
   });
 
-  // CRESCIMENTO
+  // ESTÁVEL - Cliente saudável
+
+  describe('ESTAVEL', () => {
+    it('dias ativos >= 8 sem problemas => ESTAVEL', () => {
+      const cliente = makeCliente();
+      const metricas = {
+        dias_ativos: 10,
+        pecas_criadas: 8,
+        uso_ai_total: 2,
+        downloads: 3,
+      };
+      const result = calcularSegmentoCS(cliente, [], metricas, 1);
+      expect(result.segmento).toBe('ESTAVEL');
+      expect(result.motivo).toContain('dias ativos');
+    });
+  });
+
+  // CRESCIMENTO - Melhor classificação
 
   describe('CRESCIMENTO', () => {
-    it('uso frequente + alto engajamento => CRESCIMENTO', () => {
-      const cliente = makeCliente({ ultima_interacao_data: new Date() });
-      const metricas = makeMetricas({
-        logins: 50,
+    it('dias ativos >= 20 + engajamento alto => CRESCIMENTO', () => {
+      const cliente = makeCliente();
+      const metricas = {
+        dias_ativos: 25,
+        pecas_criadas: 50,  // 50*2 = 100
+        uso_ai_total: 20,   // 20*1.5 = 30
+        downloads: 10,      // 10*1 = 10
+        // Score = 140 >= 50
+      };
+      const result = calcularSegmentoCS(cliente, [], metricas, 1);
+      expect(result.segmento).toBe('CRESCIMENTO');
+      expect(result.motivo).toContain('dias ativos');
+      expect(result.motivo).toContain('engajamento');
+    });
+
+    it('NÃO crescimento se tem reclamação em aberto', () => {
+      const cliente = makeCliente();
+      const thread = makeThread({ sentimento: 'negativo', status: 'aberto' });
+      const metricas = {
         dias_ativos: 25,
         pecas_criadas: 100,
         uso_ai_total: 50,
         downloads: 30,
-      });
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('CRESCIMENTO');
-      expect(result.motivo).toContain('frequente');
-    });
-
-    it('uso frequente + engajamento medio sem problemas => CRESCIMENTO', () => {
-      const cliente = makeCliente({ ultima_interacao_data: new Date() });
-      const metricas = makeMetricas({
-        logins: 30,
-        dias_ativos: 22,
-        pecas_criadas: 10,
-        uso_ai_total: 5,
-        downloads: 3,
-      });
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('CRESCIMENTO');
+      };
+      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
+      expect(result.segmento).not.toBe('CRESCIMENTO');
     });
 
     it('NÃO crescimento se tem tags de problema', () => {
       const cliente = makeCliente({
         tags_problema: [{ tag: 'Problema X' }],
-        ultima_interacao_data: new Date(),
       });
-      const metricas = makeMetricas({
-        logins: 50,
+      const metricas = {
         dias_ativos: 25,
         pecas_criadas: 100,
         uso_ai_total: 50,
         downloads: 30,
-      });
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).not.toBe('CRESCIMENTO');
-    });
-
-    it('NÃO crescimento se sem contato recente (60+ dias)', () => {
-      const sessenta = new Date(Date.now() - 61 * 24 * 60 * 60 * 1000);
-      const cliente = makeCliente({ ultima_interacao_data: sessenta });
-      const metricas = makeMetricas({
-        logins: 50,
-        dias_ativos: 25,
-        pecas_criadas: 100,
-        uso_ai_total: 50,
-        downloads: 30,
-      });
+      };
       const result = calcularSegmentoCS(cliente, [], metricas, 1);
       expect(result.segmento).not.toBe('CRESCIMENTO');
     });
   });
 
-  // ESTAVEL (default)
+  // SAZONALIDADE - Divisores aplicados
 
-  describe('ESTAVEL', () => {
-    it('cliente regular sem problemas => ESTAVEL', () => {
-      const cliente = makeCliente();
-      const metricas = makeMetricas({
-        logins: 12,
-        dias_ativos: 10,
-        pecas_criadas: 8,
-        uso_ai_total: 2,
-        downloads: 3,
+  describe('SAZONALIDADE', () => {
+    it('mês de baixa divide thresholds por 2', () => {
+      const mesAtual = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'][new Date().getMonth()];
+      const cliente = makeCliente({
+        calendario_campanhas: { [mesAtual]: 'baixa' },
       });
+      // Com divisor 2: threshold estável = 8/2 = 4
+      const metricas = {
+        dias_ativos: 5, // >= 4 = ESTÁVEL
+        pecas_criadas: 10,
+        uso_ai_total: 5,
+        downloads: 3,
+      };
       const result = calcularSegmentoCS(cliente, [], metricas, 1);
       expect(result.segmento).toBe('ESTAVEL');
-      expect(result.motivo).toContain('estavel');
+    });
+
+    it('google_gratuito divide thresholds por 2', () => {
+      const cliente = makeCliente({ tipo_conta: 'google_gratuito' });
+      // Com divisor 2: threshold estável = 8/2 = 4
+      const metricas = {
+        dias_ativos: 5, // >= 4 = ESTÁVEL
+        pecas_criadas: 10,
+        uso_ai_total: 5,
+        downloads: 3,
+      };
+      const result = calcularSegmentoCS(cliente, [], metricas, 1);
+      expect(result.segmento).toBe('ESTAVEL');
+    });
+  });
+
+  // CONFIG CUSTOMIZADA
+
+  describe('config customizada', () => {
+    it('usa thresholds customizados', () => {
+      const cliente = makeCliente();
+      const metricas = { dias_ativos: 5, pecas_criadas: 10, uso_ai_total: 5, downloads: 3 };
+
+      // Com config padrão (dias_ativos_estavel = 8), seria ALERTA
+      const resultDefault = calcularSegmentoCS(cliente, [], metricas, 1);
+      expect(resultDefault.segmento).toBe('ALERTA');
+
+      // Com config customizada (dias_ativos_estavel = 4), seria ESTÁVEL
+      const config = { dias_ativos_estavel: 4 };
+      const resultCustom = calcularSegmentoCS(cliente, [], metricas, 1, config);
+      expect(resultCustom.segmento).toBe('ESTAVEL');
+    });
+
+    it('usa pesos de engajamento customizados', () => {
+      const cliente = makeCliente();
+      const metricas = { dias_ativos: 22, pecas_criadas: 10, uso_ai_total: 10, downloads: 5 };
+
+      // Score padrão = (10*2) + (10*1.5) + (5*1) = 20 + 15 + 5 = 40 (< 50 = não CRESCIMENTO)
+      const resultDefault = calcularSegmentoCS(cliente, [], metricas, 1);
+      expect(resultDefault.segmento).toBe('ESTAVEL');
+
+      // Com pesos maiores: (10*3) + (10*2) + (5*2) = 30 + 20 + 10 = 60 (>= 50 = CRESCIMENTO)
+      const config = { peso_pecas: 3, peso_ia: 2, peso_downloads: 2 };
+      const resultCustom = calcularSegmentoCS(cliente, [], metricas, 1, config);
+      expect(resultCustom.segmento).toBe('CRESCIMENTO');
     });
   });
 
@@ -585,15 +533,16 @@ describe('calcularSegmentoCS', () => {
     it('retorna todos os fatores esperados', () => {
       const cliente = makeCliente();
       const result = calcularSegmentoCS(cliente, [], makeMetricas(), 1);
-      expect(result.fatores).toHaveProperty('dias_sem_uso');
-      expect(result.fatores).toHaveProperty('frequencia_uso');
-      expect(result.fatores).toHaveProperty('reclamacoes_recentes');
-      expect(result.fatores).toHaveProperty('reclamacao_grave');
-      expect(result.fatores).toHaveProperty('engajamento');
+      expect(result.fatores).toHaveProperty('dias_ativos');
+      expect(result.fatores).toHaveProperty('engajamento_score');
+      expect(result.fatores).toHaveProperty('reclamacoes_em_aberto');
+      expect(result.fatores).toHaveProperty('qtd_reclamacoes');
       expect(result.fatores).toHaveProperty('em_aviso_previo');
       expect(result.fatores).toHaveProperty('champion_saiu');
       expect(result.fatores).toHaveProperty('tipo_conta');
-      expect(result.fatores).toHaveProperty('sazonalidade_mes_atual');
+      expect(result.fatores).toHaveProperty('sazonalidade');
+      expect(result.fatores).toHaveProperty('zero_producao');
+      expect(result.fatores).toHaveProperty('thresholds');
     });
   });
 
@@ -614,27 +563,28 @@ describe('calcularSegmentoCS', () => {
       expect(result).toHaveProperty('segmento');
     });
 
-    it('reclamação antiga (31+ dias) não conta como recente', () => {
+    it('thread resolvida não conta como reclamação em aberto', () => {
       const cliente = makeCliente();
       const thread = makeThread({
         sentimento: 'negativo',
-        updated_at: new Date(Date.now() - 32 * 24 * 60 * 60 * 1000),
+        resolvido: true,
       });
       const metricas = makeMetricas();
       const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
-      // Não deve contar como reclamação recente
-      expect(result.fatores.reclamacoes_recentes).toBe(false);
+      // Thread resolvida não deve contar como reclamação em aberto
+      expect(result.fatores.reclamacoes_em_aberto).toBe(false);
+      expect(result.fatores.qtd_reclamacoes).toBe(0);
     });
 
-    it('thread urgente antiga (8+ dias) não conta como grave', () => {
+    it('thread com status fechado não conta como reclamação em aberto', () => {
       const cliente = makeCliente();
       const thread = makeThread({
         sentimento: 'urgente',
-        updated_at: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000),
+        status: 'fechado',
       });
       const metricas = makeMetricas();
       const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
-      expect(result.fatores.reclamacao_grave).toBe(false);
+      expect(result.fatores.reclamacoes_em_aberto).toBe(false);
     });
   });
 });

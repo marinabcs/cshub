@@ -269,6 +269,15 @@ const CLICKUP_STATUS_MAP = {
   'ignorado': 'ignorado'
 };
 
+// Mapeamento para ações de Ongoing (diferentes status)
+const CLICKUP_STATUS_MAP_ONGOING = {
+  'pendente': 'pendente',
+  'em andamento': 'pendente',
+  'bloqueado': 'pendente',
+  'resolvido': 'concluida',
+  'ignorado': 'pulada'
+};
+
 /**
  * Normalizar nome do status para comparação
  */
@@ -778,114 +787,199 @@ function calcularDiasSemUso(cliente, metricas) {
   return Math.max(0, Math.floor((now - ultima) / (1000 * 60 * 60 * 24)));
 }
 
-function calcularFrequenciaUso(metricas, totalUsers = 1) {
+function calcularFrequenciaUso(metricas, totalUsers = 1, config = {}) {
   if (!metricas) return 'sem_uso';
   const { logins = 0, dias_ativos = 0 } = metricas;
   const loginsPerUser = logins / Math.max(totalUsers, 1);
-  if (dias_ativos >= 20 || loginsPerUser >= 15) return 'frequente';
-  if (dias_ativos >= 8 || loginsPerUser >= 6) return 'regular';
-  if (dias_ativos >= 3 || loginsPerUser >= 2) return 'irregular';
-  if (dias_ativos >= 1 || logins > 0) return 'raro';
+
+  // Thresholds configuráveis (com defaults)
+  const thCrescimento = config.dias_ativos_crescimento || 20;
+  const thEstavel = config.dias_ativos_estavel || 8;
+  const thAlerta = config.dias_ativos_alerta || 3;
+  const thResgate = config.dias_ativos_resgate || 2;
+
+  if (dias_ativos >= thCrescimento || loginsPerUser >= 15) return 'frequente';
+  if (dias_ativos >= thEstavel || loginsPerUser >= 6) return 'regular';
+  if (dias_ativos >= thAlerta || loginsPerUser >= 2) return 'irregular';
+  if (dias_ativos > thResgate || logins > 0) return 'raro';
   return 'sem_uso';
 }
 
-function temReclamacoesRecentes(threads) {
+// Verifica reclamações em aberto (não resolvidas)
+function temReclamacoesEmAberto(threads) {
   if (!threads || threads.length === 0) return false;
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   return threads.some(t => {
-    const date = t.updated_at?.toDate?.()
-      || (t.updated_at?._seconds ? new Date(t.updated_at._seconds * 1000) : null)
-      || (t.updated_at ? new Date(t.updated_at) : null);
-    if (!date || date < thirtyDaysAgo) return false;
-    return t.sentimento === 'negativo' || t.sentimento === 'urgente' ||
-      t.categoria === 'reclamacao' || t.categoria === 'erro_bug';
+    const isNegative = t.sentimento === 'negativo' || t.sentimento === 'urgente';
+    const isComplaint = t.categoria === 'reclamacao' || t.categoria === 'erro_bug';
+    const isOpen = !t.resolvido && t.status !== 'resolvido' && t.status !== 'fechado' && t.status !== 'closed';
+    return (isNegative || isComplaint) && isOpen;
   });
+}
+
+function contarReclamacoesEmAberto(threads) {
+  if (!threads || threads.length === 0) return 0;
+  return threads.filter(t => {
+    const isNegative = t.sentimento === 'negativo' || t.sentimento === 'urgente';
+    const isComplaint = t.categoria === 'reclamacao' || t.categoria === 'erro_bug';
+    const isOpen = !t.resolvido && t.status !== 'resolvido' && t.status !== 'fechado' && t.status !== 'closed';
+    return (isNegative || isComplaint) && isOpen;
+  }).length;
+}
+
+// Mantém compatibilidade
+function temReclamacoesRecentes(threads) {
+  return temReclamacoesEmAberto(threads);
 }
 
 function temReclamacaoGrave(threads) {
-  if (!threads || threads.length === 0) return false;
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  return threads.some(t => {
-    const date = t.updated_at?.toDate?.()
-      || (t.updated_at?._seconds ? new Date(t.updated_at._seconds * 1000) : null)
-      || (t.updated_at ? new Date(t.updated_at) : null);
-    return date && date >= sevenDaysAgo && t.sentimento === 'urgente';
-  });
+  return temReclamacoesEmAberto(threads);
 }
 
-function calcularEngajamento(metricas) {
-  if (!metricas) return 'baixo';
+/**
+ * Calcular score de engajamento
+ * Score = (pecas x peso_pecas) + (IA x peso_ia) + (downloads x peso_downloads)
+ * Os pesos sao configuraveis
+ */
+function calcularEngajamentoScore(metricas, config = {}) {
+  if (!metricas) return 0;
+  const pesoPecas = config.peso_pecas ?? 2;
+  const pesoIA = config.peso_ia ?? 1.5;
+  const pesoDownloads = config.peso_downloads ?? 1;
   const { pecas_criadas = 0, uso_ai_total = 0, downloads = 0 } = metricas;
-  const score = (pecas_criadas * 2) + (uso_ai_total * 1.5) + downloads;
-  if (score >= 50) return 'alto';
-  if (score >= 15) return 'medio';
-  return 'baixo';
+  return (pecas_criadas * pesoPecas) + (uso_ai_total * pesoIA) + (downloads * pesoDownloads);
 }
 
-function calcularSegmentoCS(cliente, threads, metricas, totalUsers) {
-  const diasSemUso = calcularDiasSemUso(cliente, metricas);
-  const frequenciaUso = calcularFrequenciaUso(metricas, totalUsers);
-  const reclamacoesRecentes = temReclamacoesRecentes(threads);
-  const reclamacaoGrave = temReclamacaoGrave(threads);
-  const engajamento = calcularEngajamento(metricas);
+/**
+ * Configuracao padrao para os thresholds de Saude CS
+ *
+ * HIERARQUIA DE PRIORIDADE:
+ * 1. Reclamacoes em aberto (veto) -> ALERTA/RESGATE
+ * 2. Dias ativos (base) -> Define nivel base
+ * 3. Engajamento (elevacao) -> Pode subir para CRESCIMENTO
+ */
+const DEFAULT_SAUDE_CONFIG = {
+  dias_ativos_crescimento: 20,
+  dias_ativos_estavel: 8,
+  dias_ativos_alerta: 3,
+  dias_ativos_resgate: 0,
+  engajamento_crescimento: 50,
+  engajamento_estavel: 15,
+  engajamento_alerta: 1,
+  engajamento_resgate: 0,
+  reclamacoes_crescimento: false,
+  reclamacoes_estavel: false,
+  reclamacoes_alerta: true,
+  reclamacoes_resgate: true,
+  // Thresholds adicionais
+  reclamacoes_max_resgate: 3,
+  bugs_max_alerta: 3,
+  // Toggles de regras especiais
+  aviso_previo_resgate: true,
+  champion_saiu_alerta: true,
+  tags_problema_alerta: true,
+  zero_producao_alerta: true,
+  // Pesos do score de engajamento
+  peso_pecas: 2,
+  peso_ia: 1.5,
+  peso_downloads: 1,
+};
 
-  const tipoConta = cliente?.tipo_conta || 'pagante';
-  const isGratuito = tipoConta === 'google_gratuito';
-  const baseResgate = isGratuito ? 60 : 30;
-  const baseAlerta = isGratuito ? 28 : 14;
+function calcularSegmentoCS(cliente, threads, metricas, totalUsers, config = {}) {
+  const cfg = { ...DEFAULT_SAUDE_CONFIG, ...config };
 
+  // Calcular fatores
+  const diasAtivos = metricas?.dias_ativos || 0;
+  const engajamentoScore = calcularEngajamentoScore(metricas, cfg);
+  const reclamacoesEmAberto = temReclamacoesEmAberto(threads);
+  const qtdReclamacoes = contarReclamacoesEmAberto(threads);
+
+  // Sazonalidade: mes de baixa divide thresholds por 2
   const calendario = cliente?.calendario_campanhas;
   const mesKey = MESES_KEYS[new Date().getMonth()];
   const sazonalidade = calendario?.[mesKey] || 'normal';
-  const emBaixa = sazonalidade === 'baixa';
-  const emAlta = sazonalidade === 'alta';
+  const divisorSazonalidade = sazonalidade === 'baixa' ? 2 : 1;
 
-  const thresholdResgate = emBaixa ? baseResgate * 2 : baseResgate;
-  const thresholdAlerta = emBaixa ? baseAlerta * 2 : baseAlerta;
+  // Tipo de conta: google_gratuito divide thresholds por 2
+  const tipoConta = cliente?.tipo_conta || 'pagante';
+  const divisorConta = tipoConta === 'google_gratuito' ? 2 : 1;
 
+  const divisor = divisorSazonalidade * divisorConta;
+
+  // Thresholds ajustados
+  const thDiasAtivosCrescimento = Math.ceil(cfg.dias_ativos_crescimento / divisor);
+  const thDiasAtivosEstavel = Math.ceil(cfg.dias_ativos_estavel / divisor);
+  const thDiasAtivosAlerta = Math.ceil(cfg.dias_ativos_alerta / divisor);
+  const thEngajamentoCrescimento = Math.ceil(cfg.engajamento_crescimento / divisor);
+
+  // Flags especiais
   const emAvisoPrevio = cliente?.status === 'aviso_previo';
   const championSaiu = cliente?.champion_saiu === true;
-
-  const ultimaInteracao = cliente?.ultima_interacao_data;
-  const diasSemInteracao = ultimaInteracao
-    ? Math.floor((Date.now() - (ultimaInteracao.toDate ? ultimaInteracao.toDate() : new Date(ultimaInteracao)).getTime()) / (1000 * 60 * 60 * 24))
-    : null;
-
-  // RESGATE
-  if (emAvisoPrevio) return { segmento: 'RESGATE', motivo: 'Em aviso previo' };
-  if (diasSemUso >= thresholdResgate) return { segmento: 'RESGATE', motivo: `${diasSemUso} dias sem uso` };
-  if (reclamacaoGrave) return { segmento: 'RESGATE', motivo: 'Reclamacao grave recente' };
-  if (frequenciaUso === 'sem_uso' && reclamacoesRecentes) return { segmento: 'RESGATE', motivo: 'Sem uso + reclamacoes' };
-
-  // ALERTA
-  if (diasSemUso >= thresholdAlerta) return { segmento: 'ALERTA', motivo: `${diasSemUso} dias sem uso` };
-  if (reclamacoesRecentes) return { segmento: 'ALERTA', motivo: 'Reclamacoes recentes' };
-  if (championSaiu) return { segmento: 'ALERTA', motivo: 'Champion saiu' };
-  if (frequenciaUso === 'raro' || frequenciaUso === 'sem_uso') return { segmento: 'ALERTA', motivo: 'Uso raro ou inexistente' };
-  if (frequenciaUso === 'irregular') return { segmento: 'ALERTA', motivo: 'Uso irregular' };
-  if ((cliente?.tags_problema || []).some(t => t.tag === 'Risco de Churn')) return { segmento: 'ALERTA', motivo: 'Tag "Risco de Churn" ativa' };
+  const temTagsProblema = (cliente?.tags_problema || []).length > 0;
   const bugsAbertos = (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length;
-  if (bugsAbertos >= 3) return { segmento: 'ALERTA', motivo: `${bugsAbertos} bugs abertos` };
-  if (emAlta && diasSemUso >= 7 && (frequenciaUso === 'raro' || frequenciaUso === 'irregular' || frequenciaUso === 'sem_uso')) {
-    return { segmento: 'ALERTA', motivo: 'Mes de alta temporada mas cliente inativo' };
-  }
 
   // Zero producao
-  if ((metricas?.pecas_criadas || 0) === 0 && (metricas?.downloads || 0) === 0 && (metricas?.uso_ai_total || 0) === 0) {
-    if (diasSemUso >= 7) return { segmento: 'RESGATE', motivo: 'Sem producao e sem uso recente' };
+  const zeroProd = (metricas?.pecas_criadas || 0) === 0 &&
+                   (metricas?.downloads || 0) === 0 &&
+                   (metricas?.uso_ai_total || 0) === 0;
+
+  // 1. PRIORIDADE MAXIMA: CONDICOES DE RESGATE
+  // Aviso previo = RESGATE automatico (se toggle ativo)
+  if (cfg.aviso_previo_resgate && emAvisoPrevio) {
+    return { segmento: 'RESGATE', motivo: 'Em aviso previo' };
+  }
+  // X+ reclamacoes em aberto = RESGATE (threshold configuravel)
+  const thReclamacoesResgate = cfg.reclamacoes_max_resgate ?? 3;
+  if (qtdReclamacoes >= thReclamacoesResgate) {
+    return { segmento: 'RESGATE', motivo: `${qtdReclamacoes} reclamacoes em aberto (limite: ${thReclamacoesResgate})` };
+  }
+  // Zero dias ativos + zero producao = RESGATE
+  if (diasAtivos === 0 && zeroProd) {
+    return { segmento: 'RESGATE', motivo: 'Sem atividade e sem producao no mes' };
+  }
+
+  // 2. PRIORIDADE MEDIA: OUTRAS CONDICOES DE ALERTA
+  // Champion saiu (se toggle ativo)
+  if (cfg.champion_saiu_alerta && championSaiu) {
+    return { segmento: 'ALERTA', motivo: 'Champion saiu' };
+  }
+  // Tags de problema ativas (se toggle ativo)
+  if (cfg.tags_problema_alerta && temTagsProblema) {
+    return { segmento: 'ALERTA', motivo: 'Tags de problema ativas' };
+  }
+  // Muitos bugs abertos (threshold configuravel)
+  const thBugsAlerta = cfg.bugs_max_alerta ?? 3;
+  if (bugsAbertos >= thBugsAlerta) {
+    return { segmento: 'ALERTA', motivo: `${bugsAbertos} bugs abertos (limite: ${thBugsAlerta})` };
+  }
+  // Zero producao (se toggle ativo - logou sem produzir)
+  if (cfg.zero_producao_alerta && zeroProd) {
     return { segmento: 'ALERTA', motivo: 'Login sem producao' };
   }
-
-  // CRESCIMENTO
-  const temTagsProblema = (cliente?.tags_problema || []).length > 0;
-  const temBugsAbertos = bugsAbertos > 0;
-  const semContatoRecente = diasSemInteracao !== null && diasSemInteracao > 60;
-  if (frequenciaUso === 'frequente' && (engajamento === 'alto' || engajamento === 'medio') && !reclamacoesRecentes && !temTagsProblema && !temBugsAbertos && !semContatoRecente) {
-    return { segmento: 'CRESCIMENTO', motivo: 'Uso frequente + bom engajamento' };
+  // Poucos dias ativos
+  if (diasAtivos < thDiasAtivosAlerta) {
+    return { segmento: 'ALERTA', motivo: `Apenas ${diasAtivos} dias ativos (minimo: ${thDiasAtivosAlerta})` };
   }
 
-  // ESTAVEL
-  return { segmento: 'ESTAVEL', motivo: 'Cliente estavel' };
+  // 3. CLASSIFICACAO POSITIVA: ESTAVEL ou CRESCIMENTO
+  // Verificar se atende criterios de CRESCIMENTO
+  const podeSerCrescimento = !reclamacoesEmAberto || cfg.reclamacoes_crescimento;
+  if (podeSerCrescimento && diasAtivos >= thDiasAtivosCrescimento && engajamentoScore >= thEngajamentoCrescimento) {
+    return { segmento: 'CRESCIMENTO', motivo: `${diasAtivos} dias ativos + engajamento ${engajamentoScore}` };
+  }
+
+  // Verificar se atende criterios de ESTAVEL
+  const podeSerEstavel = !reclamacoesEmAberto || cfg.reclamacoes_estavel;
+  if (podeSerEstavel && diasAtivos >= thDiasAtivosEstavel) {
+    return { segmento: 'ESTAVEL', motivo: `${diasAtivos} dias ativos no mes` };
+  }
+
+  // Se tem reclamacao e nao pode ser ESTAVEL, vai para ALERTA
+  if (reclamacoesEmAberto) {
+    return { segmento: 'ALERTA', motivo: `${qtdReclamacoes} reclamacao(es) em aberto` };
+  }
+
+  // Fallback
+  return { segmento: 'ALERTA', motivo: `${diasAtivos} dias ativos (abaixo do ideal: ${thDiasAtivosEstavel})` };
 }
 
 /**
@@ -899,6 +993,10 @@ export const recalcularSaudeDiaria = onSchedule({
   timeoutSeconds: 540,
   memory: '512MiB'
 }, async () => {
+  // Buscar config de Saúde CS (config/geral.segmentoConfig)
+  const configSnap = await db.collection('config').doc('geral').get();
+  const saudeConfig = configSnap.exists ? (configSnap.data().segmentoConfig || {}) : {};
+
   const clientesSnap = await db.collection('clientes').get();
   const clientes = clientesSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
@@ -967,7 +1065,7 @@ export const recalcularSaudeDiaria = onSchedule({
           };
         }, { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0, dias_ativos: 0, ultima_atividade: null });
 
-        const resultado = calcularSegmentoCS(cliente, threads, metricas, totalUsers);
+        const resultado = calcularSegmentoCS(cliente, threads, metricas, totalUsers, saudeConfig);
         const segmentoAtual = normalizarSegmento(cliente.segmento_cs);
 
         return {
@@ -1008,4 +1106,506 @@ export const recalcularSaudeDiaria = onSchedule({
   }
 
   console.log(`Saude recalculada: ${clientes.length} clientes processados, ${updatedCount} atualizados`);
+});
+
+// ============================================
+// VERIFICAR ALERTAS AUTOMATICO - 3X/DIA EM HORÁRIO COMERCIAL
+// ============================================
+
+// Mapear prioridade CS Hub → ClickUp (1=urgente, 2=alta, 3=normal, 4=baixa)
+const PRIORIDADE_CLICKUP_MAP = {
+  'urgente': 1,
+  'alta': 2,
+  'media': 3,
+  'baixa': 4
+};
+
+/**
+ * Criar tarefa no ClickUp via API direta
+ */
+async function criarTarefaClickUpDireto(alerta, apiKey, listId) {
+  if (!apiKey || !listId) return null;
+
+  const clienteNome = alerta.cliente_nome || alerta.time_name || '';
+  const nome = clienteNome
+    ? `[CS Hub] ${clienteNome} - ${alerta.titulo}`
+    : `[CS Hub] ${alerta.titulo}`;
+
+  // Descrição formatada
+  const descricao = [
+    `**Tipo:** ${alerta.tipo}`,
+    `**Prioridade:** ${alerta.prioridade}`,
+    `**Cliente:** ${alerta.cliente_nome || 'N/A'}`,
+    '',
+    `**Detalhes:**`,
+    alerta.mensagem,
+    '',
+    `---`,
+    `Alerta gerado automaticamente pelo CS Hub`
+  ].join('\n');
+
+  // Data de vencimento: 3 dias úteis
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 3);
+
+  const body = {
+    name: nome,
+    description: descricao,
+    priority: PRIORIDADE_CLICKUP_MAP[alerta.prioridade] || 3,
+    due_date: dueDate.getTime()
+  };
+
+  try {
+    const response = await fetch(`https://api.clickup.com/api/v2/list/${listId}/task`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': apiKey
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      console.error('[ClickUp] Erro ao criar tarefa:', response.status);
+      return null;
+    }
+
+    const tarefa = await response.json();
+    return {
+      id: tarefa.id,
+      url: tarefa.url
+    };
+  } catch (error) {
+    console.error('[ClickUp] Erro:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Buscar detalhes de uma tarefa no ClickUp (status)
+ */
+async function buscarTarefaClickUp(taskId, apiKey) {
+  if (!apiKey || !taskId) return null;
+
+  try {
+    const response = await fetch(`https://api.clickup.com/api/v2/task/${taskId}`, {
+      headers: { 'Authorization': apiKey }
+    });
+
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error('[ClickUp] Erro ao buscar tarefa:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Buscar comentários de uma tarefa no ClickUp
+ */
+async function buscarComentariosClickUp(taskId, apiKey) {
+  if (!apiKey || !taskId) return [];
+
+  try {
+    const response = await fetch(`https://api.clickup.com/api/v2/task/${taskId}/comment`, {
+      headers: { 'Authorization': apiKey }
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    return (data.comments || []).map(c => ({
+      id: c.id,
+      texto: c.comment_text || '',
+      autor: c.user?.username || c.user?.email || 'Desconhecido',
+      data: c.date ? new Date(parseInt(c.date)).toISOString() : null
+    }));
+  } catch (error) {
+    console.error('[ClickUp] Erro ao buscar comentários:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Gera alertas automaticamente 3x por dia:
+ * - 9h, 13h, 17h (horário de Brasília)
+ *
+ * Tipos de alertas gerados:
+ * - sentimento_negativo: conversas com sentimento negativo/urgente
+ * - problema_reclamacao: threads categorizadas como problema
+ * - entrou_resgate: cliente entrou no segmento RESGATE
+ *
+ * Também cria tarefas no ClickUp automaticamente.
+ */
+export const verificarAlertasAutomatico = onSchedule({
+  schedule: '0 9,13,17 * * 1-5', // 9h, 13h, 17h de segunda a sexta
+  timeZone: 'America/Sao_Paulo',
+  region: 'southamerica-east1',
+  timeoutSeconds: 540,
+  memory: '512MiB',
+  secrets: ['CLICKUP_API_KEY', 'CLICKUP_LIST_ID']
+}, async () => {
+  // Configurações ClickUp
+  const clickupApiKey = process.env.CLICKUP_API_KEY;
+  const clickupListId = process.env.CLICKUP_LIST_ID;
+  const clickupEnabled = !!clickupApiKey && !!clickupListId;
+
+  console.log(`[Alertas Auto] Iniciando verificacao automatica (ClickUp: ${clickupEnabled ? 'ativo' : 'desativado'})`);
+
+  // Buscar clientes ativos
+  const clientesSnap = await db.collection('clientes').get();
+  const clientes = clientesSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(c => {
+      const st = c.status === 'onboarding' ? 'ativo' : (c.status || 'ativo');
+      return st !== 'inativo' && st !== 'cancelado';
+    });
+
+  if (clientes.length === 0) {
+    console.log('[Alertas Auto] Nenhum cliente ativo');
+    return;
+  }
+
+  // Buscar threads dos ultimos 7 dias
+  const sevenDaysAgo = Timestamp.fromDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+  const threadsSnap = await db.collection('threads')
+    .where('updated_at', '>=', sevenDaysAgo)
+    .get();
+  const threads = threadsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Buscar alertas existentes (pendentes ou em andamento)
+  const alertasSnap = await db.collection('alertas')
+    .where('status', 'in', ['pendente', 'em_andamento'])
+    .get();
+  const alertasExistentes = alertasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Criar mapa de clientes por ID
+  const clientesMap = {};
+  for (const cliente of clientes) {
+    clientesMap[cliente.id] = cliente;
+    if (cliente.team_id) clientesMap[cliente.team_id] = cliente;
+    if (cliente.times) {
+      for (const tid of cliente.times) {
+        clientesMap[tid] = cliente;
+      }
+    }
+  }
+
+  const novosAlertas = [];
+
+  // 1. ALERTAS DE SENTIMENTO NEGATIVO
+  for (const thread of threads) {
+    if (thread.sentimento !== 'negativo' && thread.sentimento !== 'urgente') continue;
+    if (thread.filtrado_manual) continue;
+
+    const clienteId = thread.cliente_id || thread.team_id;
+    const cliente = clienteId ? clientesMap[clienteId] : null;
+    if (!cliente) continue;
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') continue;
+
+    // Verificar se ja existe alerta
+    const jaExiste = alertasExistentes.some(
+      a => a.tipo === 'sentimento_negativo' && a.thread_id === thread.id
+    );
+    if (jaExiste) continue;
+
+    const clienteNome = cliente.team_name || cliente.nome;
+    const responsaveis = (cliente.responsaveis?.length > 0)
+      ? cliente.responsaveis
+      : (cliente.responsavel_email ? [{ email: cliente.responsavel_email, nome: cliente.responsavel_nome }] : []);
+
+    novosAlertas.push({
+      tipo: 'sentimento_negativo',
+      titulo: `Conversa com sentimento ${thread.sentimento}`,
+      mensagem: `A conversa "${thread.assunto || 'Sem assunto'}" foi classificada como ${thread.sentimento}.`,
+      prioridade: thread.sentimento === 'urgente' ? 'urgente' : 'alta',
+      status: 'pendente',
+      time_id: thread.team_id || null,
+      time_name: clienteNome,
+      cliente_id: cliente.id,
+      cliente_nome: clienteNome,
+      thread_id: thread.id,
+      responsaveis: responsaveis,
+      responsavel_email: responsaveis[0]?.email || null,
+      responsavel_nome: responsaveis.map(r => r.nome).join(', ') || null,
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
+      origem: 'automatico'
+    });
+  }
+
+  // 2. ALERTAS DE PROBLEMA/RECLAMACAO
+  const CATEGORIAS_PROBLEMA = ['erro_bug', 'reclamacao', 'problema', 'bug', 'erro'];
+  for (const thread of threads) {
+    const categoria = (thread.categoria || '').toLowerCase();
+    const isProblem = CATEGORIAS_PROBLEMA.some(cat => categoria.includes(cat));
+    if (!isProblem) continue;
+    if (thread.filtrado_manual) continue;
+
+    const clienteId = thread.cliente_id || thread.team_id;
+    const cliente = clienteId ? clientesMap[clienteId] : null;
+    if (!cliente) continue;
+    if (cliente.status === 'inativo' || cliente.status === 'cancelado') continue;
+
+    const jaExiste = alertasExistentes.some(
+      a => a.tipo === 'problema_reclamacao' && a.thread_id === thread.id
+    );
+    if (jaExiste) continue;
+
+    const clienteNome = cliente.team_name || cliente.nome;
+    const responsaveis = (cliente.responsaveis?.length > 0)
+      ? cliente.responsaveis
+      : (cliente.responsavel_email ? [{ email: cliente.responsavel_email, nome: cliente.responsavel_nome }] : []);
+
+    novosAlertas.push({
+      tipo: 'problema_reclamacao',
+      titulo: `Problema reportado: ${thread.assunto || 'Sem assunto'}`,
+      mensagem: `Cliente reportou um problema/reclamação que precisa de atenção.`,
+      prioridade: 'alta',
+      status: 'pendente',
+      time_id: thread.team_id || null,
+      time_name: clienteNome,
+      cliente_id: cliente.id,
+      cliente_nome: clienteNome,
+      thread_id: thread.id,
+      responsaveis: responsaveis,
+      responsavel_email: responsaveis[0]?.email || null,
+      responsavel_nome: responsaveis.map(r => r.nome).join(', ') || null,
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
+      origem: 'automatico'
+    });
+  }
+
+  // 3. ALERTAS DE ENTROU EM RESGATE
+  for (const cliente of clientes) {
+    if (cliente.segmento_cs !== 'RESGATE') continue;
+
+    const jaExiste = alertasExistentes.some(
+      a => a.tipo === 'entrou_resgate' && a.cliente_id === cliente.id
+    );
+    if (jaExiste) continue;
+
+    const clienteNome = cliente.team_name || cliente.nome;
+    const responsaveis = (cliente.responsaveis?.length > 0)
+      ? cliente.responsaveis
+      : (cliente.responsavel_email ? [{ email: cliente.responsavel_email, nome: cliente.responsavel_nome }] : []);
+
+    const motivo = cliente.segmento_motivo || 'Critérios de risco atingidos';
+
+    novosAlertas.push({
+      tipo: 'entrou_resgate',
+      titulo: `🚨 ${clienteNome} entrou em RESGATE`,
+      mensagem: `Cliente entrou no segmento crítico RESGATE. Motivo: ${motivo}. Ação urgente necessária.`,
+      prioridade: 'urgente',
+      status: 'pendente',
+      time_id: cliente.team_id || cliente.times?.[0] || null,
+      time_name: clienteNome,
+      cliente_id: cliente.id,
+      cliente_nome: clienteNome,
+      thread_id: null,
+      responsaveis: responsaveis,
+      responsavel_email: responsaveis[0]?.email || null,
+      responsavel_nome: responsaveis.map(r => r.nome).join(', ') || null,
+      created_at: Timestamp.now(),
+      updated_at: Timestamp.now(),
+      origem: 'automatico'
+    });
+  }
+
+  // Salvar novos alertas e criar tarefas no ClickUp
+  let alertasCriados = 0;
+  let tarefasClickUpCriadas = 0;
+
+  if (novosAlertas.length > 0) {
+    // Processar em chunks para não sobrecarregar
+    const CHUNK_SIZE = 10;
+
+    for (let i = 0; i < novosAlertas.length; i += CHUNK_SIZE) {
+      const chunk = novosAlertas.slice(i, i + CHUNK_SIZE);
+
+      // Criar alertas e tarefas ClickUp em paralelo (por chunk)
+      const resultados = await Promise.all(chunk.map(async (alerta) => {
+        try {
+          // Salvar alerta no Firestore
+          const alertaRef = await db.collection('alertas').add(alerta);
+          alertasCriados++;
+
+          // Criar tarefa no ClickUp se configurado
+          if (clickupEnabled) {
+            const tarefaClickUp = await criarTarefaClickUpDireto(alerta, clickupApiKey, clickupListId);
+
+            if (tarefaClickUp) {
+              // Atualizar alerta com dados do ClickUp
+              await alertaRef.update({
+                clickup_task_id: tarefaClickUp.id,
+                clickup_task_url: tarefaClickUp.url,
+                status: 'em_andamento' // Já colocar em andamento pois tem tarefa
+              });
+              tarefasClickUpCriadas++;
+            }
+          }
+
+          return { success: true };
+        } catch (error) {
+          console.error('[Alertas Auto] Erro ao processar alerta:', error.message);
+          return { success: false };
+        }
+      }));
+    }
+  }
+
+  // ============================================
+  // SYNC: Atualizar alertas existentes com dados do ClickUp
+  // ============================================
+  let alertasSincronizados = 0;
+
+  if (clickupEnabled) {
+    // Buscar alertas com tarefa ClickUp que ainda estão abertos
+    const alertasComClickUp = alertasExistentes.filter(
+      a => a.clickup_task_id && (a.status === 'pendente' || a.status === 'em_andamento' || a.status === 'bloqueado')
+    );
+
+    console.log(`[Alertas Auto] Sincronizando ${alertasComClickUp.length} alertas com ClickUp`);
+
+    // Processar em chunks
+    const SYNC_CHUNK_SIZE = 5;
+    for (let i = 0; i < alertasComClickUp.length; i += SYNC_CHUNK_SIZE) {
+      const chunk = alertasComClickUp.slice(i, i + SYNC_CHUNK_SIZE);
+
+      await Promise.all(chunk.map(async (alerta) => {
+        try {
+          // Buscar tarefa e comentários do ClickUp em paralelo
+          const [tarefa, comentarios] = await Promise.all([
+            buscarTarefaClickUp(alerta.clickup_task_id, clickupApiKey),
+            buscarComentariosClickUp(alerta.clickup_task_id, clickupApiKey)
+          ]);
+
+          if (!tarefa) return;
+
+          const updateData = {
+            clickup_sync_at: Timestamp.now()
+          };
+
+          // Atualizar status se mudou
+          const statusClickUp = tarefa.status?.status?.toLowerCase();
+          const novoStatus = CLICKUP_STATUS_MAP[statusClickUp];
+
+          if (novoStatus && novoStatus !== alerta.status) {
+            updateData.status = novoStatus;
+            updateData.updated_at = Timestamp.now();
+
+            if (novoStatus === 'resolvido' || novoStatus === 'ignorado') {
+              updateData.resolved_at = Timestamp.now();
+              updateData.motivo_fechamento = `Sincronizado do ClickUp (${statusClickUp})`;
+            }
+          }
+
+          // Atualizar comentários se houver novos
+          if (comentarios.length > 0) {
+            const comentariosAtuais = alerta.clickup_comentarios || [];
+            const idsAtuais = new Set(comentariosAtuais.map(c => c.id));
+            const novosComentarios = comentarios.filter(c => !idsAtuais.has(c.id));
+
+            if (novosComentarios.length > 0) {
+              updateData.clickup_comentarios = [...comentariosAtuais, ...novosComentarios];
+              updateData.updated_at = Timestamp.now();
+            }
+          }
+
+          // Só atualizar se houver mudanças além do sync_at
+          if (Object.keys(updateData).length > 1) {
+            await db.collection('alertas').doc(alerta.id).update(updateData);
+            alertasSincronizados++;
+          }
+        } catch (error) {
+          console.error(`[Alertas Auto] Erro ao sincronizar alerta ${alerta.id}:`, error.message);
+        }
+      }));
+    }
+  }
+
+  // ============================================
+  // SYNC: Atualizar ações de Ongoing com dados do ClickUp
+  // ============================================
+  let ongoingAcoesAtualizadas = 0;
+
+  if (clickupEnabled) {
+    console.log('[Alertas Auto] Sincronizando Ongoing com ClickUp...');
+
+    // Buscar todos os clientes
+    for (const cliente of clientes) {
+      try {
+        // Buscar ciclos ativos do cliente
+        const ciclosSnap = await db.collection('clientes').doc(cliente.id)
+          .collection('ongoing_ciclos')
+          .where('status', '==', 'em_andamento')
+          .get();
+
+        for (const cicloDoc of ciclosSnap.docs) {
+          const ciclo = cicloDoc.data();
+          if (!ciclo.clickup_enabled) continue;
+
+          const acoes = [...(ciclo.acoes || [])];
+          let cicloAtualizado = false;
+
+          for (let i = 0; i < acoes.length; i++) {
+            const acao = acoes[i];
+            if (!acao.clickup_task_id || acao.status !== 'pendente') continue;
+
+            try {
+              const tarefaClickUp = await buscarTarefaClickUp(acao.clickup_task_id, clickupApiKey);
+              if (!tarefaClickUp) continue;
+
+              const statusClickUp = tarefaClickUp.status?.status?.toLowerCase() || '';
+              const novoStatus = CLICKUP_STATUS_MAP_ONGOING[statusClickUp];
+
+              if (novoStatus && novoStatus !== acao.status) {
+                acoes[i] = {
+                  ...acao,
+                  status: novoStatus,
+                  concluida_em: novoStatus === 'concluida' ? Timestamp.now() : null,
+                  concluida_por: novoStatus === 'concluida' ? 'Sincronizado do ClickUp' : null,
+                };
+                cicloAtualizado = true;
+                ongoingAcoesAtualizadas++;
+              }
+            } catch (e) {
+              // Ignora erros individuais
+            }
+          }
+
+          if (cicloAtualizado) {
+            const total = acoes.length;
+            const concluidas = acoes.filter(a => a.status === 'concluida' || a.status === 'pulada').length;
+            const progresso = total > 0 ? Math.round((concluidas / total) * 100) : 0;
+            const todasFeitas = acoes.every(a => a.status === 'concluida' || a.status === 'pulada');
+
+            await cicloDoc.ref.update({
+              acoes,
+              progresso,
+              status: todasFeitas ? 'concluido' : ciclo.status,
+              updated_at: Timestamp.now(),
+            });
+          }
+        }
+      } catch (e) {
+        // Ignora erros por cliente
+      }
+    }
+    console.log(`[Alertas Auto] Ongoing: ${ongoingAcoesAtualizadas} ações atualizadas`);
+  }
+
+  // Salvar status da última execução em config/sync_status
+  await db.collection('config').doc('sync_status').set({
+    ultima_verificacao_alertas: Timestamp.now(),
+    ultima_sync_clickup: clickupEnabled ? Timestamp.now() : null,
+    alertas_criados: alertasCriados,
+    tarefas_clickup_criadas: tarefasClickUpCriadas,
+    alertas_sincronizados: alertasSincronizados,
+    ongoing_acoes_atualizadas: ongoingAcoesAtualizadas,
+    clickup_ativo: clickupEnabled
+  }, { merge: true });
+
+  console.log(`[Alertas Auto] Concluido: ${alertasCriados} alertas, ${tarefasClickUpCriadas} tarefas ClickUp, ${alertasSincronizados} alertas sync, ${ongoingAcoesAtualizadas} ongoing sync`);
 });

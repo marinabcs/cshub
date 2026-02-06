@@ -19,6 +19,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { MODULOS, MODULOS_ORDEM } from '../constants/onboarding';
+import { REUNIOES_V1, REUNIOES_ORDEM, gerarCronograma, CADENCIA_DIAS } from '../constants/onboardingV1';
 import { classifyModules, buildSessions, scheduleSessions, calculateProgress } from '../utils/onboardingCalculator';
 import logger from '../utils/logger';
 
@@ -389,6 +390,149 @@ export async function concluirOnboarding(clienteId, planoId, novosResponsaveis) 
     logger.info(`Onboarding concluido para cliente ${clienteId}`);
   } catch (error) {
     logger.error('Erro ao concluir onboarding:', error.message);
+    throw error;
+  }
+}
+
+// ============================================
+// ONBOARDING V1 - ESTRUTURA SIMPLIFICADA
+// ============================================
+
+/**
+ * Cria um plano de onboarding v1 (estrutura simplificada com 4 reuniões fixas).
+ * @param {string} clienteId - ID do cliente
+ * @param {string} dataInicio - Data de início (YYYY-MM-DD)
+ * @param {Object} user - Usuário que está criando
+ * @param {string} observacoes - Observações opcionais
+ */
+export async function criarPlanoOnboardingV1(clienteId, dataInicio, user, observacoes = '') {
+  try {
+    // Gerar cronograma com as 4 reuniões
+    const reunioes = gerarCronograma(dataInicio);
+
+    // Converter para formato Firestore
+    const reunioesFirestore = reunioes.map(r => ({
+      ...r,
+      data_sugerida: Timestamp.fromDate(new Date(r.data_sugerida)),
+      data_realizada: null,
+      observacoes: '',
+      participantes: ''
+    }));
+
+    // Data de previsão de fim (última reunião)
+    const ultimaReuniao = reunioesFirestore[reunioesFirestore.length - 1];
+
+    const plano = {
+      versao: 'v1',
+      reunioes: reunioesFirestore,
+      status: 'em_andamento',
+      progresso: 0,
+      observacoes,
+      data_inicio: Timestamp.fromDate(new Date(dataInicio)),
+      data_previsao_fim: ultimaReuniao.data_sugerida,
+      cadencia_dias: CADENCIA_DIAS,
+      created_by: user?.email || 'sistema',
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    };
+
+    const ref = collection(db, 'clientes', clienteId, 'onboarding_planos');
+    const docRef = await addDoc(ref, plano);
+
+    logger.info(`Plano de onboarding v1 criado para cliente ${clienteId}: ${docRef.id}`);
+
+    return { id: docRef.id, ...plano };
+  } catch (error) {
+    logger.error('Erro ao criar plano de onboarding v1:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Atualiza uma reunião do onboarding v1.
+ * @param {string} clienteId - ID do cliente
+ * @param {string} planoId - ID do plano
+ * @param {string} reuniaoId - ID da reunião (kickoff, escala, ai, motion)
+ * @param {Object} updates - Campos a atualizar
+ */
+export async function atualizarReuniaoV1(clienteId, planoId, reuniaoId, updates) {
+  try {
+    const docRef = doc(db, 'clientes', clienteId, 'onboarding_planos', planoId);
+    const planoSnap = await getDoc(docRef);
+    if (!planoSnap.exists()) throw new Error('Plano não encontrado');
+
+    const plano = planoSnap.data();
+    if (plano.versao !== 'v1') throw new Error('Plano não é v1');
+
+    const reunioes = [...plano.reunioes];
+    const idx = reunioes.findIndex(r => r.id === reuniaoId);
+    if (idx === -1) throw new Error('Reunião não encontrada');
+
+    // Aplicar updates
+    reunioes[idx] = { ...reunioes[idx], ...updates };
+
+    // Se marcando como concluída, setar data_realizada
+    if (updates.status === 'concluida' && !reunioes[idx].data_realizada) {
+      reunioes[idx].data_realizada = Timestamp.now();
+    }
+
+    // Calcular progresso
+    const concluidas = reunioes.filter(r => r.status === 'concluida').length;
+    const progresso = Math.round((concluidas / reunioes.length) * 100);
+
+    // Verificar se todas estão concluídas
+    const todasConcluidas = reunioes.every(r => r.status === 'concluida');
+
+    await updateDoc(docRef, {
+      reunioes,
+      progresso,
+      status: todasConcluidas ? 'concluido' : 'em_andamento',
+      updated_at: serverTimestamp()
+    });
+
+    logger.info(`Reunião ${reuniaoId} atualizada no plano v1 ${planoId}`);
+
+    return { reunioes, progresso };
+  } catch (error) {
+    logger.error('Erro ao atualizar reunião v1:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Reagenda uma reunião do onboarding v1.
+ * @param {string} clienteId - ID do cliente
+ * @param {string} planoId - ID do plano
+ * @param {string} reuniaoId - ID da reunião
+ * @param {string} novaData - Nova data (YYYY-MM-DD)
+ */
+export async function reagendarReuniaoV1(clienteId, planoId, reuniaoId, novaData) {
+  try {
+    const docRef = doc(db, 'clientes', clienteId, 'onboarding_planos', planoId);
+    const planoSnap = await getDoc(docRef);
+    if (!planoSnap.exists()) throw new Error('Plano não encontrado');
+
+    const plano = planoSnap.data();
+    if (plano.versao !== 'v1') throw new Error('Plano não é v1');
+
+    const reunioes = [...plano.reunioes];
+    const idx = reunioes.findIndex(r => r.id === reuniaoId);
+    if (idx === -1) throw new Error('Reunião não encontrada');
+
+    reunioes[idx] = {
+      ...reunioes[idx],
+      data_sugerida: Timestamp.fromDate(new Date(novaData)),
+      status: 'agendada'
+    };
+
+    await updateDoc(docRef, {
+      reunioes,
+      updated_at: serverTimestamp()
+    });
+
+    logger.info(`Reunião ${reuniaoId} reagendada para ${novaData} no plano v1 ${planoId}`);
+  } catch (error) {
+    logger.error('Erro ao reagendar reunião v1:', error.message);
     throw error;
   }
 }

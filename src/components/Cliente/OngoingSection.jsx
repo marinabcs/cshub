@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 
-export default function OngoingSection({ clienteId, segmentoAtual }) {
+export default function OngoingSection({ clienteId, segmentoAtual, cliente }) {
   const { user } = useAuth();
   const [ciclos, setCiclos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +123,7 @@ export default function OngoingSection({ clienteId, segmentoAtual }) {
         cadencia: modalCadencia,
         dataInicio: modalDataInicio,
         acoes: modalAcoes,
+        cliente: cliente, // Para criar tarefas no ClickUp
       });
       setCiclos(prev => [novoCiclo, ...prev]);
       setExpandedCiclo(novoCiclo.id);

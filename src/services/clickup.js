@@ -207,6 +207,71 @@ _Criado automaticamente pelo CS Hub - Playbooks_
 }
 
 /**
+ * Criar tarefa no ClickUp para ação de Ongoing
+ */
+export async function criarTarefaOngoing(acao, ciclo, cliente, opcoes = {}) {
+  if (!isClickUpConfigured()) {
+    logger.warn('ClickUp não configurado - pulando criação de tarefa');
+    return null;
+  }
+
+  // Nome da ação
+  const nomeAcao = acao.nome || 'Ação Ongoing';
+
+  // Nome do cliente
+  const clienteNome = cliente.team_name || cliente.nome || 'N/A';
+
+  // Segmento/Saúde do ciclo
+  const segmento = ciclo.segmento || 'N/A';
+
+  // Título: [Ongoing - Segmento] Cliente - Ação
+  const nome = `[Ongoing ${segmento}] ${clienteNome} - ${nomeAcao}`;
+
+  // Responsáveis do cliente
+  const responsaveisEmails = cliente.responsaveis?.map(r => r.email) ||
+                             (cliente.responsavel_email ? [cliente.responsavel_email] : []);
+  const responsaveisNomes = cliente.responsaveis?.map(r => r.nome).join(', ') ||
+                            cliente.responsavel_nome || 'N/A';
+
+  const descricao = `
+**Ação de Ongoing - CS Hub**
+
+**Cliente:** ${clienteNome}
+**Responsáveis CS:** ${responsaveisNomes}
+**Saúde do Cliente:** ${segmento}
+**Cadência:** ${ciclo.cadencia || 'mensal'}
+
+**Ação:** ${nomeAcao}
+**Prazo:** D+${acao.dias || 7}
+
+---
+_Criado automaticamente pelo CS Hub - Ongoing_
+  `.trim();
+
+  try {
+    // Buscar IDs dos responsáveis no ClickUp
+    let responsaveisIds = [];
+    if (responsaveisEmails.length > 0) {
+      responsaveisIds = await buscarUsuariosClickUpPorEmails(responsaveisEmails);
+    }
+
+    const result = await criarTarefaClickUp({}, {
+      nome,
+      descricao,
+      prioridade: 3, // Normal
+      dataVencimento: acao.data_vencimento,
+      responsaveisIds,
+      ...opcoes
+    });
+
+    return result;
+  } catch (error) {
+    logger.error('Erro ao criar tarefa ClickUp para Ongoing', sanitizeError(error));
+    return null;
+  }
+}
+
+/**
  * Montar descrição da tarefa baseada no alerta
  */
 function montarDescricao(alerta) {

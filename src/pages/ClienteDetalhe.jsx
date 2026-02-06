@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
@@ -135,6 +135,7 @@ const cleanMessageContent = (text) => {
 export default function ClienteDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [cliente, setCliente] = useState(null);
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
@@ -146,8 +147,9 @@ export default function ClienteDetalhe() {
   const [teamIds, setTeamIds] = useState([]);
   const [segmentoCalculado, setSegmentoCalculado] = useState(null);
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState('resumo');
+  // Tab state - lê da URL se existir
+  const tabFromUrl = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(tabFromUrl || 'resumo');
 
   // User Activity Status hook
   const { getStatus: getUserActivityStatus } = useUserActivityStatus(teamIds, usuarios);
@@ -193,6 +195,10 @@ export default function ClienteDetalhe() {
   const [editingBugId, setEditingBugId] = useState(null);
   const [mostrarResolvidos, setMostrarResolvidos] = useState(false);
 
+  // Alertas do cliente
+  const [alertasCliente, setAlertasCliente] = useState([]);
+  const [alertaDetalhe, setAlertaDetalhe] = useState(null);
+
   // Interações
   const [interacoes, setInteracoes] = useState([]);
   const [loadingInteracoes, setLoadingInteracoes] = useState(false);
@@ -233,7 +239,7 @@ export default function ClienteDetalhe() {
           const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
           // OTIMIZAÇÃO: Executar TODAS as queries em PARALELO
-          const [threadsResult, metricasResult, usuariosResult] = await Promise.all([
+          const [threadsResult, metricasResult, usuariosResult, alertasResult, saudeConfigResult] = await Promise.all([
             // 1. Threads
             computedTeamIds.length > 0 ? getThreadsByTeam(computedTeamIds).catch(() => []) : Promise.resolve([]),
 
@@ -252,7 +258,7 @@ export default function ClienteDetalhe() {
               return results.flatMap(snap => snap.docs.map(doc => doc.data()));
             })().catch(() => []) : Promise.resolve([]),
 
-            // 4. Usuários (com chunks para computedTeamIds > 10)
+            // 3. Usuários (com chunks para computedTeamIds > 10)
             computedTeamIds.length > 0 ? (async () => {
               const usuariosRef = collection(db, 'usuarios_lookup');
               const chunkSize = 10;
@@ -265,7 +271,17 @@ export default function ClienteDetalhe() {
               }
               const results = await Promise.all(promises);
               return results.flatMap(snap => snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            })().catch(() => []) : Promise.resolve([])
+            })().catch(() => []) : Promise.resolve([]),
+
+            // 4. Alertas do cliente
+            (async () => {
+              const alertasRef = collection(db, 'alertas');
+              const alertasSnap = await getDocs(query(alertasRef, where('cliente_id', '==', id), orderBy('created_at', 'desc')));
+              return alertasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            })().catch(() => []),
+
+            // 5. Config de Saúde CS (salvo em config/geral.segmentoConfig)
+            getDoc(doc(db, 'config', 'geral')).then(snap => snap.exists() ? (snap.data().segmentoConfig || {}) : {}).catch(() => ({}))
           ]);
 
           // Processar threads
@@ -299,6 +315,9 @@ export default function ClienteDetalhe() {
           });
           setUsuarios(sortedUsers);
 
+          // Processar alertas
+          setAlertasCliente(alertasResult);
+
           // Recalcular segmento CS automaticamente
           if (clienteData.status !== 'inativo' && !clienteData.segmento_override) {
             const metricasParaCalculo = {
@@ -310,12 +329,12 @@ export default function ClienteDetalhe() {
               ultima_atividade: aggregated.ultima_atividade
             };
 
-            const resultado = calcularSegmentoCS(clienteData, sortedThreads, metricasParaCalculo, sortedUsers.length || 1);
+            const resultado = calcularSegmentoCS(clienteData, sortedThreads, metricasParaCalculo, sortedUsers.length || 1, saudeConfigResult);
             const segmentoAtual = getClienteSegmento(clienteData);
             const mudou = resultado.segmento !== segmentoAtual;
             const now = new Date();
 
-            setSegmentoCalculado({ ...resultado, changed: mudou, recalculadoEm: now });
+            setSegmentoCalculado({ ...resultado, changed: mudou, recalculadoEm: now, saudeConfig: saudeConfigResult });
 
             // Salvar no Firestore
             const clienteRef = doc(db, 'clientes', id);
@@ -410,6 +429,10 @@ export default function ClienteDetalhe() {
   const handleRecalcularSegmento = async () => {
     if (!cliente || cliente.status === 'inativo') return;
 
+    // Buscar config atualizado do Firestore (config/geral.segmentoConfig)
+    const configSnap = await getDoc(doc(db, 'config', 'geral'));
+    const saudeConfig = configSnap.exists() ? (configSnap.data().segmentoConfig || {}) : {};
+
     const metricasParaCalculo = {
       logins: usageData.logins,
       pecas_criadas: usageData.pecas_criadas,
@@ -419,11 +442,11 @@ export default function ClienteDetalhe() {
       ultima_atividade: usageData.ultima_atividade || null
     };
 
-    const resultado = calcularSegmentoCS(cliente, threads, metricasParaCalculo, usuarios.length || 1);
+    const resultado = calcularSegmentoCS(cliente, threads, metricasParaCalculo, usuarios.length || 1, saudeConfig);
     const segmentoAtual = getClienteSegmento(cliente);
     const now = new Date();
 
-    setSegmentoCalculado({ ...resultado, changed: resultado.segmento !== segmentoAtual, recalculadoEm: now });
+    setSegmentoCalculado({ ...resultado, changed: resultado.segmento !== segmentoAtual, recalculadoEm: now, saudeConfig });
 
     const clienteRef = doc(db, 'clientes', id);
     const updateData = {
@@ -753,6 +776,7 @@ export default function ClienteDetalhe() {
     { value: 'email', label: 'Email', color: '#06b6d4' },
     { value: 'reuniao', label: 'Reunião', color: '#a855f7' },
     { value: 'observacao', label: 'Observação', color: '#10b981' },
+    { value: 'alerta', label: 'Alerta', color: '#ef4444' },
     { value: 'onboarding', label: 'Onboarding', color: '#8b5cf6' },
     { value: 'feedback', label: 'Feedback', color: '#3b82f6' },
     { value: 'suporte', label: 'Suporte', color: '#f59e0b' },
@@ -1184,7 +1208,7 @@ export default function ClienteDetalhe() {
       }}>
         {[
           { id: 'resumo', label: 'Resumo', icon: Activity },
-          { id: 'interacoes', label: 'Interações', icon: MessageSquare, count: threads.length + interacoes.length + observacoes.length },
+          { id: 'interacoes', label: 'Interações', icon: MessageSquare, count: threads.length + interacoes.length + observacoes.length + alertasCliente.length },
           { id: 'onboarding', label: 'Onboarding', icon: GraduationCap },
           { id: 'ongoing', label: 'Ongoing', icon: ClipboardList },
           { id: 'documentos', label: 'Documentos', icon: FolderOpen },
@@ -1429,7 +1453,7 @@ export default function ClienteDetalhe() {
 
       {/* Tab Content: Ongoing */}
       {activeTab === 'ongoing' && (
-        <OngoingSection clienteId={id} segmentoAtual={getClienteSegmento(cliente)} />
+        <OngoingSection clienteId={id} segmentoAtual={getClienteSegmento(cliente)} cliente={cliente} />
       )}
 
       {/* Tab Content: Documentos */}
@@ -1680,7 +1704,7 @@ export default function ClienteDetalhe() {
       {/* Tab Content: Interações (Timeline Unificada) */}
       {/* Tab Content: Interações (Timeline Unificada) */}
       {activeTab === 'interacoes' && (() => {
-        // Montar timeline unificada: threads (email) + interações manuais + observações
+        // Montar timeline unificada: threads (email) + interações manuais + observações + alertas
         const timelineItems = [
           ...threads.map(t => {
             const d = t.updated_at?.toDate ? t.updated_at.toDate() : (t.updated_at ? new Date(t.updated_at) : new Date(0));
@@ -1693,6 +1717,10 @@ export default function ClienteDetalhe() {
           ...observacoes.map(o => {
             const d = o.criado_em?.toDate ? o.criado_em.toDate() : new Date(o.criado_em || 0);
             return { _source: 'observacao', _date: d, _tipo: 'observacao', ...o };
+          }),
+          ...alertasCliente.map(a => {
+            const d = a.created_at?.toDate ? a.created_at.toDate() : (a.created_at ? new Date(a.created_at) : new Date(0));
+            return { _source: 'alerta', _date: d, _tipo: 'alerta', ...a };
           })
         ];
         // Filtrar por tipo
@@ -1711,13 +1739,17 @@ export default function ClienteDetalhe() {
               if (item._source === 'observacao') {
                 return (item.texto || '').toLowerCase().includes(searchLower);
               }
+              if (item._source === 'alerta') {
+                return (item.titulo || '').toLowerCase().includes(searchLower) ||
+                  (item.mensagem || '').toLowerCase().includes(searchLower);
+              }
               return (item.notas || '').toLowerCase().includes(searchLower) ||
                 (item.participantes || '').toLowerCase().includes(searchLower);
             })
           : filteredByTipo;
         // Ordenar por data desc
         const sortedItems = [...filteredItems].sort((a, b) => b._date - a._date);
-        const totalCount = threads.length + interacoes.length + observacoes.length;
+        const totalCount = threads.length + interacoes.length + observacoes.length + alertasCliente.length;
 
         return (
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '32px' }}>
@@ -2004,6 +2036,65 @@ export default function ClienteDetalhe() {
                             </button>
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Renderizar alerta
+                if (item._source === 'alerta') {
+                  const statusColors = {
+                    pendente: { bg: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', label: 'Pendente' },
+                    em_andamento: { bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', label: 'Em Andamento' },
+                    bloqueado: { bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', label: 'Bloqueado' },
+                    resolvido: { bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981', label: 'Resolvido' },
+                    ignorado: { bg: 'rgba(100, 116, 139, 0.15)', color: '#64748b', label: 'Ignorado' }
+                  };
+                  const statusInfo = statusColors[item.status] || statusColors.pendente;
+                  const tipoLabels = {
+                    sentimento_negativo: 'Sentimento Negativo',
+                    problema_reclamacao: 'Problema/Reclamação',
+                    entrou_resgate: 'Entrou em Resgate'
+                  };
+
+                  return (
+                    <div key={`a-${item.id}`} style={{ position: 'relative', marginBottom: idx < sortedItems.length - 1 ? '12px' : 0 }}>
+                      <div style={{ position: 'absolute', left: '-20px', top: '14px', width: '12px', height: '12px', borderRadius: '50%', background: '#ef4444', border: '2px solid #0f0a1f' }} />
+                      <div
+                        onClick={() => setAlertaDetalhe(item)}
+                        style={{ background: 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.2s' }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.35)'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.15)'}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ padding: '2px 8px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '6px', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
+                            Alerta
+                          </span>
+                          <span style={{ padding: '2px 8px', background: statusInfo.bg, color: statusInfo.color, borderRadius: '6px', fontSize: '10px', fontWeight: '600' }}>
+                            {statusInfo.label}
+                          </span>
+                          <span style={{ color: '#94a3b8', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Calendar style={{ width: '11px', height: '11px' }} />
+                            {item._date.toLocaleDateString('pt-BR')}
+                          </span>
+                          <span style={{ color: '#64748b', fontSize: '11px' }}>
+                            {tipoLabels[item.tipo] || item.tipo}
+                          </span>
+                        </div>
+                        <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 4px 0' }}>
+                          {item.titulo}
+                        </p>
+                        {item.mensagem && (
+                          <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {item.mensagem.substring(0, 150)}
+                          </p>
+                        )}
+                        {item.clickup_comments && item.clickup_comments.length > 0 && (
+                          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <MessageSquare style={{ width: '12px', height: '12px', color: '#06b6d4' }} />
+                            <span style={{ color: '#06b6d4', fontSize: '11px' }}>{item.clickup_comments.length} comentário{item.clickup_comments.length > 1 ? 's' : ''} do ClickUp</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -2689,6 +2780,151 @@ export default function ClienteDetalhe() {
                   <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Carregando mensagens...</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalhes do Alerta */}
+      {alertaDetalhe && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '32px' }}>
+          <div style={{ background: '#1a1033', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <AlertTriangle style={{ width: '20px', height: '20px', color: '#ef4444' }} />
+                  <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Detalhes do Alerta</h3>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  {(() => {
+                    const statusColors = {
+                      pendente: { bg: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', label: 'Pendente' },
+                      em_andamento: { bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', label: 'Em Andamento' },
+                      bloqueado: { bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', label: 'Bloqueado' },
+                      resolvido: { bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981', label: 'Resolvido' },
+                      ignorado: { bg: 'rgba(100, 116, 139, 0.15)', color: '#64748b', label: 'Ignorado' }
+                    };
+                    const statusInfo = statusColors[alertaDetalhe.status] || statusColors.pendente;
+                    return (
+                      <span style={{ padding: '4px 10px', background: statusInfo.bg, color: statusInfo.color, borderRadius: '6px', fontSize: '12px', fontWeight: '500' }}>
+                        {statusInfo.label}
+                      </span>
+                    );
+                  })()}
+                  {alertaDetalhe.prioridade && (
+                    <span style={{ padding: '4px 10px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', borderRadius: '6px', fontSize: '11px', fontWeight: '500', textTransform: 'capitalize' }}>
+                      {alertaDetalhe.prioridade}
+                    </span>
+                  )}
+                  {alertaDetalhe.clickup_task_id && (
+                    <a
+                      href={alertaDetalhe.clickup_task_url || `https://app.clickup.com/t/${alertaDetalhe.clickup_task_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ padding: '4px 10px', background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4', borderRadius: '6px', fontSize: '11px', fontWeight: '500', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <ExternalLink style={{ width: '12px', height: '12px' }} />
+                      ClickUp
+                    </a>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setAlertaDetalhe(null)} style={{ width: '36px', height: '36px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X style={{ width: '18px', height: '18px', color: '#ef4444' }} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
+              {/* Tipo e Data */}
+              <div style={{ marginBottom: '16px' }}>
+                <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tipo</p>
+                <p style={{ color: '#e2e8f0', fontSize: '14px', margin: 0 }}>
+                  {alertaDetalhe.tipo === 'sentimento_negativo' ? 'Sentimento Negativo' :
+                   alertaDetalhe.tipo === 'problema_reclamacao' ? 'Problema/Reclamação' :
+                   alertaDetalhe.tipo === 'entrou_resgate' ? 'Entrou em Resgate' : alertaDetalhe.tipo}
+                </p>
+              </div>
+
+              {/* Título */}
+              <div style={{ marginBottom: '16px' }}>
+                <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Título</p>
+                <p style={{ color: 'white', fontSize: '15px', fontWeight: '500', margin: 0 }}>{alertaDetalhe.titulo}</p>
+              </div>
+
+              {/* Mensagem */}
+              {alertaDetalhe.mensagem && (
+                <div style={{ marginBottom: '16px' }}>
+                  <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Descrição</p>
+                  <p style={{ color: '#e2e8f0', fontSize: '14px', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{alertaDetalhe.mensagem}</p>
+                </div>
+              )}
+
+              {/* Datas */}
+              <div style={{ display: 'flex', gap: '24px', marginBottom: '16px' }}>
+                <div>
+                  <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Criado em</p>
+                  <p style={{ color: '#e2e8f0', fontSize: '13px', margin: 0 }}>
+                    {alertaDetalhe.created_at?.toDate ? alertaDetalhe.created_at.toDate().toLocaleString('pt-BR') : 'N/A'}
+                  </p>
+                </div>
+                {alertaDetalhe.resolved_at && (
+                  <div>
+                    <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Resolvido em</p>
+                    <p style={{ color: '#10b981', fontSize: '13px', margin: 0 }}>
+                      {alertaDetalhe.resolved_at?.toDate ? alertaDetalhe.resolved_at.toDate().toLocaleString('pt-BR') : 'N/A'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Notas internas */}
+              {alertaDetalhe.notas && (
+                <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '8px' }}>
+                  <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Notas Internas</p>
+                  <p style={{ color: '#e2e8f0', fontSize: '13px', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{alertaDetalhe.notas}</p>
+                </div>
+              )}
+
+              {/* Comentários do ClickUp */}
+              {alertaDetalhe.clickup_comments && alertaDetalhe.clickup_comments.length > 0 && (
+                <div style={{ marginTop: '20px', borderTop: '1px solid rgba(139, 92, 246, 0.1)', paddingTop: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <MessageSquare style={{ width: '16px', height: '16px', color: '#06b6d4' }} />
+                    <p style={{ color: '#06b6d4', fontSize: '14px', fontWeight: '600', margin: 0 }}>
+                      Comentários do ClickUp ({alertaDetalhe.clickup_comments.length})
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {alertaDetalhe.clickup_comments.map((comment, idx) => (
+                      <div key={idx} style={{ padding: '12px', background: 'rgba(6, 182, 212, 0.08)', border: '1px solid rgba(6, 182, 212, 0.15)', borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>
+                            {comment.user?.username || comment.user?.email || 'Usuário'}
+                          </span>
+                          <span style={{ color: '#64748b', fontSize: '11px' }}>
+                            {comment.date ? new Date(parseInt(comment.date)).toLocaleString('pt-BR') : ''}
+                          </span>
+                        </div>
+                        <p style={{ color: '#e2e8f0', fontSize: '13px', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                          {comment.comment_text || comment.text_content || ''}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(139, 92, 246, 0.1)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setAlertaDetalhe(null)}
+                style={{ padding: '10px 20px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#a78bfa', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>

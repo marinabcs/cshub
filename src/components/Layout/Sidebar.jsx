@@ -49,8 +49,8 @@ export default function Sidebar() {
     { to: '/minha-carteira', icon: Briefcase, label: 'Minha Carteira' },
     { to: '/clientes', icon: Users, label: 'Clientes' },
     { to: '/resumo-executivo', icon: Sparkles, label: 'Resumo Executivo' },
-    { to: '/analytics', icon: BarChart3, label: 'Analytics' },
-    { to: '/documentos', icon: FileText, label: 'Documentos' },
+    // { to: '/analytics', icon: BarChart3, label: 'Analytics' }, // Oculto - página de gestão
+    // { to: '/documentos', icon: FileText, label: 'Documentos' }, // Oculto - usar aba no cliente
     { to: '/ongoing', icon: ClipboardList, label: 'Ongoing' },
     { to: '/onboarding', icon: GraduationCap, label: 'Onboarding' },
     { to: '/alertas', icon: Bell, label: 'Alertas', badge: alertaCounts.pendentes, urgente: alertaCounts.urgentes > 0 },

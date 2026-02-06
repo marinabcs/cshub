@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, setDoc, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
 import { verificarTodosAlertas, ordenarAlertas } from '../utils/alertas';
@@ -319,6 +319,14 @@ export function useVerificarAlertas() {
         erros: erros.length > 0 ? erros : null
       });
 
+      // Atualizar timestamp de última verificação
+      await setDoc(doc(db, 'config', 'sync_status'), {
+        ultima_verificacao_alertas: Timestamp.now(),
+        alertas_criados: criados,
+        tarefas_clickup_criadas: clickupCriados,
+        origem_ultima_verificacao: 'manual'
+      }, { merge: true });
+
       return { success: true, criados, clickupCriados };
     } catch (e) {
       console.error('Erro ao verificar alertas:', e);
@@ -637,6 +645,14 @@ export function useSincronizarClickUp() {
           erros++;
         }
       }
+
+      // Atualizar timestamp de última sincronização
+      await setDoc(doc(db, 'config', 'sync_status'), {
+        ultima_sync_clickup: Timestamp.now(),
+        alertas_sincronizados: atualizados,
+        clickup_ativo: true,
+        origem_ultima_sync: 'manual'
+      }, { merge: true });
 
       const res = {
         success: true,

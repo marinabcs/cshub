@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { ClipboardList, Plus, X, Save, CheckCircle, RotateCcw, Users, Search, Calendar, Play, ChevronDown, ChevronUp } from 'lucide-react';
+import { ClipboardList, Plus, X, Save, CheckCircle, RotateCcw, Users, Search, Calendar, Play } from 'lucide-react';
 import { SEGMENTOS_CS, DEFAULT_ONGOING_ACOES, getClienteSegmento } from '../utils/segmentoCS';
 import { atribuirCiclo, buscarCicloAtivo, CADENCIA_OPTIONS, ONGOING_STATUS, ACAO_STATUS } from '../services/ongoing';
 
 export default function OnGoing() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -16,7 +18,18 @@ export default function OnGoing() {
 
   // Config state
   const [ongoingConfig, setOngoingConfig] = useState(DEFAULT_ONGOING_ACOES);
-  const [novaAcao, setNovaAcao] = useState({ CRESCIMENTO: '', ESTAVEL: '', ALERTA: '', RESGATE: '' });
+  const [novaAcao, setNovaAcao] = useState({ CRESCIMENTO: { nome: '', dias: 7 }, ESTAVEL: { nome: '', dias: 7 }, ALERTA: { nome: '', dias: 7 }, RESGATE: { nome: '', dias: 7 } });
+
+  // Helper: normalizar ação (string -> objeto)
+  const normalizarAcao = (acao) => {
+    if (typeof acao === 'string') return { nome: acao, dias: 7 };
+    return { nome: acao.nome || '', dias: acao.dias || 7 };
+  };
+
+  // Helper: obter ações normalizadas de um segmento
+  const getAcoesNormalizadas = (segmento) => {
+    return (ongoingConfig[segmento] || []).map(normalizarAcao);
+  };
 
   // Clientes state
   const [clientes, setClientes] = useState([]);
@@ -34,8 +47,6 @@ export default function OnGoing() {
   const [modalNovaAcao, setModalNovaAcao] = useState('');
   const [atribuindo, setAtribuindo] = useState(false);
 
-  // Expanded client details
-  const [expandedCliente, setExpandedCliente] = useState(null);
 
   // Verificar role do usuário
   useEffect(() => {
@@ -118,14 +129,24 @@ export default function OnGoing() {
   };
 
   const adicionarAcaoConfig = (segmento) => {
-    const valor = novaAcao[segmento]?.trim();
-    if (!valor || ongoingConfig[segmento]?.includes(valor)) return;
-    setOngoingConfig(prev => ({ ...prev, [segmento]: [...(prev[segmento] || []), valor] }));
-    setNovaAcao(prev => ({ ...prev, [segmento]: '' }));
+    const { nome, dias } = novaAcao[segmento] || {};
+    if (!nome?.trim()) return;
+    const acaoObj = { nome: nome.trim(), dias: dias || 7 };
+    const acoesAtuais = getAcoesNormalizadas(segmento);
+    if (acoesAtuais.some(a => a.nome === acaoObj.nome)) return;
+    setOngoingConfig(prev => ({ ...prev, [segmento]: [...acoesAtuais, acaoObj] }));
+    setNovaAcao(prev => ({ ...prev, [segmento]: { nome: '', dias: 7 } }));
+  };
+
+  const atualizarDiasAcao = (segmento, index, dias) => {
+    const acoes = getAcoesNormalizadas(segmento);
+    acoes[index] = { ...acoes[index], dias: parseInt(dias, 10) || 7 };
+    setOngoingConfig(prev => ({ ...prev, [segmento]: acoes }));
   };
 
   const removerAcaoConfig = (segmento, index) => {
-    setOngoingConfig(prev => ({ ...prev, [segmento]: prev[segmento].filter((_, i) => i !== index) }));
+    const acoes = getAcoesNormalizadas(segmento);
+    setOngoingConfig(prev => ({ ...prev, [segmento]: acoes.filter((_, i) => i !== index) }));
   };
 
   // ============ MODAL HANDLERS ============
@@ -135,7 +156,7 @@ export default function OnGoing() {
     setModalSegmento(seg);
     setModalCadencia('mensal');
     setModalDataInicio(new Date().toISOString().split('T')[0]);
-    setModalAcoes([...(ongoingConfig[seg] || [])]);
+    setModalAcoes(getAcoesNormalizadas(seg));
     setModalNovaAcao('');
     setShowModal(true);
   };
@@ -166,14 +187,16 @@ export default function OnGoing() {
   // ============ FILTERS ============
   const normalize = (str) => (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-  const clientesFiltrados = clientes.filter(c => {
-    if (searchTerm && !normalize(c.nome || c.name).includes(normalize(searchTerm))) return false;
-    if (filtroSegmento !== 'todos' && getClienteSegmento(c) !== filtroSegmento) return false;
-    if (filtroStatus === 'ativo' && !c.cicloAtivo) return false;
-    if (filtroStatus === 'sem_ciclo' && c.cicloAtivo) return false;
-    if (filtroStatus === 'concluido' && c.cicloAtivo?.status !== 'concluido') return false;
-    return true;
-  });
+  const clientesFiltrados = clientes
+    .filter(c => {
+      if (searchTerm && !normalize(c.nome || c.name).includes(normalize(searchTerm))) return false;
+      if (filtroSegmento !== 'todos' && getClienteSegmento(c) !== filtroSegmento) return false;
+      if (filtroStatus === 'ativo' && !c.cicloAtivo) return false;
+      if (filtroStatus === 'sem_ciclo' && c.cicloAtivo) return false;
+      if (filtroStatus === 'concluido' && c.cicloAtivo?.status !== 'concluido') return false;
+      return true;
+    })
+    .sort((a, b) => normalize(a.nome || a.name).localeCompare(normalize(b.nome || b.name)));
 
   // ============ HELPERS ============
   const formatDate = (ts) => {
@@ -197,7 +220,7 @@ export default function OnGoing() {
   ];
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', paddingTop: '24px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -289,152 +312,135 @@ export default function OnGoing() {
             </select>
           </div>
 
-          {/* Lista de clientes */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Grid de cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
             {clientesFiltrados.map(cliente => {
               const seg = getClienteSegmento(cliente);
               const segInfo = SEGMENTOS_CS[seg] || SEGMENTOS_CS.ESTAVEL;
               const ciclo = cliente.cicloAtivo;
-              const isExpanded = expandedCliente === cliente.id;
 
               return (
                 <div key={cliente.id} style={{
                   background: 'rgba(30, 27, 75, 0.4)',
                   border: `1px solid ${ciclo ? segInfo.borderColor : 'rgba(139, 92, 246, 0.1)'}`,
-                  borderRadius: '16px', overflow: 'hidden'
+                  borderRadius: '12px', padding: '14px',
+                  display: 'flex', flexDirection: 'column', gap: '10px'
                 }}>
-                  {/* Row principal */}
-                  <div style={{
-                    display: 'flex', alignItems: 'center', padding: '16px 20px', gap: '16px',
-                    cursor: ciclo ? 'pointer' : 'default'
-                  }}
-                    onClick={() => ciclo && setExpandedCliente(isExpanded ? null : cliente.id)}
-                  >
-                    {/* Nome + segmento */}
-                    <div style={{ flex: 1 }}>
-                      <p style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>
-                        {cliente.nome || cliente.name}
-                      </p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                        <span style={{
-                          padding: '2px 8px', background: segInfo.bgColor,
-                          borderRadius: '6px', fontSize: '11px', color: segInfo.color, fontWeight: '600'
-                        }}>
-                          {segInfo.label}
-                        </span>
-                        {ciclo && (
-                          <span style={{ color: '#64748b', fontSize: '12px' }}>
-                            {CADENCIA_OPTIONS.find(c => c.value === ciclo.cadencia)?.label || ciclo.cadencia} · {formatDate(ciclo.data_inicio)} → {formatDate(ciclo.data_fim)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                  {/* Header: Nome + Saúde */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                    <span
+                      onClick={() => navigate(`/clientes/${cliente.id}?tab=ongoing`)}
+                      style={{
+                        color: 'white', fontSize: '14px', fontWeight: '600', flex: 1,
+                        cursor: 'pointer', transition: 'color 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.color = '#8b5cf6'}
+                      onMouseLeave={(e) => e.target.style.color = 'white'}
+                    >
+                      {cliente.nome || cliente.name}
+                    </span>
+                    <span style={{
+                      padding: '2px 8px', background: segInfo.bgColor,
+                      borderRadius: '4px', fontSize: '10px', color: segInfo.color, fontWeight: '600',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {segInfo.label}
+                    </span>
+                  </div>
 
-                    {/* Progresso */}
-                    {ciclo && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '180px' }}>
-                        <div style={{ flex: 1, height: '6px', background: 'rgba(139, 92, 246, 0.15)', borderRadius: '3px' }}>
-                          <div style={{
-                            width: `${ciclo.progresso || 0}%`, height: '100%',
-                            background: ciclo.progresso === 100 ? '#10b981' : segInfo.color,
-                            borderRadius: '3px', transition: 'width 0.3s'
-                          }} />
-                        </div>
-                        <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', minWidth: '35px' }}>
-                          {ciclo.progresso || 0}%
+                  {/* Ciclo info ou botão atribuir */}
+                  {ciclo ? (
+                    <>
+                      {/* Período */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Calendar style={{ width: '12px', height: '12px', color: '#64748b' }} />
+                        <span style={{ color: '#94a3b8', fontSize: '11px' }}>
+                          {formatDate(ciclo.data_inicio)} → {formatDate(ciclo.data_fim)}
                         </span>
-                      </div>
-                    )}
-
-                    {/* Status / Ação */}
-                    {ciclo ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{
-                          padding: '4px 10px',
+                          marginLeft: 'auto', padding: '2px 6px',
                           background: ONGOING_STATUS[ciclo.status]?.color ? `${ONGOING_STATUS[ciclo.status].color}20` : 'rgba(139,92,246,0.2)',
                           color: ONGOING_STATUS[ciclo.status]?.color || '#8b5cf6',
-                          borderRadius: '6px', fontSize: '12px', fontWeight: '600'
+                          borderRadius: '4px', fontSize: '10px', fontWeight: '600'
                         }}>
                           {ONGOING_STATUS[ciclo.status]?.label || ciclo.status}
                         </span>
-                        {isExpanded ? (
-                          <ChevronUp style={{ width: '16px', height: '16px', color: '#64748b' }} />
-                        ) : (
-                          <ChevronDown style={{ width: '16px', height: '16px', color: '#64748b' }} />
-                        )}
                       </div>
-                    ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); abrirModal(cliente); }}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '6px',
-                          padding: '8px 16px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-                          border: 'none', borderRadius: '10px', color: 'white',
-                          fontSize: '13px', fontWeight: '600', cursor: 'pointer'
-                        }}
-                      >
-                        <Play style={{ width: '14px', height: '14px' }} />
-                        Atribuir Ciclo
-                      </button>
-                    )}
-                  </div>
 
-                  {/* Detalhes expandidos */}
-                  {isExpanded && ciclo && (
-                    <div style={{ padding: '0 20px 16px', borderTop: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '12px' }}>
-                        {ciclo.acoes?.map((acao, idx) => {
+                      {/* Progresso */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ flex: 1, height: '4px', background: 'rgba(139, 92, 246, 0.15)', borderRadius: '2px' }}>
+                          <div style={{
+                            width: `${ciclo.progresso || 0}%`, height: '100%',
+                            background: ciclo.progresso === 100 ? '#10b981' : segInfo.color,
+                            borderRadius: '2px'
+                          }} />
+                        </div>
+                        <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '600' }}>
+                          {ciclo.progresso || 0}%
+                        </span>
+                      </div>
+
+                      {/* Ações resumidas */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {ciclo.acoes?.slice(0, 4).map((acao, idx) => {
                           const statusInfo = ACAO_STATUS[acao.status] || ACAO_STATUS.pendente;
                           return (
                             <div key={idx} style={{
-                              display: 'flex', alignItems: 'center', gap: '12px',
-                              padding: '10px 14px', background: 'rgba(15, 10, 31, 0.4)',
-                              borderRadius: '10px'
-                            }}>
-                              <div style={{
-                                width: '8px', height: '8px', borderRadius: '50%',
-                                background: statusInfo.color, flexShrink: 0
-                              }} />
-                              <span style={{
-                                flex: 1, color: acao.status === 'concluida' ? '#64748b' : '#e2e8f0',
-                                fontSize: '13px',
-                                textDecoration: acao.status === 'concluida' ? 'line-through' : 'none'
-                              }}>
-                                {acao.nome}
-                              </span>
-                              <span style={{ color: statusInfo.color, fontSize: '11px', fontWeight: '600' }}>
-                                {statusInfo.label}
-                              </span>
-                            </div>
+                              width: '8px', height: '8px', borderRadius: '50%',
+                              background: statusInfo.color,
+                              title: acao.nome
+                            }} />
                           );
                         })}
+                        {ciclo.acoes?.length > 4 && (
+                          <span style={{ color: '#64748b', fontSize: '10px' }}>+{ciclo.acoes.length - 4}</span>
+                        )}
                       </div>
+
+                      {/* Botão novo ciclo se concluído */}
                       {ciclo.status === 'concluido' && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); abrirModal(cliente); }}
+                          onClick={() => abrirModal(cliente)}
                           style={{
-                            display: 'flex', alignItems: 'center', gap: '6px', marginTop: '12px',
-                            padding: '8px 16px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-                            border: 'none', borderRadius: '10px', color: 'white',
-                            fontSize: '13px', fontWeight: '600', cursor: 'pointer'
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                            padding: '6px', background: 'rgba(139, 92, 246, 0.2)',
+                            border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px',
+                            color: '#8b5cf6', fontSize: '11px', fontWeight: '600', cursor: 'pointer'
                           }}
                         >
-                          <Play style={{ width: '14px', height: '14px' }} />
+                          <Play style={{ width: '10px', height: '10px' }} />
                           Novo Ciclo
                         </button>
                       )}
-                    </div>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => abrirModal(cliente)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                        padding: '4px 8px', background: 'transparent',
+                        border: '1px dashed rgba(139, 92, 246, 0.4)', borderRadius: '6px',
+                        color: '#8b5cf6', fontSize: '11px', fontWeight: '500', cursor: 'pointer',
+                        marginTop: 'auto', opacity: 0.7, transition: 'opacity 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.opacity = '1'}
+                      onMouseLeave={(e) => e.target.style.opacity = '0.7'}
+                    >
+                      <Plus style={{ width: '10px', height: '10px' }} />
+                      Atribuir
+                    </button>
                   )}
                 </div>
               );
             })}
-
-            {clientesFiltrados.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-                <p style={{ fontSize: '15px', margin: 0 }}>Nenhum cliente encontrado com os filtros selecionados</p>
-              </div>
-            )}
           </div>
+
+          {clientesFiltrados.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+              <p style={{ fontSize: '14px', margin: 0 }}>Nenhum cliente encontrado</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -476,7 +482,7 @@ export default function OnGoing() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
             {segmentos.map(seg => {
               const info = SEGMENTOS_CS[seg];
-              const acoes = ongoingConfig[seg] || [];
+              const acoes = getAcoesNormalizadas(seg);
               return (
                 <div key={seg} style={{
                   background: 'rgba(30, 27, 75, 0.4)', border: `1px solid ${info.borderColor}`,
@@ -493,18 +499,34 @@ export default function OnGoing() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
                     {acoes.map((acao, idx) => (
                       <div key={idx} style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '10px 14px', background: 'rgba(15, 10, 31, 0.6)',
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
                         borderRadius: '10px', border: `1px solid ${info.borderColor}`
                       }}>
-                        <span style={{ color: '#e2e8f0', fontSize: '13px' }}>{acao}</span>
-                        {isAdmin && (
-                          <button onClick={() => removerAcaoConfig(seg, idx)} style={{
-                            background: 'rgba(239, 68, 68, 0.1)', border: 'none', borderRadius: '6px',
-                            padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center'
-                          }}>
-                            <X style={{ width: '14px', height: '14px', color: '#ef4444' }} />
-                          </button>
+                        <span style={{ flex: 1, color: '#e2e8f0', fontSize: '13px' }}>{acao.nome}</span>
+                        {isAdmin ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ color: '#64748b', fontSize: '11px' }}>D+</span>
+                            <input
+                              type="number"
+                              value={acao.dias}
+                              onChange={(e) => atualizarDiasAcao(seg, idx, e.target.value)}
+                              style={{
+                                width: '40px', padding: '4px 6px', background: '#0f0a1f',
+                                border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '4px',
+                                color: '#8b5cf6', fontSize: '12px', fontWeight: '600', textAlign: 'center', outline: 'none'
+                              }}
+                              min="1" max="90"
+                            />
+                            <button onClick={() => removerAcaoConfig(seg, idx)} style={{
+                              background: 'rgba(239, 68, 68, 0.1)', border: 'none', borderRadius: '4px',
+                              padding: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', marginLeft: '4px'
+                            }}>
+                              <X style={{ width: '12px', height: '12px', color: '#ef4444' }} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ color: '#8b5cf6', fontSize: '11px', fontWeight: '600' }}>D+{acao.dias}</span>
                         )}
                       </div>
                     ))}
@@ -516,25 +538,39 @@ export default function OnGoing() {
                   </div>
 
                   {isAdmin && (
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
                       <input
-                        type="text" placeholder="Adicionar ação..."
-                        value={novaAcao[seg]}
-                        onChange={(e) => setNovaAcao(prev => ({ ...prev, [seg]: e.target.value }))}
+                        type="text" placeholder="Nova ação..."
+                        value={novaAcao[seg]?.nome || ''}
+                        onChange={(e) => setNovaAcao(prev => ({ ...prev, [seg]: { ...prev[seg], nome: e.target.value } }))}
                         onKeyDown={(e) => e.key === 'Enter' && adicionarAcaoConfig(seg)}
                         style={{
-                          flex: 1, padding: '10px 14px', background: '#0f0a1f',
-                          border: `1px solid ${info.borderColor}`, borderRadius: '10px',
+                          flex: 1, padding: '8px 12px', background: '#0f0a1f',
+                          border: `1px solid ${info.borderColor}`, borderRadius: '8px',
                           color: 'white', fontSize: '13px', outline: 'none'
                         }}
                       />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ color: '#64748b', fontSize: '11px' }}>D+</span>
+                        <input
+                          type="number"
+                          value={novaAcao[seg]?.dias || 7}
+                          onChange={(e) => setNovaAcao(prev => ({ ...prev, [seg]: { ...prev[seg], dias: parseInt(e.target.value, 10) || 7 } }))}
+                          style={{
+                            width: '40px', padding: '8px 6px', background: '#0f0a1f',
+                            border: `1px solid ${info.borderColor}`, borderRadius: '8px',
+                            color: 'white', fontSize: '13px', textAlign: 'center', outline: 'none'
+                          }}
+                          min="1" max="90"
+                        />
+                      </div>
                       <button onClick={() => adicionarAcaoConfig(seg)} style={{
-                        padding: '10px 16px', background: info.bgColor,
-                        border: `1px solid ${info.borderColor}`, borderRadius: '10px',
+                        padding: '8px 12px', background: info.bgColor,
+                        border: `1px solid ${info.borderColor}`, borderRadius: '8px',
                         color: info.color, fontSize: '14px', fontWeight: '600', cursor: 'pointer',
                         display: 'flex', alignItems: 'center'
                       }}>
-                        <Plus style={{ width: '16px', height: '16px' }} />
+                        <Plus style={{ width: '14px', height: '14px' }} />
                       </button>
                     </div>
                   )}
@@ -571,7 +607,8 @@ export default function OnGoing() {
                 value={modalSegmento}
                 onChange={(e) => {
                   setModalSegmento(e.target.value);
-                  setModalAcoes([...(ongoingConfig[e.target.value] || [])]);
+                  const acoes = (ongoingConfig[e.target.value] || []).map(a => typeof a === 'string' ? { nome: a, dias: 7 } : a);
+                  setModalAcoes(acoes);
                 }}
                 style={{
                   width: '100%', padding: '10px 14px', background: '#0f0a1f',
@@ -628,30 +665,55 @@ export default function OnGoing() {
                 Ações do Ciclo ({modalAcoes.length})
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
-                {modalAcoes.map((acao, idx) => (
-                  <div key={idx} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
-                    borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.15)'
-                  }}>
-                    <span style={{ color: '#e2e8f0', fontSize: '13px' }}>{acao}</span>
-                    <button onClick={() => setModalAcoes(prev => prev.filter((_, i) => i !== idx))} style={{
-                      background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
-                      display: 'flex', alignItems: 'center'
+                {modalAcoes.map((acao, idx) => {
+                  const acaoObj = normalizarAcao(acao);
+                  const dataVencimento = new Date(modalDataInicio);
+                  dataVencimento.setDate(dataVencimento.getDate() + acaoObj.dias);
+                  return (
+                    <div key={idx} style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
+                      borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.15)'
                     }}>
-                      <X style={{ width: '14px', height: '14px', color: '#64748b' }} />
-                    </button>
-                  </div>
-                ))}
+                      <span style={{ flex: 1, color: '#e2e8f0', fontSize: '13px' }}>{acaoObj.nome}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ color: '#64748b', fontSize: '11px' }}>D+</span>
+                        <input
+                          type="number"
+                          value={acaoObj.dias}
+                          onChange={(e) => {
+                            const novosDias = parseInt(e.target.value, 10) || 7;
+                            setModalAcoes(prev => prev.map((a, i) => i === idx ? { ...normalizarAcao(a), dias: novosDias } : a));
+                          }}
+                          style={{
+                            width: '36px', padding: '3px 4px', background: '#0f0a1f',
+                            border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '4px',
+                            color: '#8b5cf6', fontSize: '11px', fontWeight: '600', textAlign: 'center', outline: 'none'
+                          }}
+                          min="1" max="90"
+                        />
+                        <span style={{ color: '#64748b', fontSize: '10px', minWidth: '55px' }}>
+                          ({dataVencimento.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })})
+                        </span>
+                      </div>
+                      <button onClick={() => setModalAcoes(prev => prev.filter((_, i) => i !== idx))} style={{
+                        background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
+                        display: 'flex', alignItems: 'center'
+                      }}>
+                        <X style={{ width: '14px', height: '14px', color: '#64748b' }} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <input
-                  type="text" placeholder="Adicionar ação personalizada..."
+                  type="text" placeholder="Adicionar ação..."
                   value={modalNovaAcao}
                   onChange={(e) => setModalNovaAcao(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && modalNovaAcao.trim()) {
-                      setModalAcoes(prev => [...prev, modalNovaAcao.trim()]);
+                      setModalAcoes(prev => [...prev, { nome: modalNovaAcao.trim(), dias: 7 }]);
                       setModalNovaAcao('');
                     }
                   }}
@@ -664,7 +726,7 @@ export default function OnGoing() {
                 <button
                   onClick={() => {
                     if (modalNovaAcao.trim()) {
-                      setModalAcoes(prev => [...prev, modalNovaAcao.trim()]);
+                      setModalAcoes(prev => [...prev, { nome: modalNovaAcao.trim(), dias: 7 }]);
                       setModalNovaAcao('');
                     }
                   }}

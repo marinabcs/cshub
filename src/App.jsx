@@ -17,6 +17,7 @@ const ClienteForm = lazy(() => import('./pages/ClienteForm'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Alertas = lazy(() => import('./pages/Alertas'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
+const FiltrosEmail = lazy(() => import('./pages/FiltrosEmail'))
 const Usuarios = lazy(() => import('./pages/Usuarios'))
 const Auditoria = lazy(() => import('./pages/Auditoria'))
 const Playbooks = lazy(() => import('./pages/Playbooks'))
@@ -26,6 +27,7 @@ const OnGoing = lazy(() => import('./pages/OnGoing'))
 const MinhaCarteira = lazy(() => import('./pages/MinhaCarteira'))
 const Documentos = lazy(() => import('./pages/Documentos'))
 const ResumoExecutivo = lazy(() => import('./pages/ResumoExecutivo'))
+const Onboarding = lazy(() => import('./pages/Onboarding'))
 const OnboardingCalculadora = lazy(() => import('./pages/OnboardingCalculadora'))
 
 function PrivateRoute({ children }) {
@@ -147,11 +149,14 @@ function AppRoutes() {
         <Route path="/documentos" element={<Documentos />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/resumo-executivo" element={<ResumoExecutivo />} />
-        <Route path="/onboarding" element={<OnboardingCalculadora />} />
-        <Route path="/onboarding/:clienteId" element={<OnboardingCalculadora />} />
+        <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/onboarding/:clienteId" element={<Onboarding />} />
+        <Route path="/onboarding/calculadora" element={<OnboardingCalculadora />} />
+        <Route path="/onboarding/calculadora/:clienteId" element={<OnboardingCalculadora />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/configuracoes/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
+        <Route path="/configuracoes/filtros-email" element={<AdminRoute><FiltrosEmail /></AdminRoute>} />
         <Route path="/configuracoes/auditoria" element={<AdminRoute><Auditoria /></AdminRoute>} />
         {/* Debug page - excluída do bundle de produção */}
         {import.meta.env.DEV && (

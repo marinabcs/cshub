@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Clock, AlertTriangle, RefreshCw, Check, ChevronRight, ChevronDown, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye } from 'lucide-react';
-import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas, useSincronizarClickUp } from '../hooks/useAlertas';
+import { Bell, Clock, AlertTriangle, AlertOctagon, Frown, RefreshCw, Check, ChevronRight, ChevronDown, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye } from 'lucide-react';
+import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas } from '../hooks/useAlertas';
 import {
   ALERTA_TIPOS,
   ALERTA_PRIORIDADES,
@@ -12,14 +12,16 @@ import {
   formatarTempoRelativo
 } from '../utils/alertas';
 import { isClickUpConfigured, criarTarefaClickUp, buscarMembrosClickUp, PRIORIDADES_CLICKUP } from '../services/clickup';
-import { doc, updateDoc, collection, getDocs, deleteDoc, addDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { Pagination } from '../components/UI/Pagination';
 
 // Mapeamento de ícones por tipo
 const TIPO_ICONS = {
-  sem_uso_plataforma: Clock,
+  sentimento_negativo: Frown,
   problema_reclamacao: AlertTriangle,
+  entrou_resgate: AlertOctagon,
+  sem_uso_plataforma: Clock,
 };
 
 export default function Alertas() {
@@ -28,11 +30,12 @@ export default function Alertas() {
   // Filtros
   const [filtroTipos, setFiltroTipos] = useState([]);
   const [filtroPrioridades, setFiltroPrioridades] = useState([]);
-  const [filtroStatus, setFiltroStatus] = useState(['pendente', 'em_andamento']);
+  const [filtroStatus, setFiltroStatus] = useState(['pendente', 'em_andamento', 'bloqueado']);
   const [filtroResponsavel, setFiltroResponsavel] = useState([]);
   const [filtroTeamType, setFiltroTeamType] = useState([]);
 
   // Dropdowns
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [showTeamTypeDropdown, setShowTeamTypeDropdown] = useState(false);
   const [showResponsavelDropdown, setShowResponsavelDropdown] = useState(false);
   const [showTipoDropdown, setShowTipoDropdown] = useState(false);
@@ -120,23 +123,22 @@ export default function Alertas() {
   const { counts } = useAlertasCount();
   const { atualizarStatus, updating } = useAtualizarAlerta();
   const { verificarEGerarAlertas, verificando, resultados } = useVerificarAlertas();
-  const { sincronizarComClickUp, sincronizando, resultado: resultadoSync } = useSincronizarClickUp();
 
-  // Handler para sincronizar com ClickUp
-  const handleSincronizarClickUp = async () => {
-    const result = await sincronizarComClickUp();
-    if (result.success) {
-      refetch();
-    }
-  };
-
-  // Responsáveis únicos e tipos de time
-  const responsaveis = [...new Set(alertas.map(a => a.responsavel_nome).filter(Boolean))].sort();
+  // Responsáveis únicos e tipos de time (separa nomes concatenados por vírgula)
+  const responsaveis = [...new Set(
+    alertas
+      .map(a => a.responsavel_nome)
+      .filter(Boolean)
+      .flatMap(nome => nome.split(', ').map(n => n.trim()))
+      .filter(Boolean)
+  )].sort();
   const teamTypes = [...new Set(alertas.map(a => a.team_type).filter(Boolean))].sort();
 
   // Filtrar alertas por responsável e team_type (localmente)
   const alertasFiltrados = alertas.filter(a => {
-    const matchResponsavel = filtroResponsavel.length === 0 || filtroResponsavel.includes(a.responsavel_nome);
+    // Verifica se algum dos responsáveis selecionados está no campo responsavel_nome
+    const matchResponsavel = filtroResponsavel.length === 0 ||
+      filtroResponsavel.some(resp => a.responsavel_nome && a.responsavel_nome.includes(resp));
     const matchTeamType = filtroTeamType.length === 0 || filtroTeamType.includes(a.team_type);
     return matchResponsavel && matchTeamType;
   });
@@ -195,7 +197,7 @@ export default function Alertas() {
   const limparFiltros = () => {
     setFiltroTipos([]);
     setFiltroPrioridades([]);
-    setFiltroStatus(['pendente', 'em_andamento']);
+    setFiltroStatus(['pendente', 'em_andamento', 'bloqueado']);
     setFiltroResponsavel([]);
     setFiltroTeamType([]);
   };
@@ -213,6 +215,7 @@ export default function Alertas() {
   };
 
   const closeAllDropdowns = () => {
+    setShowStatusDropdown(false);
     setShowTeamTypeDropdown(false);
     setShowResponsavelDropdown(false);
     setShowTipoDropdown(false);
@@ -391,29 +394,6 @@ export default function Alertas() {
             {verificando ? 'Verificando...' : 'Verificar Novos Alertas'}
           </button>
 
-          {/* Botão de sincronização com ClickUp */}
-          <button
-            onClick={handleSincronizarClickUp}
-            disabled={sincronizando}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 20px',
-              background: sincronizando ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.15)',
-              border: '1px solid rgba(139, 92, 246, 0.3)',
-              borderRadius: '12px',
-              color: '#a78bfa',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: sincronizando ? 'not-allowed' : 'pointer'
-            }}
-            title="Buscar atualizações de status no ClickUp"
-          >
-            <ExternalLink style={{ width: '18px', height: '18px', animation: sincronizando ? 'spin 1s linear infinite' : 'none' }} />
-            {sincronizando ? 'Sincronizando...' : 'Sincronizar ClickUp'}
-          </button>
-
         </div>
       </div>
 
@@ -442,29 +422,6 @@ export default function Alertas() {
         </div>
       )}
 
-      {/* Resultado da sincronização ClickUp */}
-      {resultadoSync && resultadoSync.success && (
-        <div style={{
-          padding: '16px 20px',
-          background: 'rgba(139, 92, 246, 0.1)',
-          border: '1px solid rgba(139, 92, 246, 0.3)',
-          borderRadius: '12px',
-          marginBottom: '24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <ExternalLink style={{ width: '20px', height: '20px', color: '#a78bfa' }} />
-            <span style={{ color: '#a78bfa', fontWeight: '500' }}>
-              Sincronização concluída! {resultadoSync.atualizados} alerta{resultadoSync.atualizados !== 1 ? 's' : ''} atualizado{resultadoSync.atualizados !== 1 ? 's' : ''}.
-            </span>
-          </div>
-          <span style={{ color: '#64748b', fontSize: '13px' }}>
-            {resultadoSync.total} alertas verificados {resultadoSync.erros > 0 && `• ${resultadoSync.erros} erros`}
-          </span>
-        </div>
-      )}
 
       {/* Filtros - Linha única */}
       <div style={{
@@ -478,29 +435,109 @@ export default function Alertas() {
         gap: '12px',
         flexWrap: 'wrap'
       }}>
-        {/* Status */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {Object.values(ALERTA_STATUS).map(status => {
-            const isSelected = filtroStatus.includes(status.value);
-            return (
-              <button
-                key={status.value}
-                onClick={() => toggleFiltroStatus(status.value)}
-                style={{
-                  padding: '4px 8px',
-                  background: isSelected ? `${status.color}20` : 'transparent',
-                  border: `1px solid ${isSelected ? status.color : 'rgba(139, 92, 246, 0.2)'}`,
-                  borderRadius: '12px',
-                  color: isSelected ? status.color : '#64748b',
-                  fontSize: '11px',
-                  fontWeight: isSelected ? '500' : '400',
-                  cursor: 'pointer'
-                }}
-              >
-                {status.label}
-              </button>
-            );
-          })}
+        {/* Status - Dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => { closeAllDropdowns(); setShowStatusDropdown(!showStatusDropdown); }}
+            style={{
+              padding: '4px 10px',
+              background: filtroStatus.length > 0 && filtroStatus.length < Object.keys(ALERTA_STATUS).length ? 'rgba(139, 92, 246, 0.2)' : 'rgba(15, 10, 31, 0.6)',
+              border: `1px solid ${filtroStatus.length > 0 && filtroStatus.length < Object.keys(ALERTA_STATUS).length ? '#8b5cf6' : 'rgba(139, 92, 246, 0.2)'}`,
+              borderRadius: '8px',
+              color: filtroStatus.length > 0 && filtroStatus.length < Object.keys(ALERTA_STATUS).length ? '#a78bfa' : '#94a3b8',
+              fontSize: '11px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            {filtroStatus.length === 0 ? 'Status: Todos' : filtroStatus.length === Object.keys(ALERTA_STATUS).length ? 'Status: Todos' : `Status: ${filtroStatus.length}`}
+            <ChevronDown style={{ width: '12px', height: '12px' }} />
+          </button>
+
+          {showStatusDropdown && (
+            <>
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setShowStatusDropdown(false)} />
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: '4px',
+                background: '#1e1b4b',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '8px',
+                padding: '6px',
+                minWidth: '160px',
+                zIndex: 100,
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)'
+              }}>
+                {filtroStatus.length > 0 && (
+                  <button
+                    onClick={() => setFiltroStatus([])}
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      marginBottom: '4px',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                      borderRadius: '6px',
+                      color: '#ef4444',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <X style={{ width: '10px', height: '10px' }} />
+                    Limpar
+                  </button>
+                )}
+                {Object.values(ALERTA_STATUS).map(status => {
+                  const isSelected = filtroStatus.includes(status.value);
+                  return (
+                    <button
+                      key={status.value}
+                      onClick={() => toggleFiltroStatus(status.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        marginBottom: '2px',
+                        background: isSelected ? `${status.color}15` : 'transparent',
+                        border: 'none',
+                        borderRadius: '6px',
+                        color: isSelected ? status.color : '#94a3b8',
+                        fontSize: '11px',
+                        fontWeight: isSelected ? '500' : '400',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <div style={{
+                        width: '14px',
+                        height: '14px',
+                        borderRadius: '3px',
+                        border: `1px solid ${isSelected ? status.color : 'rgba(139, 92, 246, 0.3)'}`,
+                        background: isSelected ? status.color : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        {isSelected && <Check style={{ width: '10px', height: '10px', color: 'white' }} />}
+                      </div>
+                      {status.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{ width: '1px', height: '20px', background: 'rgba(139, 92, 246, 0.2)' }} />
@@ -911,7 +948,7 @@ export default function Alertas() {
                     )}
                     {responsaveis.map(resp => {
                       const isSelected = filtroResponsavel.includes(resp);
-                      const count = alertas.filter(a => a.responsavel_nome === resp).length;
+                      const count = alertas.filter(a => a.responsavel_nome && a.responsavel_nome.includes(resp)).length;
                       return (
                         <button
                           key={resp}
@@ -1944,6 +1981,46 @@ export default function Alertas() {
                       Ver tarefa no ClickUp
                       <ExternalLink style={{ width: '14px', height: '14px', marginLeft: 'auto' }} />
                     </a>
+                  )}
+
+                  {/* Comentários do ClickUp */}
+                  {detailAlerta.clickup_comentarios && detailAlerta.clickup_comentarios.length > 0 && (
+                    <div style={{
+                      background: 'rgba(124, 58, 237, 0.05)',
+                      border: '1px solid rgba(124, 58, 237, 0.2)',
+                      borderRadius: '12px',
+                      padding: '16px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <ListTodo style={{ width: '14px', height: '14px', color: '#7c3aed' }} />
+                        <span style={{ color: '#7c3aed', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase' }}>
+                          Comentários do ClickUp ({detailAlerta.clickup_comentarios.length})
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {detailAlerta.clickup_comentarios.map((comentario, idx) => (
+                          <div key={comentario.id || idx} style={{
+                            background: 'rgba(15, 10, 31, 0.5)',
+                            borderRadius: '8px',
+                            padding: '10px 12px'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ color: '#a78bfa', fontSize: '12px', fontWeight: '500' }}>
+                                {comentario.autor}
+                              </span>
+                              {comentario.data && (
+                                <span style={{ color: '#64748b', fontSize: '11px' }}>
+                                  {new Date(comentario.data).toLocaleString('pt-BR')}
+                                </span>
+                              )}
+                            </div>
+                            <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0, whiteSpace: 'pre-wrap' }}>
+                              {comentario.texto}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </>
               )}

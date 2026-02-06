@@ -21,11 +21,14 @@ import {
 // ============================================
 
 describe('Constantes de alertas', () => {
-  it('ALERTA_TIPOS tem 4 tipos', () => {
-    expect(Object.keys(ALERTA_TIPOS)).toHaveLength(4);
-    expect(ALERTA_TIPOS).toHaveProperty('sem_uso_plataforma');
+  it('ALERTA_TIPOS tem 5 tipos (3 ativos + 2 desativados)', () => {
+    expect(Object.keys(ALERTA_TIPOS)).toHaveLength(5);
+    // Ativos
     expect(ALERTA_TIPOS).toHaveProperty('sentimento_negativo');
     expect(ALERTA_TIPOS).toHaveProperty('problema_reclamacao');
+    expect(ALERTA_TIPOS).toHaveProperty('entrou_resgate');
+    // Desativados (mantidos para histórico)
+    expect(ALERTA_TIPOS).toHaveProperty('sem_uso_plataforma');
     expect(ALERTA_TIPOS).toHaveProperty('sazonalidade_alta_inativo');
   });
 
@@ -454,17 +457,21 @@ describe('ordenarAlertas', () => {
 describe('verificarTodosAlertas', () => {
   it('retorna array de alertas combinados', () => {
     const vinteDias = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    // Cliente em RESGATE deve gerar alerta
     const clientes = [{
       id: 'c1',
       status: 'ativo',
       team_name: 'Acme',
       times: ['t1'],
-      ultima_interacao: vinteDias,
+      segmento_cs: 'RESGATE',
+      segmento_motivo: 'Sem atividade',
       responsaveis: [],
     }];
     const result = verificarTodosAlertas(clientes, [], [], []);
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBeGreaterThan(0);
+    // Deve ter alerta de entrou_resgate
+    expect(result.some(a => a.tipo === 'entrou_resgate')).toBe(true);
   });
 
   it('filtra threads irrelevantes quando filterConfig ativo', () => {

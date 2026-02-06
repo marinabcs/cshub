@@ -7,7 +7,7 @@ import { cachedGetDocs } from '../services/cache';
 import * as XLSX from 'xlsx';
 import {
   Users, TrendingUp, AlertTriangle, MessageSquare,
-  Download, Filter, X, ChevronDown, Activity, Clock,
+  Filter, X, ChevronDown, Activity, Clock,
   ExternalLink, FileSpreadsheet, RefreshCw, UserCheck,
   DollarSign, ShieldAlert, Star, Zap, Award, Target, ArrowUpRight,
   ArrowDownRight, Phone, Calendar, Building2, Bug, Tag
@@ -959,147 +959,6 @@ export default function Analytics() {
     }
 
     XLSX.writeFile(wb, `relatorio_completo_${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
-
-  const exportToPDF = async () => {
-    if (!contentRef.current) return;
-    try {
-      const html2pdf = (await import('html2pdf.js')).default;
-
-      // Injetar estilos light para PDF
-      const style = document.createElement('style');
-      style.id = 'pdf-print-styles';
-      style.textContent = `
-        [data-pdf-mode] {
-          background: #ffffff !important;
-          padding: 12px !important;
-          width: 1100px !important;
-          max-width: 1100px !important;
-          overflow: visible !important;
-        }
-        [data-pdf-mode] * {
-          overflow: visible !important;
-          text-overflow: clip !important;
-          white-space: normal !important;
-          box-sizing: border-box !important;
-        }
-        [data-pdf-mode] *:not(.recharts-text):not(.recharts-cartesian-axis-tick-value):not(svg *) {
-          color: #1e1b4b !important;
-        }
-        [data-pdf-mode] p {
-          line-height: 1.4 !important;
-          margin-bottom: 2px !important;
-        }
-        [data-pdf-mode] p[style*="font-weight: bold"],
-        [data-pdf-mode] p[style*="fontWeight"] {
-          line-height: 1.5 !important;
-          padding-bottom: 4px !important;
-        }
-        [data-pdf-mode] div[style*="alignItems: 'center'"],
-        [data-pdf-mode] div[style*="align-items: center"] {
-          min-height: 0 !important;
-        }
-        [data-pdf-mode] .recharts-text,
-        [data-pdf-mode] .recharts-cartesian-axis-tick-value {
-          fill: #334155 !important;
-        }
-        [data-pdf-mode] .recharts-legend-item-text {
-          color: #334155 !important;
-        }
-        [data-pdf-mode] .recharts-wrapper {
-          overflow: visible !important;
-        }
-        [data-pdf-mode] > div > div,
-        [data-pdf-mode] div[style*="background: rgba(30"],
-        [data-pdf-mode] div[style*="background: linear-gradient(135deg, rgba("],
-        [data-pdf-mode] div[style*="background: rgba(15"],
-        [data-pdf-mode] div[style*="background: #0f0a1f"] {
-          background: #f1f5f9 !important;
-          border: 1px solid #cbd5e1 !important;
-        }
-        [data-pdf-mode] div[style*="rgba(139, 92, 246"] {
-          border-color: #cbd5e1 !important;
-        }
-        [data-pdf-mode] p[style*="color: #94a3b8"],
-        [data-pdf-mode] p[style*="color: #64748b"],
-        [data-pdf-mode] span[style*="color: #94a3b8"],
-        [data-pdf-mode] span[style*="color: #64748b"] {
-          color: #475569 !important;
-        }
-        [data-pdf-mode] p[style*="color: white"],
-        [data-pdf-mode] span[style*="color: white"],
-        [data-pdf-mode] h3[style*="color: white"],
-        [data-pdf-mode] h2[style*="color: white"],
-        [data-pdf-mode] td[style*="color: white"],
-        [data-pdf-mode] th[style*="color: white"] {
-          color: #0f172a !important;
-        }
-        [data-pdf-mode] tr[style*="rgba(15"] {
-          background: #f8fafc !important;
-        }
-        [data-pdf-mode] td, [data-pdf-mode] th {
-          border-color: #cbd5e1 !important;
-          font-size: 11px !important;
-          padding: 8px 10px !important;
-        }
-        [data-pdf-mode] table {
-          width: 100% !important;
-          table-layout: fixed !important;
-        }
-        [data-pdf-mode] div[style*="display: grid"] {
-          gap: 10px !important;
-        }
-        [data-pdf-mode] div[style*="gridTemplateColumns: repeat(5"] {
-          grid-template-columns: repeat(5, 1fr) !important;
-        }
-        [data-pdf-mode] div[style*="gridTemplateColumns: 1fr 1fr 1fr"] {
-          grid-template-columns: 1fr 1fr 1fr !important;
-        }
-        [data-pdf-mode] span[style*="background: rgba(16, 185, 129"],
-        [data-pdf-mode] span[style*="background: rgba(239, 68, 68"],
-        [data-pdf-mode] span[style*="background: rgba(245, 158, 11"] {
-          border: 1px solid currentColor !important;
-        }
-        [data-pdf-mode] div[style*="borderRadius"],
-        [data-pdf-mode] div[style*="border-radius"] {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-          padding-bottom: 16px !important;
-        }
-        [data-pdf-mode] div[style*="padding: 20px"] {
-          padding: 16px !important;
-          min-height: auto !important;
-        }
-      `;
-      document.head.appendChild(style);
-      contentRef.current.setAttribute('data-pdf-mode', 'true');
-
-      // Aguardar reflow completo
-      await new Promise(r => setTimeout(r, 300));
-
-      const opt = {
-        margin: [6, 6, 6, 6],
-        filename: `analytics_${activeTab}_${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-          scale: 1.5,
-          useCORS: true,
-          backgroundColor: '#ffffff',
-          width: 1100,
-          windowWidth: 1100
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'], avoid: ['div[style*="borderRadius"]', 'tr', '.recharts-wrapper'] }
-      };
-      await html2pdf().set(opt).from(contentRef.current).save();
-
-      contentRef.current.removeAttribute('data-pdf-mode');
-      style.remove();
-    } catch (err) {
-      contentRef.current?.removeAttribute('data-pdf-mode');
-      document.getElementById('pdf-print-styles')?.remove();
-      console.error('Erro ao exportar PDF:', err);
-    }
   };
 
   const clearFilters = () => {
@@ -2859,25 +2718,6 @@ export default function Analytics() {
           >
             <FileSpreadsheet style={{ width: '18px', height: '18px' }} />
             Excel
-          </button>
-          <button
-            onClick={exportToPDF}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 20px',
-              background: 'linear-gradient(135deg, #ef4444 0%, #f97316 100%)',
-              border: 'none',
-              borderRadius: '12px',
-              color: 'white',
-              fontSize: '14px',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            <Download style={{ width: '18px', height: '18px' }} />
-            PDF
           </button>
         </div>
       </div>
