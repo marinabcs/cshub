@@ -17,7 +17,7 @@
 - ✅ Sistema Ongoing completo (ações recorrentes por saúde)
 - ✅ Minha Carteira com filtros multiselect (Status, Saúde, Responsável)
 - ✅ Seção "Sem Playbook" em Minha Carteira
-- ✅ 350 testes automatizados passando (Vitest)
+- ✅ 347 testes automatizados passando (Vitest)
 - ✅ Status "onboarding" removido (tratado como "ativo")
 - ✅ Label "Segmento" renomeado para "Saúde" em toda a UI
 

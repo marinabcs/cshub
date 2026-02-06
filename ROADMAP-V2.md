@@ -485,11 +485,13 @@ Usuarios existentes podem nao ter Custom Claims no Firebase Auth. `syncUserRole`
 - `syncUserRole`: erro de Eventarc na primeira tentativa — rodar `firebase deploy --only functions --project cs-hub-8c032` novamente
 - `validateDomain`: requer Identity Platform (GCIP) habilitado no projeto — habilitar em Firebase Console > Authentication > Settings
 
-### 🧪 Testes Automatizados (PRIORIDADE ALTA)
-- [ ] Testes unitarios dos schemas Zod
-- [ ] Testes da logica de segmentacao CS
-- [ ] Testes da geracao de alertas
-- [ ] Testes dos utilitarios (sanitizeError, logger, audit)
+### 🧪 Testes Automatizados ✅
+- [x] Testes unitarios dos schemas Zod (59 testes em `validation/__tests__/schemas.test.js`)
+- [x] Testes da logica de segmentacao CS (57 testes em `utils/__tests__/segmentoCS.test.js`)
+- [x] Testes da geracao de alertas (47 testes em `utils/__tests__/alertas.test.js`)
+- [x] Testes dos utilitarios: sanitizeError (1), audit (25), helpers (34)
+- [x] Outros: onboardingCalculator (36), emailFilters (30), threadMatcher (48), clienteStatus (10)
+- **Total: 347 testes passando**
 
 ### ✅ Validacao Manual (PRIORIDADE BAIXA)
 - [ ] Validar segmentacao com 5 contas de teste (Bodega Aurrera, EPA, etc.) — BUG-1
