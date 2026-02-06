@@ -103,6 +103,7 @@ export const REUNIAO_STATUS = {
   pendente: { label: 'Pendente', color: '#64748b' },
   agendada: { label: 'Agendada', color: '#3b82f6' },
   concluida: { label: 'Concluída', color: '#10b981' },
+  nao_aplicada: { label: 'Não Aplicada', color: '#f59e0b' },
   remarcada: { label: 'Remarcada', color: '#f59e0b' },
   cancelada: { label: 'Cancelada', color: '#ef4444' }
 };

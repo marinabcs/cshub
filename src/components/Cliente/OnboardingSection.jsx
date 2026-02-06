@@ -188,6 +188,39 @@ export default function OnboardingSection({ clienteId }) {
     setAtualizando(null);
   }
 
+  async function handlePularReuniaoV1(reuniaoId) {
+    setAtualizando(`pular-${reuniaoId}`);
+    try {
+      await atualizarReuniaoV1(clienteId, plano.id, reuniaoId, { status: 'nao_aplicada' });
+      await loadPlano();
+    } catch {
+      // erro logado
+    }
+    setAtualizando(null);
+  }
+
+  async function handleReabrirReuniaoV1(reuniaoId) {
+    setAtualizando(`reabrir-${reuniaoId}`);
+    try {
+      await atualizarReuniaoV1(clienteId, plano.id, reuniaoId, { status: 'pendente' });
+      await loadPlano();
+    } catch {
+      // erro logado
+    }
+    setAtualizando(null);
+  }
+
+  async function handleLimparDataV1(reuniaoId) {
+    setAtualizando(`limpar-data-${reuniaoId}`);
+    try {
+      await atualizarReuniaoV1(clienteId, plano.id, reuniaoId, { data_sugerida: null });
+      await loadPlano();
+    } catch {
+      // erro logado
+    }
+    setAtualizando(null);
+  }
+
   async function handleSalvarDataV1(reuniaoId, novaData) {
     setAtualizando(`data-${reuniaoId}`);
     try {
@@ -268,10 +301,12 @@ export default function OnboardingSection({ clienteId }) {
   if (isV1) {
     const reunioes = plano.reunioes || [];
     const reunioesConcluidas = reunioes.filter(r => r.status === 'concluida').length;
+    const reunioesNaoAplicadas = reunioes.filter(r => r.status === 'nao_aplicada').length;
+    const reunioesFinalizadas = reunioesConcluidas + reunioesNaoAplicadas; // Concluídas + Não aplicadas
     const totalReunioes = reunioes.length;
-    const progressoV1 = totalReunioes > 0 ? Math.round((reunioesConcluidas / totalReunioes) * 100) : 0;
+    const progressoV1 = totalReunioes > 0 ? Math.round((reunioesFinalizadas / totalReunioes) * 100) : 0;
     const statusInfo = PLANO_STATUS_V1[plano.status] || PLANO_STATUS_V1.em_andamento;
-    const todasConcluidas = reunioesConcluidas === totalReunioes && totalReunioes > 0;
+    const todasFinalizadas = reunioesFinalizadas === totalReunioes && totalReunioes > 0;
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -317,7 +352,7 @@ export default function OnboardingSection({ clienteId }) {
                   </button>
                 </>
               )}
-              {todasConcluidas && plano.status === 'em_andamento' && (
+              {todasFinalizadas && plano.status === 'em_andamento' && (
                 <button
                   onClick={handleAbrirHandoff}
                   disabled={atualizando === 'handoff'}
@@ -352,8 +387,18 @@ export default function OnboardingSection({ clienteId }) {
           {/* Métricas */}
           <div style={{ display: 'flex', gap: '24px', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ color: 'white', fontWeight: '600', fontSize: '20px' }}>{reunioesConcluidas}/{totalReunioes}</div>
-              <div style={{ color: '#64748b', fontSize: '12px' }}>Reuniões</div>
+              <div style={{ color: '#10b981', fontWeight: '600', fontSize: '20px' }}>{reunioesConcluidas}</div>
+              <div style={{ color: '#64748b', fontSize: '12px' }}>Concluídas</div>
+            </div>
+            {reunioesNaoAplicadas > 0 && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ color: '#f59e0b', fontWeight: '600', fontSize: '20px' }}>{reunioesNaoAplicadas}</div>
+                <div style={{ color: '#64748b', fontSize: '12px' }}>Não Aplicadas</div>
+              </div>
+            )}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ color: '#64748b', fontWeight: '600', fontSize: '20px' }}>{totalReunioes - reunioesFinalizadas}</div>
+              <div style={{ color: '#64748b', fontSize: '12px' }}>Pendentes</div>
             </div>
           </div>
         </div>
@@ -502,19 +547,55 @@ export default function OnboardingSection({ clienteId }) {
                         </div>
                       )}
 
-                      {reuniao.status !== 'concluida' && plano.status === 'em_andamento' && (
-                        <button
-                          onClick={() => handleConcluirReuniaoV1(reuniao.id)}
-                          disabled={atualizando === reuniao.id}
-                          style={{
-                            marginTop: '12px', padding: '8px 16px',
-                            background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)',
-                            borderRadius: '10px', color: '#10b981', cursor: 'pointer',
-                            fontSize: '13px', fontWeight: '500', width: '100%'
-                          }}
-                        >
-                          {atualizando === reuniao.id ? 'Concluindo...' : 'Marcar como Concluída'}
-                        </button>
+                      {/* Botões de ação */}
+                      {plano.status === 'em_andamento' && (
+                        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {/* Reunião pendente: mostrar Concluir e Não Aplicada */}
+                          {reuniao.status === 'pendente' && (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                onClick={() => handleConcluirReuniaoV1(reuniao.id)}
+                                disabled={atualizando === reuniao.id}
+                                style={{
+                                  flex: 1, padding: '8px 16px',
+                                  background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)',
+                                  borderRadius: '10px', color: '#10b981', cursor: 'pointer',
+                                  fontSize: '13px', fontWeight: '500'
+                                }}
+                              >
+                                {atualizando === reuniao.id ? '...' : 'Concluída'}
+                              </button>
+                              <button
+                                onClick={() => handlePularReuniaoV1(reuniao.id)}
+                                disabled={atualizando === `pular-${reuniao.id}`}
+                                style={{
+                                  flex: 1, padding: '8px 16px',
+                                  background: 'rgba(249, 115, 22, 0.1)', border: '1px solid rgba(249, 115, 22, 0.3)',
+                                  borderRadius: '10px', color: '#f59e0b', cursor: 'pointer',
+                                  fontSize: '13px', fontWeight: '500'
+                                }}
+                              >
+                                {atualizando === `pular-${reuniao.id}` ? '...' : 'Não Aplicada'}
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Reunião concluída ou não aplicada: mostrar Reabrir */}
+                          {(reuniao.status === 'concluida' || reuniao.status === 'nao_aplicada') && (
+                            <button
+                              onClick={() => handleReabrirReuniaoV1(reuniao.id)}
+                              disabled={atualizando === `reabrir-${reuniao.id}`}
+                              style={{
+                                padding: '6px 12px',
+                                background: 'rgba(100, 116, 139, 0.1)', border: '1px solid rgba(100, 116, 139, 0.3)',
+                                borderRadius: '8px', color: '#94a3b8', cursor: 'pointer',
+                                fontSize: '12px'
+                              }}
+                            >
+                              {atualizando === `reabrir-${reuniao.id}` ? '...' : 'Reabrir reunião'}
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
@@ -525,7 +606,7 @@ export default function OnboardingSection({ clienteId }) {
         </div>
 
         {/* Elegível para Handoff */}
-        {todasConcluidas && plano.status === 'em_andamento' && (
+        {todasFinalizadas && plano.status === 'em_andamento' && (
           <div style={{
             background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)',
             borderRadius: '16px', padding: '24px', textAlign: 'center'
@@ -533,7 +614,10 @@ export default function OnboardingSection({ clienteId }) {
             <Award size={32} color="#10b981" style={{ marginBottom: '8px' }} />
             <h3 style={{ color: '#10b981', margin: '0 0 8px' }}>Elegível para Handoff!</h3>
             <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 16px' }}>
-              Todas as reuniões foram concluídas.
+              {reunioesConcluidas === totalReunioes
+                ? 'Todas as reuniões foram concluídas.'
+                : `${reunioesConcluidas} reunião(ões) concluída(s), ${reunioesNaoAplicadas} não aplicada(s).`
+              }
             </p>
             <button
               onClick={handleAbrirHandoff}
@@ -549,15 +633,18 @@ export default function OnboardingSection({ clienteId }) {
         )}
 
         {/* Pendências */}
-        {!todasConcluidas && plano.status === 'em_andamento' && (
+        {!todasFinalizadas && plano.status === 'em_andamento' && (
           <div style={{
             background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(249, 115, 22, 0.2)',
             borderRadius: '16px', padding: '20px'
           }}>
             <h4 style={{ color: '#f97316', fontSize: '14px', marginBottom: '12px' }}>Pendências para Handoff</h4>
             <div style={{ color: '#94a3b8', fontSize: '13px' }}>
-              • {totalReunioes - reunioesConcluidas} reunião(ões) pendente(s)
+              • {totalReunioes - reunioesFinalizadas} reunião(ões) pendente(s)
             </div>
+            <p style={{ color: '#64748b', fontSize: '12px', marginTop: '8px', marginBottom: 0 }}>
+              Marque cada reunião como "Concluída" ou "Não Aplicada"
+            </p>
           </div>
         )}
 
@@ -752,8 +839,10 @@ export default function OnboardingSection({ clienteId }) {
               if (isHistV1) {
                 const hReunioes = h.reunioes || [];
                 const hConcluidas = hReunioes.filter(r => r.status === 'concluida').length;
+                const hNaoAplicadas = hReunioes.filter(r => r.status === 'nao_aplicada').length;
+                const hFinalizadas = hConcluidas + hNaoAplicadas;
                 const hTotal = hReunioes.length;
-                const hPct = hTotal > 0 ? Math.round((hConcluidas / hTotal) * 100) : 0;
+                const hPct = hTotal > 0 ? Math.round((hFinalizadas / hTotal) * 100) : 0;
 
                 return (
                   <div key={h.id} style={{
@@ -774,8 +863,9 @@ export default function OnboardingSection({ clienteId }) {
                       </div>
                       <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600' }}>{hPct}%</span>
                     </div>
-                    <div style={{ color: '#64748b', fontSize: '12px' }}>
-                      {hConcluidas}/{hTotal} reuniões
+                    <div style={{ display: 'flex', gap: '12px', color: '#64748b', fontSize: '12px' }}>
+                      <span>{hConcluidas} concluída(s)</span>
+                      {hNaoAplicadas > 0 && <span>{hNaoAplicadas} não aplicada(s)</span>}
                     </div>
                     {h.created_by && (
                       <div style={{ color: '#64748b', fontSize: '11px', marginTop: '6px' }}>
