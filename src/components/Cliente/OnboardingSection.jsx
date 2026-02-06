@@ -1,16 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MODULOS, MODULOS_ORDEM, PLANO_STATUS, SESSAO_STATUS } from '../../constants/onboarding';
+import { REUNIOES_V1, REUNIAO_STATUS, PLANO_STATUS_V1 } from '../../constants/onboardingV1';
 import { useAuth } from '../../contexts/AuthContext';
-import { buscarPlanoAtivo, buscarPlanosCliente, atualizarSessao, marcarFirstValue, marcarTutorialEnviado, concluirOnboarding, excluirPlano, adicionarComentarioFirstValue } from '../../services/onboarding';
+import { buscarPlanoAtivo, buscarPlanosCliente, atualizarSessao, marcarFirstValue, marcarTutorialEnviado, concluirOnboarding, excluirPlano, adicionarComentarioFirstValue, atualizarReuniaoV1 } from '../../services/onboarding';
 import { calculateProgress } from '../../utils/onboardingCalculator';
 import { Timestamp, collection, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import {
   GraduationCap, CheckCircle, Circle, Clock, Send, Calendar,
   Monitor, Users, Award, ChevronDown, ChevronUp, PlayCircle, Pencil, Trash2,
-  MessageSquare, Plus, History
+  MessageSquare, Plus, History, Play, Zap, Sparkles, Video
 } from 'lucide-react';
+
+// Ícones para reuniões v1
+const REUNIAO_ICONS = {
+  kickoff: Play,
+  escala: Zap,
+  ai: Sparkles,
+  motion: Video
+};
 
 export default function OnboardingSection({ clienteId }) {
   const navigate = useNavigate();
@@ -44,6 +53,9 @@ export default function OnboardingSection({ clienteId }) {
     setLoading(false);
   }
 
+  // ============================================
+  // V2 Handlers (mantidos)
+  // ============================================
   async function handleConcluirSessao(sessaoNum) {
     setAtualizando(sessaoNum);
     try {
@@ -78,7 +90,6 @@ export default function OnboardingSection({ clienteId }) {
   }
 
   async function handleAbrirHandoff() {
-    // Carregar usuários do sistema para seleção de responsáveis
     try {
       const snap = await getDocs(collection(db, 'usuarios_sistema'));
       const users = snap.docs
@@ -163,6 +174,57 @@ export default function OnboardingSection({ clienteId }) {
     setAtualizando(null);
   }
 
+  // ============================================
+  // V1 Handlers
+  // ============================================
+  async function handleConcluirReuniaoV1(reuniaoId) {
+    setAtualizando(reuniaoId);
+    try {
+      await atualizarReuniaoV1(clienteId, plano.id, reuniaoId, { status: 'concluida' });
+      await loadPlano();
+    } catch {
+      // erro logado
+    }
+    setAtualizando(null);
+  }
+
+  async function handleSalvarDataV1(reuniaoId, novaData) {
+    setAtualizando(`data-${reuniaoId}`);
+    try {
+      await atualizarReuniaoV1(clienteId, plano.id, reuniaoId, { data_sugerida: novaData });
+      await loadPlano();
+      setEditandoData(null);
+    } catch {
+      // erro logado
+    }
+    setAtualizando(null);
+  }
+
+  // ============================================
+  // Helpers
+  // ============================================
+  function parseLocalDate(dateStr) {
+    if (!dateStr) return null;
+    if (dateStr.toDate) return dateStr.toDate();
+    if (typeof dateStr === 'string' && dateStr.includes('-')) {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    }
+    return new Date(dateStr);
+  }
+
+  function formatDateForInput(date) {
+    if (!date) return '';
+    const d = date.toDate ? date.toDate() : date;
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // ============================================
+  // Loading / Empty states
+  // ============================================
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '48px', color: '#94a3b8' }}>
@@ -180,7 +242,7 @@ export default function OnboardingSection({ clienteId }) {
         <GraduationCap size={48} color="#64748b" style={{ marginBottom: '16px' }} />
         <h3 style={{ color: 'white', marginBottom: '8px' }}>Nenhum plano de onboarding</h3>
         <p style={{ color: '#94a3b8', marginBottom: '24px' }}>
-          Use a Calculadora de Onboarding para criar um plano personalizado.
+          Crie um plano de onboarding para este cliente.
         </p>
         <button
           onClick={() => navigate(`/onboarding/${clienteId}`)}
@@ -197,6 +259,320 @@ export default function OnboardingSection({ clienteId }) {
     );
   }
 
+  // Detectar versão do plano
+  const isV1 = plano.versao === 'v1';
+
+  // ============================================
+  // RENDER V1
+  // ============================================
+  if (isV1) {
+    const reunioes = plano.reunioes || [];
+    const reunioesConcluidas = reunioes.filter(r => r.status === 'concluida').length;
+    const totalReunioes = reunioes.length;
+    const progressoV1 = totalReunioes > 0 ? Math.round((reunioesConcluidas / totalReunioes) * 100) : 0;
+    const statusInfo = PLANO_STATUS_V1[plano.status] || PLANO_STATUS_V1.em_andamento;
+    const todasConcluidas = reunioesConcluidas === totalReunioes && totalReunioes > 0;
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {/* Header com progresso */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '16px', padding: '24px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <GraduationCap size={20} color="#8b5cf6" />
+              <h3 style={{ color: 'white', margin: 0, fontSize: '16px' }}>Onboarding v1.0</h3>
+              <span style={{
+                padding: '2px 10px', borderRadius: '8px', fontSize: '12px',
+                background: `${statusInfo.color}20`, color: statusInfo.color
+              }}>{statusInfo.label}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {plano.status === 'em_andamento' && (
+                <>
+                  <button
+                    onClick={handleEditar}
+                    disabled={atualizando === 'editar'}
+                    style={{
+                      padding: '6px 12px', background: 'rgba(139, 92, 246, 0.1)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px',
+                      color: '#a78bfa', cursor: 'pointer', fontSize: '13px',
+                      display: 'flex', alignItems: 'center', gap: '6px'
+                    }}
+                  >
+                    <Pencil size={13} /> {atualizando === 'editar' ? '...' : 'Editar'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmExcluir(true)}
+                    style={{
+                      padding: '6px 12px', background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px',
+                      color: '#ef4444', cursor: 'pointer', fontSize: '13px',
+                      display: 'flex', alignItems: 'center', gap: '6px'
+                    }}
+                  >
+                    <Trash2 size={13} /> Excluir
+                  </button>
+                </>
+              )}
+              {todasConcluidas && plano.status === 'em_andamento' && (
+                <button
+                  onClick={handleAbrirHandoff}
+                  disabled={atualizando === 'handoff'}
+                  style={{
+                    padding: '6px 12px', background: '#10b981', border: 'none',
+                    borderRadius: '10px', color: 'white', fontWeight: '600',
+                    cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <Award size={14} /> {atualizando === 'handoff' ? 'Concluindo...' : 'Realizar Handoff'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Barra de progresso */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ color: '#94a3b8', fontSize: '13px' }}>Progresso</span>
+              <span style={{ color: 'white', fontWeight: '600', fontSize: '13px' }}>{progressoV1}%</span>
+            </div>
+            <div style={{ height: '8px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '4px' }}>
+              <div style={{
+                height: '100%', borderRadius: '4px',
+                width: `${progressoV1}%`,
+                background: progressoV1 === 100 ? '#10b981' : 'linear-gradient(90deg, #8b5cf6, #06b6d4)',
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+          </div>
+
+          {/* Métricas */}
+          <div style={{ display: 'flex', gap: '24px', justifyContent: 'center' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ color: 'white', fontWeight: '600', fontSize: '20px' }}>{reunioesConcluidas}/{totalReunioes}</div>
+              <div style={{ color: '#64748b', fontSize: '12px' }}>Reuniões</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Reuniões */}
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)',
+          borderRadius: '16px', padding: '24px'
+        }}>
+          <h3 style={{ color: 'white', fontSize: '16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Calendar size={18} color="#8b5cf6" /> Reuniões
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {reunioes.map((reuniao, idx) => {
+              const reuniaoInfo = REUNIOES_V1[reuniao.id] || {};
+              const Icon = REUNIAO_ICONS[reuniao.id] || Calendar;
+              const rStatus = REUNIAO_STATUS[reuniao.status] || REUNIAO_STATUS.pendente;
+              const expanded = expandedSessao === reuniao.id;
+              const dataSugerida = parseLocalDate(reuniao.data_sugerida);
+
+              const cores = [
+                { bg: 'rgba(139, 92, 246, 0.15)', border: 'rgba(139, 92, 246, 0.3)', text: '#8b5cf6' },
+                { bg: 'rgba(6, 182, 212, 0.15)', border: 'rgba(6, 182, 212, 0.3)', text: '#06b6d4' },
+                { bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.3)', text: '#f97316' },
+                { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)', text: '#10b981' }
+              ];
+              const cor = cores[idx % cores.length];
+
+              return (
+                <div key={reuniao.id} style={{
+                  background: '#0f0a1f', border: `1px solid ${cor.border}`,
+                  borderRadius: '12px', overflow: 'hidden'
+                }}>
+                  <div
+                    style={{
+                      padding: '16px', display: 'flex', alignItems: 'center', gap: '12px',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setExpandedSessao(expanded ? null : reuniao.id)}
+                  >
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '12px',
+                      background: reuniao.status === 'concluida' ? 'rgba(16, 185, 129, 0.2)' : cor.bg,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      {reuniao.status === 'concluida'
+                        ? <CheckCircle size={20} color="#10b981" />
+                        : <Icon size={20} color={cor.text} />
+                      }
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{
+                          background: cor.bg, border: `1px solid ${cor.border}`,
+                          padding: '2px 8px', borderRadius: '6px',
+                          color: cor.text, fontSize: '11px', fontWeight: '600'
+                        }}>
+                          {reuniao.numero || idx + 1}
+                        </span>
+                        <span style={{ color: 'white', fontWeight: '600', fontSize: '14px' }}>
+                          {reuniao.nome || reuniaoInfo.nome}
+                        </span>
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '12px' }}>
+                        {reuniao.duracao || reuniaoInfo.duracao || 60} min
+                        {dataSugerida && ` • ${dataSugerida.toLocaleDateString('pt-BR')}`}
+                      </div>
+                    </div>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: '6px', fontSize: '11px',
+                      background: `${rStatus.color}20`, color: rStatus.color
+                    }}>{rStatus.label}</span>
+                    {expanded ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
+                  </div>
+
+                  {expanded && (
+                    <div style={{ padding: '0 16px 16px', borderTop: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                      {/* Descrição e tópicos */}
+                      <div style={{ paddingTop: '12px' }}>
+                        <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 12px' }}>
+                          {reuniao.descricao || reuniaoInfo.descricao}
+                        </p>
+
+                        {(reuniao.topicos || reuniaoInfo.topicos)?.length > 0 && (
+                          <div style={{ marginBottom: '12px' }}>
+                            <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '8px' }}>Tópicos:</div>
+                            <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                              {(reuniao.topicos || reuniaoInfo.topicos).map((t, i) => (
+                                <li key={i} style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>{t}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {(reuniao.entregavel || reuniaoInfo.entregavel) && (
+                          <div style={{
+                            padding: '10px 12px', background: 'rgba(16, 185, 129, 0.1)',
+                            borderRadius: '8px', borderLeft: '3px solid #10b981'
+                          }}>
+                            <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '2px' }}>Entregável:</div>
+                            <div style={{ color: '#10b981', fontSize: '12px' }}>
+                              {reuniao.entregavel || reuniaoInfo.entregavel}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Editar data */}
+                      {plano.status === 'em_andamento' && (
+                        <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Calendar size={14} color="#64748b" />
+                          <span style={{ color: '#94a3b8', fontSize: '13px' }}>Data:</span>
+                          {editandoData === reuniao.id ? (
+                            <input
+                              type="date"
+                              defaultValue={dataSugerida ? formatDateForInput(dataSugerida) : ''}
+                              autoFocus
+                              onBlur={e => {
+                                if (e.target.value) handleSalvarDataV1(reuniao.id, e.target.value);
+                                else setEditandoData(null);
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' && e.target.value) handleSalvarDataV1(reuniao.id, e.target.value);
+                                if (e.key === 'Escape') setEditandoData(null);
+                              }}
+                              style={{
+                                padding: '4px 8px', background: '#0f0a1f', border: '1px solid #3730a3',
+                                borderRadius: '8px', color: 'white', outline: 'none', fontSize: '13px'
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={e => { e.stopPropagation(); setEditandoData(reuniao.id); }}
+                              disabled={atualizando === `data-${reuniao.id}`}
+                              style={{
+                                padding: '4px 10px', background: 'rgba(139, 92, 246, 0.1)',
+                                border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '8px',
+                                color: '#a78bfa', cursor: 'pointer', fontSize: '13px',
+                                display: 'flex', alignItems: 'center', gap: '4px'
+                              }}
+                            >
+                              {atualizando === `data-${reuniao.id}` ? '...' : (dataSugerida ? dataSugerida.toLocaleDateString('pt-BR') : 'Definir data')}
+                              <Pencil size={11} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {reuniao.status !== 'concluida' && plano.status === 'em_andamento' && (
+                        <button
+                          onClick={() => handleConcluirReuniaoV1(reuniao.id)}
+                          disabled={atualizando === reuniao.id}
+                          style={{
+                            marginTop: '12px', padding: '8px 16px',
+                            background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)',
+                            borderRadius: '10px', color: '#10b981', cursor: 'pointer',
+                            fontSize: '13px', fontWeight: '500', width: '100%'
+                          }}
+                        >
+                          {atualizando === reuniao.id ? 'Concluindo...' : 'Marcar como Concluída'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Elegível para Handoff */}
+        {todasConcluidas && plano.status === 'em_andamento' && (
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)',
+            borderRadius: '16px', padding: '24px', textAlign: 'center'
+          }}>
+            <Award size={32} color="#10b981" style={{ marginBottom: '8px' }} />
+            <h3 style={{ color: '#10b981', margin: '0 0 8px' }}>Elegível para Handoff!</h3>
+            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 16px' }}>
+              Todas as reuniões foram concluídas.
+            </p>
+            <button
+              onClick={handleAbrirHandoff}
+              disabled={atualizando === 'handoff'}
+              style={{
+                padding: '12px 24px', background: '#10b981', border: 'none',
+                borderRadius: '12px', color: 'white', fontWeight: '600', cursor: 'pointer'
+              }}
+            >
+              {atualizando === 'handoff' ? 'Concluindo...' : 'Concluir Onboarding'}
+            </button>
+          </div>
+        )}
+
+        {/* Pendências */}
+        {!todasConcluidas && plano.status === 'em_andamento' && (
+          <div style={{
+            background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(249, 115, 22, 0.2)',
+            borderRadius: '16px', padding: '20px'
+          }}>
+            <h4 style={{ color: '#f97316', fontSize: '14px', marginBottom: '12px' }}>Pendências para Handoff</h4>
+            <div style={{ color: '#94a3b8', fontSize: '13px' }}>
+              • {totalReunioes - reunioesConcluidas} reunião(ões) pendente(s)
+            </div>
+          </div>
+        )}
+
+        {/* Modal confirmação exclusão e handoff (compartilhados) */}
+        {renderModals()}
+
+        {/* Histórico */}
+        {renderHistorico()}
+      </div>
+    );
+  }
+
+  // ============================================
+  // RENDER V2 (código original)
+  // ============================================
   const progress = calculateProgress(plano);
   const classificacao = plano.classificacao || {};
   const sessoes = plano.sessoes || [];
@@ -209,6 +585,251 @@ export default function OnboardingSection({ clienteId }) {
     return (typeof v === 'object' ? v.modo || v : v) === 'ao_vivo';
   });
 
+  function renderModals() {
+    return (
+      <>
+        {/* Modal de confirmação de exclusão */}
+        {confirmExcluir && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+          }} onClick={() => setConfirmExcluir(false)}>
+            <div style={{
+              background: '#1e1b4b', border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '16px', padding: '24px', width: '400px', maxWidth: '90vw'
+            }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ color: 'white', margin: '0 0 12px', fontSize: '16px' }}>Excluir Plano de Onboarding?</h3>
+              <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 24px' }}>
+                O plano será cancelado e não poderá ser reativado. Você poderá criar um novo plano depois.
+              </p>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setConfirmExcluir(false)}
+                  style={{
+                    padding: '10px 20px', background: 'rgba(30, 27, 75, 0.4)',
+                    border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
+                    color: 'white', cursor: 'pointer', fontSize: '14px'
+                  }}
+                >Cancelar</button>
+                <button
+                  onClick={handleExcluir}
+                  disabled={atualizando === 'excluir'}
+                  style={{
+                    padding: '10px 20px', background: '#ef4444', border: 'none',
+                    borderRadius: '12px', color: 'white', fontWeight: '600',
+                    cursor: 'pointer', fontSize: '14px'
+                  }}
+                >{atualizando === 'excluir' ? 'Excluindo...' : 'Excluir'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Handoff */}
+        {showHandoffModal && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+          }} onClick={() => setShowHandoffModal(false)}>
+            <div style={{
+              background: '#1e1b4b', border: '1px solid rgba(16, 185, 129, 0.3)',
+              borderRadius: '16px', padding: '24px', width: '480px', maxWidth: '90vw',
+              maxHeight: '80vh', overflowY: 'auto'
+            }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                <Award size={22} color="#10b981" />
+                <h3 style={{ color: 'white', margin: 0, fontSize: '18px' }}>Realizar Handoff</h3>
+              </div>
+
+              <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 20px' }}>
+                Selecione os responsáveis pelo cliente após o onboarding:
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px', maxHeight: '240px', overflowY: 'auto' }}>
+                {usuariosSistema.map(u => {
+                  const selected = handoffResponsaveis.some(r => r.email === u.email);
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => handleToggleResponsavel(u)}
+                      style={{
+                        padding: '10px 14px', background: selected ? 'rgba(16, 185, 129, 0.15)' : '#0f0a1f',
+                        border: `1px solid ${selected ? 'rgba(16, 185, 129, 0.4)' : 'rgba(139, 92, 246, 0.15)'}`,
+                        borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+                        display: 'flex', alignItems: 'center', gap: '10px'
+                      }}
+                    >
+                      <div style={{
+                        width: '20px', height: '20px', borderRadius: '6px',
+                        border: selected ? 'none' : '2px solid #64748b',
+                        background: selected ? '#10b981' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                      }}>
+                        {selected && <CheckCircle size={14} color="white" />}
+                      </div>
+                      <div>
+                        <div style={{ color: 'white', fontSize: '14px' }}>{u.nome}</div>
+                        <div style={{ color: '#64748b', fontSize: '12px' }}>{u.email}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {handoffResponsaveis.length > 0 && (
+                <div style={{
+                  padding: '10px 14px', background: 'rgba(16, 185, 129, 0.1)',
+                  borderRadius: '10px', marginBottom: '20px'
+                }}>
+                  <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Selecionados:</div>
+                  <div style={{ color: '#10b981', fontSize: '13px', fontWeight: '500' }}>
+                    {handoffResponsaveis.map(r => r.nome).join(', ')}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowHandoffModal(false)}
+                  style={{
+                    padding: '10px 20px', background: 'rgba(30, 27, 75, 0.4)',
+                    border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
+                    color: 'white', cursor: 'pointer', fontSize: '14px'
+                  }}
+                >Cancelar</button>
+                <button
+                  onClick={handleConfirmarHandoff}
+                  disabled={handoffResponsaveis.length === 0 || atualizando === 'handoff'}
+                  style={{
+                    padding: '10px 20px', background: handoffResponsaveis.length > 0 ? '#10b981' : '#3730a3',
+                    border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600',
+                    cursor: handoffResponsaveis.length > 0 ? 'pointer' : 'default', fontSize: '14px',
+                    opacity: handoffResponsaveis.length > 0 ? 1 : 0.5
+                  }}
+                >{atualizando === 'handoff' ? 'Concluindo...' : 'Confirmar Handoff'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  function renderHistorico() {
+    if (historico.length === 0) return null;
+
+    return (
+      <div style={{
+        background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)',
+        borderRadius: '16px', padding: '24px'
+      }}>
+        <button
+          onClick={() => setShowHistorico(!showHistorico)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', width: '100%',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 0
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <History size={18} color="#64748b" />
+            <h3 style={{ color: '#94a3b8', fontSize: '15px', margin: 0, fontWeight: '500' }}>
+              Histórico ({historico.length} {historico.length === 1 ? 'plano anterior' : 'planos anteriores'})
+            </h3>
+          </div>
+          {showHistorico ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
+        </button>
+
+        {showHistorico && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+            {historico.map(h => {
+              const isHistV1 = h.versao === 'v1';
+              const hStatus = isHistV1
+                ? (PLANO_STATUS_V1[h.status] || PLANO_STATUS_V1.cancelado)
+                : (PLANO_STATUS[h.status] || PLANO_STATUS.cancelado);
+              const criado = h.created_at?.toDate ? h.created_at.toDate() : h.created_at ? new Date(h.created_at) : null;
+              const atualizado = h.updated_at?.toDate ? h.updated_at.toDate() : h.updated_at ? new Date(h.updated_at) : null;
+
+              if (isHistV1) {
+                const hReunioes = h.reunioes || [];
+                const hConcluidas = hReunioes.filter(r => r.status === 'concluida').length;
+                const hTotal = hReunioes.length;
+                const hPct = hTotal > 0 ? Math.round((hConcluidas / hTotal) * 100) : 0;
+
+                return (
+                  <div key={h.id} style={{
+                    padding: '14px', background: '#0f0a1f', borderRadius: '12px',
+                    border: '1px solid rgba(139, 92, 246, 0.1)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: '#64748b', fontSize: '11px' }}>v1.0</span>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: '6px', fontSize: '11px',
+                          background: `${hStatus.color}20`, color: hStatus.color
+                        }}>{hStatus.label}</span>
+                        <span style={{ color: '#64748b', fontSize: '12px' }}>
+                          {criado && criado.toLocaleDateString('pt-BR')}
+                          {atualizado && ` — ${atualizado.toLocaleDateString('pt-BR')}`}
+                        </span>
+                      </div>
+                      <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600' }}>{hPct}%</span>
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: '12px' }}>
+                      {hConcluidas}/{hTotal} reuniões
+                    </div>
+                    {h.created_by && (
+                      <div style={{ color: '#64748b', fontSize: '11px', marginTop: '6px' }}>
+                        Criado por {h.created_by}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // V2 histórico
+              const hProgress = calculateProgress(h);
+              const hSessoes = h.sessoes || [];
+              const sessoesTotal = hSessoes.length;
+              const sessoesConcluidas = hSessoes.filter(s => s.status === 'concluida').length;
+
+              return (
+                <div key={h.id} style={{
+                  padding: '14px', background: '#0f0a1f', borderRadius: '12px',
+                  border: '1px solid rgba(139, 92, 246, 0.1)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: '#64748b', fontSize: '11px' }}>v2.0</span>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: '6px', fontSize: '11px',
+                        background: `${hStatus.color}20`, color: hStatus.color
+                      }}>{hStatus.label}</span>
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>
+                        {criado && criado.toLocaleDateString('pt-BR')}
+                        {atualizado && ` — ${atualizado.toLocaleDateString('pt-BR')}`}
+                      </span>
+                    </div>
+                    <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600' }}>{hProgress.percentual}%</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '16px', color: '#64748b', fontSize: '12px' }}>
+                    <span>{sessoesConcluidas}/{sessoesTotal} sessões</span>
+                    <span>{hProgress.firstValuesAtingidos}/{hProgress.totalFirstValues} first values</span>
+                    <span>{hProgress.tutoriaisEnviados}/{hProgress.totalTutoriais} tutoriais</span>
+                  </div>
+                  {h.created_by && (
+                    <div style={{ color: '#64748b', fontSize: '11px', marginTop: '6px' }}>
+                      Criado por {h.created_by}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* Header com progresso */}
@@ -219,7 +840,7 @@ export default function OnboardingSection({ clienteId }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <GraduationCap size={20} color="#8b5cf6" />
-            <h3 style={{ color: 'white', margin: 0, fontSize: '16px' }}>Plano de Onboarding</h3>
+            <h3 style={{ color: 'white', margin: 0, fontSize: '16px' }}>Onboarding v2.0</h3>
             <span style={{
               padding: '2px 10px', borderRadius: '8px', fontSize: '12px',
               background: `${statusInfo.color}20`, color: statusInfo.color
@@ -657,198 +1278,8 @@ export default function OnboardingSection({ clienteId }) {
         </div>
       )}
 
-      {/* Modal de confirmação de exclusão */}
-      {confirmExcluir && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-        }} onClick={() => setConfirmExcluir(false)}>
-          <div style={{
-            background: '#1e1b4b', border: '1px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: '16px', padding: '24px', width: '400px', maxWidth: '90vw'
-          }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ color: 'white', margin: '0 0 12px', fontSize: '16px' }}>Excluir Plano de Onboarding?</h3>
-            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 24px' }}>
-              O plano será cancelado e não poderá ser reativado. Você poderá criar um novo plano depois.
-            </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setConfirmExcluir(false)}
-                style={{
-                  padding: '10px 20px', background: 'rgba(30, 27, 75, 0.4)',
-                  border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
-                  color: 'white', cursor: 'pointer', fontSize: '14px'
-                }}
-              >Cancelar</button>
-              <button
-                onClick={handleExcluir}
-                disabled={atualizando === 'excluir'}
-                style={{
-                  padding: '10px 20px', background: '#ef4444', border: 'none',
-                  borderRadius: '12px', color: 'white', fontWeight: '600',
-                  cursor: 'pointer', fontSize: '14px'
-                }}
-              >{atualizando === 'excluir' ? 'Excluindo...' : 'Excluir'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Histórico de planos anteriores */}
-      {historico.length > 0 && (
-        <div style={{
-          background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)',
-          borderRadius: '16px', padding: '24px'
-        }}>
-          <button
-            onClick={() => setShowHistorico(!showHistorico)}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer', width: '100%',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 0
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <History size={18} color="#64748b" />
-              <h3 style={{ color: '#94a3b8', fontSize: '15px', margin: 0, fontWeight: '500' }}>
-                Histórico ({historico.length} {historico.length === 1 ? 'plano anterior' : 'planos anteriores'})
-              </h3>
-            </div>
-            {showHistorico ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
-          </button>
-
-          {showHistorico && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
-              {historico.map(h => {
-                const hStatus = PLANO_STATUS[h.status] || PLANO_STATUS.cancelado;
-                const hProgress = calculateProgress(h);
-                const criado = h.created_at?.toDate ? h.created_at.toDate() : h.created_at ? new Date(h.created_at) : null;
-                const atualizado = h.updated_at?.toDate ? h.updated_at.toDate() : h.updated_at ? new Date(h.updated_at) : null;
-                const hSessoes = h.sessoes || [];
-                const sessoesTotal = hSessoes.length;
-                const sessoesConcluidas = hSessoes.filter(s => s.status === 'concluida').length;
-
-                return (
-                  <div key={h.id} style={{
-                    padding: '14px', background: '#0f0a1f', borderRadius: '12px',
-                    border: '1px solid rgba(139, 92, 246, 0.1)'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{
-                          padding: '2px 8px', borderRadius: '6px', fontSize: '11px',
-                          background: `${hStatus.color}20`, color: hStatus.color
-                        }}>{hStatus.label}</span>
-                        <span style={{ color: '#64748b', fontSize: '12px' }}>
-                          {criado && criado.toLocaleDateString('pt-BR')}
-                          {atualizado && ` — ${atualizado.toLocaleDateString('pt-BR')}`}
-                        </span>
-                      </div>
-                      <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600' }}>{hProgress.percentual}%</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '16px', color: '#64748b', fontSize: '12px' }}>
-                      <span>{sessoesConcluidas}/{sessoesTotal} sessões</span>
-                      <span>{hProgress.firstValuesAtingidos}/{hProgress.totalFirstValues} first values</span>
-                      <span>{hProgress.tutoriaisEnviados}/{hProgress.totalTutoriais} tutoriais</span>
-                    </div>
-                    {h.created_by && (
-                      <div style={{ color: '#64748b', fontSize: '11px', marginTop: '6px' }}>
-                        Criado por {h.created_by}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Modal de Handoff */}
-      {showHandoffModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-        }} onClick={() => setShowHandoffModal(false)}>
-          <div style={{
-            background: '#1e1b4b', border: '1px solid rgba(16, 185, 129, 0.3)',
-            borderRadius: '16px', padding: '24px', width: '480px', maxWidth: '90vw',
-            maxHeight: '80vh', overflowY: 'auto'
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-              <Award size={22} color="#10b981" />
-              <h3 style={{ color: 'white', margin: 0, fontSize: '18px' }}>Realizar Handoff</h3>
-            </div>
-
-            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 20px' }}>
-              Selecione os responsáveis pelo cliente após o onboarding:
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px', maxHeight: '240px', overflowY: 'auto' }}>
-              {usuariosSistema.map(u => {
-                const selected = handoffResponsaveis.some(r => r.email === u.email);
-                return (
-                  <button
-                    key={u.id}
-                    onClick={() => handleToggleResponsavel(u)}
-                    style={{
-                      padding: '10px 14px', background: selected ? 'rgba(16, 185, 129, 0.15)' : '#0f0a1f',
-                      border: `1px solid ${selected ? 'rgba(16, 185, 129, 0.4)' : 'rgba(139, 92, 246, 0.15)'}`,
-                      borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
-                      display: 'flex', alignItems: 'center', gap: '10px'
-                    }}
-                  >
-                    <div style={{
-                      width: '20px', height: '20px', borderRadius: '6px',
-                      border: selected ? 'none' : '2px solid #64748b',
-                      background: selected ? '#10b981' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                    }}>
-                      {selected && <CheckCircle size={14} color="white" />}
-                    </div>
-                    <div>
-                      <div style={{ color: 'white', fontSize: '14px' }}>{u.nome}</div>
-                      <div style={{ color: '#64748b', fontSize: '12px' }}>{u.email}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {handoffResponsaveis.length > 0 && (
-              <div style={{
-                padding: '10px 14px', background: 'rgba(16, 185, 129, 0.1)',
-                borderRadius: '10px', marginBottom: '20px'
-              }}>
-                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Selecionados:</div>
-                <div style={{ color: '#10b981', fontSize: '13px', fontWeight: '500' }}>
-                  {handoffResponsaveis.map(r => r.nome).join(', ')}
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowHandoffModal(false)}
-                style={{
-                  padding: '10px 20px', background: 'rgba(30, 27, 75, 0.4)',
-                  border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
-                  color: 'white', cursor: 'pointer', fontSize: '14px'
-                }}
-              >Cancelar</button>
-              <button
-                onClick={handleConfirmarHandoff}
-                disabled={handoffResponsaveis.length === 0 || atualizando === 'handoff'}
-                style={{
-                  padding: '10px 20px', background: handoffResponsaveis.length > 0 ? '#10b981' : '#3730a3',
-                  border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600',
-                  cursor: handoffResponsaveis.length > 0 ? 'pointer' : 'default', fontSize: '14px',
-                  opacity: handoffResponsaveis.length > 0 ? 1 : 0.5
-                }}
-              >{atualizando === 'handoff' ? 'Concluindo...' : 'Confirmar Handoff'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderModals()}
+      {renderHistorico()}
     </div>
   );
 }
