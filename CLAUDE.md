@@ -231,16 +231,24 @@ VITE_CLICKUP_TEAM_ID=xxxxxxx
 
 ---
 
-## 📧 Integração n8n - Import de Emails (Atualizado: 09/02/2026)
+## 📧 Integração n8n (Atualizado: 09/02/2026)
 
-### Arquitetura:
+### Fluxos n8n:
+| Fluxo | Horário | Descrição |
+|-------|---------|-----------|
+| Export Usuários | 04:00-06:00 | Exporta usuários dos clientes para `usuarios_lookup` |
+| Export Times | 04:00-06:00 | Exporta times/clientes para `clientes` |
+| Export Métricas | 04:00-06:00 | Exporta métricas de uso para `metricas_diarias` |
+| Import Emails | 07:00, 13:00 | Importa emails do Gmail para `threads` e `mensagens` |
+
+### Arquitetura de Emails:
 ```
 n8n (import)              →  Firestore (dados brutos)    →  CS Hub (classificação IA)
 Gmail API → Filtros →        classificado_por: 'pendente'    classifyPendingThreads
 Salvar threads/mensagens                                      (7:30 e 13:30)
 ```
 
-### Fluxo no n8n:
+### Fluxo Import Emails (n8n):
 1. **Schedule** (7h, 13h) → Buscar emails das últimas 20h
 2. **Buscar Dominios** → Mapear domínios para clientes
 3. **Gmail API** → Buscar emails de cada colaborador CS
@@ -294,7 +302,7 @@ Salvar threads/mensagens                                      (7:30 e 13:30)
 
 ### Verificação Automática:
 - **Cloud Function:** `verificarAlertasAutomatico`
-- **Horários:** 8h e 14h (seg-sex, horário de Brasília, após classificação)
+- **Horários:** 9h e 14h (seg-sex, horário de Brasília, após classificação)
 - **Lógica:** Verifica threads dos últimos 7 dias + clientes em RESGATE
 - **ClickUp:** Cria tarefas automaticamente para cada alerta (requer `CLICKUP_LIST_ID` secret)
 
@@ -341,8 +349,8 @@ if (cliente.times && Array.isArray(cliente.times)) {
 ### ✅ Cloud Functions Deployadas (southamerica-east1):
 - `validateDomain` — bloqueia signup fora do @trakto.io (beforeUserCreated)
 - `syncUserRole` — sincroniza Custom Claims quando role muda (onDocumentWritten)
-- `recalcularSaudeDiaria` — recalcula segmento_cs de todos os clientes ativos (scheduled, 7h BRT)
-- `verificarAlertasAutomatico` — gera alertas automaticamente (scheduled, 8h/14h seg-sex BRT)
+- `recalcularSaudeDiaria` — recalcula segmento_cs de todos os clientes ativos (scheduled, 6:30 BRT)
+- `verificarAlertasAutomatico` — gera alertas automaticamente (scheduled, 9h/14h seg-sex BRT)
 - `classifyPendingThreads` — classifica threads pendentes com GPT (scheduled, 7:30/13:30 seg-sex)
 - `setUserRole` — admin define roles (onCall, rate limited 20/min)
 - `classifyThread` — proxy OpenAI para reclassificação manual de threads (onCall, rate limited 30/min)

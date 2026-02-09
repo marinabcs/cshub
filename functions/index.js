@@ -987,7 +987,7 @@ function calcularSegmentoCS(cliente, threads, metricas, totalUsers, config = {})
  * Roda diariamente as 7h horario de Brasilia.
  */
 export const recalcularSaudeDiaria = onSchedule({
-  schedule: '0 7 * * *',
+  schedule: '30 6 * * *', // 6:30, após export de métricas do n8n (4h-6h)
   timeZone: 'America/Sao_Paulo',
   region: 'southamerica-east1',
   timeoutSeconds: 540,
@@ -1238,7 +1238,7 @@ async function buscarComentariosClickUp(taskId, apiKey) {
  * Também cria tarefas no ClickUp automaticamente.
  */
 export const verificarAlertasAutomatico = onSchedule({
-  schedule: '0 8,14 * * 1-5', // 8h e 14h de segunda a sexta (após classificação)
+  schedule: '0 9,14 * * 1-5', // 9h e 14h de segunda a sexta (após classificação)
   timeZone: 'America/Sao_Paulo',
   region: 'southamerica-east1',
   timeoutSeconds: 540,
