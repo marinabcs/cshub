@@ -1238,7 +1238,7 @@ async function buscarComentariosClickUp(taskId, apiKey) {
  * Também cria tarefas no ClickUp automaticamente.
  */
 export const verificarAlertasAutomatico = onSchedule({
-  schedule: '0 9,13,17 * * 1-5', // 9h, 13h, 17h de segunda a sexta
+  schedule: '0 8,14 * * 1-5', // 8h e 14h de segunda a sexta (após classificação)
   timeZone: 'America/Sao_Paulo',
   region: 'southamerica-east1',
   timeoutSeconds: 540,
@@ -1626,7 +1626,7 @@ export const verificarAlertasAutomatico = onSchedule({
  * Usa GPT-4o-mini para classificar e atualiza o documento.
  */
 export const classifyPendingThreads = onSchedule({
-  schedule: '*/30 7-19 * * 1-5', // A cada 30min, 7h-19h, seg-sex
+  schedule: '30 7,13 * * 1-5', // 7:30 e 13:30, seg-sex (após import n8n)
   timeZone: 'America/Sao_Paulo',
   region: 'southamerica-east1',
   timeoutSeconds: 540,

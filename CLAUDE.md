@@ -175,7 +175,7 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
 14. **Tipo de contato "Time Google"** adicionado aos stakeholders (decisor, operacional, financeiro, técnico, time_google, outro)
 11. **Stakeholders inline**: Botão "Adicionar" direto na aba Pessoas do ClienteDetalhe com formulário inline (nome, email, cargo, telefone, linkedin, tipo_contato). Botão excluir em cada card
 12. **Múltiplos responsáveis**: ClienteDetalhe header mostra todos os nomes do array `cliente.responsaveis` (campo `{ email, nome }[]`), com fallback para `responsavel_nome` legado
-15. **Classificação IA movida para Cloud Function** (09/02/2026). n8n agora só importa dados brutos com `classificado_por: 'pendente'`. A Cloud Function `classifyPendingThreads` classifica automaticamente a cada 30min
+15. **Classificação IA movida para Cloud Function** (09/02/2026). n8n agora só importa dados brutos com `classificado_por: 'pendente'`. A Cloud Function `classifyPendingThreads` classifica automaticamente 2x/dia (7:30 e 13:30, após imports)
 16. **Filtro "Esconder informativos"** (09/02/2026). Timeline de interações tem checkbox para ocultar threads com `requer_acao: false` (compartilhamentos, etc). Ativo por padrão
 17. **Transcrição de reuniões simplificada** (09/02/2026). Usuário cola texto da transcrição (Google Docs) + link opcional. IA gera resumo estruturado (resumo, pontos_chave, acoes_combinadas, sentimento)
 18. **Export CSV melhorado** (09/02/2026). Inclui todos os responsáveis, escopos (categorias_produto) e team_type
@@ -237,7 +237,7 @@ VITE_CLICKUP_TEAM_ID=xxxxxxx
 ```
 n8n (import)              →  Firestore (dados brutos)    →  CS Hub (classificação IA)
 Gmail API → Filtros →        classificado_por: 'pendente'    classifyPendingThreads
-Salvar threads/mensagens                                      (a cada 30min)
+Salvar threads/mensagens                                      (7:30 e 13:30)
 ```
 
 ### Fluxo no n8n:
@@ -263,7 +263,7 @@ Salvar threads/mensagens                                      (a cada 30min)
 
 ### Classificação Automática (Cloud Function):
 - **Função:** `classifyPendingThreads`
-- **Schedule:** A cada 30min, 7h-19h, seg-sex
+- **Schedule:** 7:30 e 13:30, seg-sex (após imports do n8n)
 - **Busca:** Threads com `classificado_por: null` ou `'pendente'`
 - **Processa:** Batches de 5, usa GPT-4o-mini
 - **Atualiza:** `categoria`, `sentimento`, `resumo_ia`, `classificado_por: 'ia_automatico'`
@@ -294,7 +294,7 @@ Salvar threads/mensagens                                      (a cada 30min)
 
 ### Verificação Automática:
 - **Cloud Function:** `verificarAlertasAutomatico`
-- **Horários:** 9h, 13h, 17h (seg-sex, horário de Brasília)
+- **Horários:** 8h e 14h (seg-sex, horário de Brasília, após classificação)
 - **Lógica:** Verifica threads dos últimos 7 dias + clientes em RESGATE
 - **ClickUp:** Cria tarefas automaticamente para cada alerta (requer `CLICKUP_LIST_ID` secret)
 
@@ -342,8 +342,8 @@ if (cliente.times && Array.isArray(cliente.times)) {
 - `validateDomain` — bloqueia signup fora do @trakto.io (beforeUserCreated)
 - `syncUserRole` — sincroniza Custom Claims quando role muda (onDocumentWritten)
 - `recalcularSaudeDiaria` — recalcula segmento_cs de todos os clientes ativos (scheduled, 7h BRT)
-- `verificarAlertasAutomatico` — gera alertas automaticamente (scheduled, 9h/13h/17h seg-sex BRT)
-- `classifyPendingThreads` — classifica threads pendentes com GPT (scheduled, a cada 30min 7h-19h seg-sex)
+- `verificarAlertasAutomatico` — gera alertas automaticamente (scheduled, 8h/14h seg-sex BRT)
+- `classifyPendingThreads` — classifica threads pendentes com GPT (scheduled, 7:30/13:30 seg-sex)
 - `setUserRole` — admin define roles (onCall, rate limited 20/min)
 - `classifyThread` — proxy OpenAI para reclassificação manual de threads (onCall, rate limited 30/min)
 - `generateSummary` — proxy OpenAI para resumo executivo (onCall, rate limited 30/min)
