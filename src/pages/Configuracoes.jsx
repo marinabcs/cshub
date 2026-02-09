@@ -393,18 +393,18 @@ export default function Configuracoes() {
                 </span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <input type="number" min="0" value={segmentoConfig.reclamacoes_crescimento} onChange={(e) => handleSegmentoConfigChange('reclamacoes_crescimento', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" value={segmentoConfig.reclamacoes_crescimento} onChange={(e) => handleSegmentoConfigChange('reclamacoes_crescimento', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <input type="number" min="0" value={segmentoConfig.reclamacoes_estavel} onChange={(e) => handleSegmentoConfigChange('reclamacoes_estavel', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#3b82f6', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" value={segmentoConfig.reclamacoes_estavel} onChange={(e) => handleSegmentoConfigChange('reclamacoes_estavel', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#3b82f6', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
                 <span style={{ color: '#f59e0b', fontSize: '12px' }}>até </span>
-                <input type="number" min="0" value={segmentoConfig.reclamacoes_alerta} onChange={(e) => handleSegmentoConfigChange('reclamacoes_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" value={segmentoConfig.reclamacoes_alerta} onChange={(e) => handleSegmentoConfigChange('reclamacoes_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
                 <span style={{ color: '#ef4444', fontSize: '12px' }}>até </span>
-                <input type="number" min="0" value={segmentoConfig.reclamacoes_resgate} onChange={(e) => handleSegmentoConfigChange('reclamacoes_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#ef4444', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" value={segmentoConfig.reclamacoes_resgate} onChange={(e) => handleSegmentoConfigChange('reclamacoes_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#ef4444', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
             </tr>
             {/* Dias ativos/mês (BASE) */}
@@ -416,20 +416,20 @@ export default function Configuracoes() {
                 </span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <input type="number" min="1" value={segmentoConfig.dias_ativos_crescimento} onChange={(e) => handleSegmentoConfigChange('dias_ativos_crescimento', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="1" value={segmentoConfig.dias_ativos_crescimento} onChange={(e) => handleSegmentoConfigChange('dias_ativos_crescimento', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#10b981' }}>+</span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <input type="number" min="1" value={segmentoConfig.dias_ativos_estavel} onChange={(e) => handleSegmentoConfigChange('dias_ativos_estavel', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#3b82f6', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="1" value={segmentoConfig.dias_ativos_estavel} onChange={(e) => handleSegmentoConfigChange('dias_ativos_estavel', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#3b82f6', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#3b82f6' }}>+</span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <input type="number" min="1" value={segmentoConfig.dias_ativos_alerta} onChange={(e) => handleSegmentoConfigChange('dias_ativos_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="1" value={segmentoConfig.dias_ativos_alerta} onChange={(e) => handleSegmentoConfigChange('dias_ativos_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#f59e0b' }}>+</span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
                 <span style={{ color: '#ef4444' }}>até </span>
-                <input type="number" min="0" value={segmentoConfig.dias_ativos_resgate} onChange={(e) => handleSegmentoConfigChange('dias_ativos_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#ef4444', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" value={segmentoConfig.dias_ativos_resgate} onChange={(e) => handleSegmentoConfigChange('dias_ativos_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#ef4444', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
             </tr>
             {/* Score engajamento (ELEVAÇÃO) */}
@@ -441,20 +441,20 @@ export default function Configuracoes() {
                 </span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px' }}>
-                <input type="number" min="1" value={segmentoConfig.engajamento_crescimento} onChange={(e) => handleSegmentoConfigChange('engajamento_crescimento', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="1" value={segmentoConfig.engajamento_crescimento} onChange={(e) => handleSegmentoConfigChange('engajamento_crescimento', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#10b981' }}>+</span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px' }}>
-                <input type="number" min="1" value={segmentoConfig.engajamento_estavel} onChange={(e) => handleSegmentoConfigChange('engajamento_estavel', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#3b82f6', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="1" value={segmentoConfig.engajamento_estavel} onChange={(e) => handleSegmentoConfigChange('engajamento_estavel', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#3b82f6', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#3b82f6' }}>+</span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px' }}>
-                <input type="number" min="0" value={segmentoConfig.engajamento_alerta} onChange={(e) => handleSegmentoConfigChange('engajamento_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" value={segmentoConfig.engajamento_alerta} onChange={(e) => handleSegmentoConfigChange('engajamento_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#f59e0b' }}>+</span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px' }}>
                 <span style={{ color: '#ef4444' }}>até </span>
-                <input type="number" min="0" value={segmentoConfig.engajamento_resgate} onChange={(e) => handleSegmentoConfigChange('engajamento_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#ef4444', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" value={segmentoConfig.engajamento_resgate} onChange={(e) => handleSegmentoConfigChange('engajamento_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '60px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#ef4444', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
             </tr>
           </tbody>
