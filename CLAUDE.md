@@ -33,16 +33,16 @@
 - ✅ Dashboard — OK
 - ✅ Minha Carteira — OK (filtros refeitos, layout reorganizado)
 - ✅ Clientes (lista) — OK (filtro status virou dropdown multiselect, layout reorganizado: linha 1 busca, linha 2 todos os filtros, contagens respeitam filtro de status)
-- ✅ Cliente Detalhe — OK (abas Conversas+Interações unificadas, Playbooks removida, stakeholders com add/delete, todos responsáveis exibidos)
+- ✅ Cliente Detalhe — OK (abas Conversas+Interações unificadas, Playbooks removida, stakeholders com add/delete, todos responsáveis exibidos, cards métricas: Logins/Projetos/Assets/Créditos IA)
 - ✅ Cliente Form — OK (removido: Tags de Contexto, Onboarding e Produto, Calendário de Campanhas, Pessoa para Video; Health Score→Saúde CS; Promise.all em queries; serverTimestamp; schema limpo)
 - ✅ Resumo Executivo — OK (queries paralelas com Promise.all; nome||team_name consistente; imports limpos)
-- ✅ Analytics — OK (imports limpos; nome||team_name; filtros globais Saúde+Status adicionados; fórmula score exibida; PDF tema claro)
+- ✅ Analytics — OK (imports limpos; nome||team_name; filtros globais Saúde+Status adicionados; fórmula score exibida; PDF tema claro; ExcelJS para export)
 - ⚠️ Analytics PDF — tema claro funciona mas números grandes ainda cortam na parte inferior (precisa ajuste no clipping do html2canvas)
 - Documentos — oculto (disponível dentro do cliente)
 - ✅ Ongoing — OK (cards, D+X, nome clicável)
 - ✅ Onboarding — OK
 - ✅ Alertas — OK (reduzido para: sentimento_negativo, problema_reclamacao, entrou_resgate)
-- Configurações — pendente
+- ✅ Configurações — OK (Saúde CS: reclamações como números, pesos inteiros, regras especiais removidas, inputs 60px)
 - Usuários — pendente
 - Auditoria — pendente
 - Validar segmentação com 5 contas reais — pendente
@@ -184,8 +184,14 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
     - **ESCALA**: `logins`, `projetos_criados`, `pecas_criadas` (assets), `downloads`
     - **AI**: `creditos_consumidos`, `features_usadas` (objeto com breakdown por feature)
     - Campos `uso_ai_total` mantido para retrocompatibilidade
-    - Fórmula de engajamento: `(logins × 0.5) + (projetos × 3) + (assets × 2) + (downloads × 1) + (créditos IA × 1.5)`
-    - Pesos configuráveis em Configurações → Saúde CS
+    - Fórmula de engajamento: `(logins × peso_logins) + (projetos × peso_projetos) + (assets × peso_pecas) + (downloads × peso_downloads) + (créditos IA × peso_creditos)`
+    - Pesos configuráveis em Configurações → Saúde CS (valores inteiros)
+    - Pesos padrão: logins=1, projetos=5, assets=1, downloads=0, creditos=3
+21. **Reclamações como números** (09/02/2026). Reclamações em aberto mudou de boolean (permite/não permite) para número (máximo permitido por nível). Ex: CRESCIMENTO=0, ESTÁVEL=1, ALERTA=2, RESGATE=99. Bugs contam como reclamações.
+22. **Regras especiais removidas** (09/02/2026). Removida seção "Regras Especiais de Classificação" (aviso_previo, champion_saiu, etc). Classificação agora é puramente baseada em: 1º Reclamações → 2º Dias ativos → 3º Engajamento.
+23. **Cards ClienteDetalhe atualizados** (09/02/2026). Cards de métricas: Logins, Projetos, Assets, Créditos IA. Resumo simplificado: "X dias ativos no mês | Score engajamento: Y"
+24. **Session timeout** (09/02/2026). Auto-logout após 8h de inatividade. Modal de aviso 60s antes do logout. Hook: `useSessionTimeout.js`
+25. **ExcelJS** (09/02/2026). Biblioteca xlsx (vulnerável) substituída por ExcelJS. npm audit agora retorna 0 vulnerabilidades.
 
 ---
 
@@ -354,7 +360,7 @@ if (cliente.times && Array.isArray(cliente.times)) {
 
 ---
 
-## 🔒 SEGURANÇA (Atualizado: 05/02/2026)
+## 🔒 SEGURANÇA (Atualizado: 09/02/2026)
 
 > Documentacao completa: `/SEGURANCA.md`
 
@@ -385,6 +391,13 @@ if (cliente.times && Array.isArray(cliente.times)) {
 11. ✅ Console.logs removidos em producao (`esbuild.drop`)
 12. ✅ Pagina debug excluida do bundle de producao
 13. ✅ `.env` no `.gitignore`
+14. ✅ npm audit: 0 vulnerabilidades (xlsx substituído por ExcelJS)
+15. ✅ Session timeout: auto-logout após 8h de inatividade + aviso 60s antes
+
+### ⚠️ Segurança Pendente:
+- Audit log de login (registrar sucesso/falha com IP e timestamp)
+- Backup automático do Firestore (Cloud Function scheduled → Cloud Storage)
+- 2FA para admins (Firebase Auth suporta, mas precisa implementar UI)
 
 ### Firebase Secrets (Google Secret Manager):
 - `OPENAI_API_KEY` — chave OpenAI
