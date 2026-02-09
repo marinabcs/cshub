@@ -141,7 +141,7 @@ export default function ClienteDetalhe() {
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
   const [mensagens, setMensagens] = useState([]);
-  const [usageData, setUsageData] = useState({ logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0, dias_ativos: 0, ultima_atividade: null });
+  const [usageData, setUsageData] = useState({ logins: 0, projetos_criados: 0, pecas_criadas: 0, downloads: 0, creditos_consumidos: 0, dias_ativos: 0, ultima_atividade: null });
   const [usuarios, setUsuarios] = useState([]);
   const [showAllUsuarios, setShowAllUsuarios] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -304,16 +304,17 @@ export default function ClienteDetalhe() {
           // Processar métricas de uso
           const aggregated = metricasResult.reduce((acc, d) => {
             const dataDate = d.data?.toDate?.() || (d.data ? new Date(d.data) : null);
-            const temAtividade = (d.logins || 0) > 0 || (d.pecas_criadas || 0) > 0 || (d.downloads || 0) > 0 || (d.uso_ai_total || 0) > 0;
+            const temAtividade = (d.logins || 0) > 0 || (d.projetos_criados || 0) > 0 || (d.pecas_criadas || 0) > 0 || (d.downloads || 0) > 0 || (d.creditos_consumidos || d.uso_ai_total || 0) > 0;
             return {
               logins: acc.logins + (d.logins || 0),
+              projetos_criados: acc.projetos_criados + (d.projetos_criados || 0),
               pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
               downloads: acc.downloads + (d.downloads || 0),
-              ai_total: acc.ai_total + (d.uso_ai_total || 0),
+              creditos_consumidos: acc.creditos_consumidos + (d.creditos_consumidos || d.uso_ai_total || 0),
               dias_ativos: acc.dias_ativos + (temAtividade ? 1 : 0),
               ultima_atividade: dataDate && (!acc.ultima_atividade || dataDate > acc.ultima_atividade) ? dataDate : acc.ultima_atividade
             };
-          }, { logins: 0, pecas_criadas: 0, downloads: 0, ai_total: 0, dias_ativos: 0, ultima_atividade: null });
+          }, { logins: 0, projetos_criados: 0, pecas_criadas: 0, downloads: 0, creditos_consumidos: 0, dias_ativos: 0, ultima_atividade: null });
           setUsageData(aggregated);
 
           // Processar usuários
@@ -331,9 +332,10 @@ export default function ClienteDetalhe() {
           if (clienteData.status !== 'inativo' && !clienteData.segmento_override) {
             const metricasParaCalculo = {
               logins: aggregated.logins,
+              projetos_criados: aggregated.projetos_criados,
               pecas_criadas: aggregated.pecas_criadas,
               downloads: aggregated.downloads,
-              uso_ai_total: aggregated.ai_total,
+              creditos_consumidos: aggregated.creditos_consumidos,
               dias_ativos: aggregated.dias_ativos,
               ultima_atividade: aggregated.ultima_atividade
             };
@@ -1354,9 +1356,7 @@ export default function ClienteDetalhe() {
         )}
         {segmentoCalculado?.fatores && (
           <div style={{ display: 'flex', gap: '16px' }}>
-            <span style={{ color: '#64748b', fontSize: '12px' }}>Dias sem uso: <strong style={{ color: 'white' }}>{segmentoCalculado.fatores.dias_sem_uso}</strong></span>
-            <span style={{ color: '#64748b', fontSize: '12px' }}>Frequência: <strong style={{ color: 'white' }}>{segmentoCalculado.fatores.frequencia_uso}</strong></span>
-            <span style={{ color: '#64748b', fontSize: '12px' }}>Engajamento: <strong style={{ color: 'white' }}>{segmentoCalculado.fatores.engajamento}</strong></span>
+            <span style={{ color: '#64748b', fontSize: '12px' }}>{usageData.dias_ativos} dias ativos no mês | Score engajamento: <strong style={{ color: 'white' }}>{segmentoCalculado.fatores.engajamento}</strong></span>
           </div>
         )}
       </div>
@@ -1370,16 +1370,16 @@ export default function ClienteDetalhe() {
           <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.logins.toLocaleString('pt-BR')}</p>
         </div>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '12px', padding: '16px' }}>
-          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Peças (30d)</p>
-          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.pecas_criadas.toLocaleString('pt-BR')}</p>
+          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Projetos (30d)</p>
+          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.projetos_criados.toLocaleString('pt-BR')}</p>
         </div>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '12px', padding: '16px' }}>
-          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Downloads (30d)</p>
-          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.downloads.toLocaleString('pt-BR')}</p>
+          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Assets (30d)</p>
+          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.pecas_criadas.toLocaleString('pt-BR')}</p>
         </div>
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '12px', padding: '16px' }}>
-          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Uso AI (30d)</p>
-          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.ai_total.toLocaleString('pt-BR')}</p>
+          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Créditos IA (30d)</p>
+          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.creditos_consumidos.toLocaleString('pt-BR')}</p>
         </div>
       </div>
       )}
