@@ -387,8 +387,14 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   // 1. PRIORIDADE MAXIMA: CONDICOES DE RESGATE
   // ============================================
 
+  // Helper para converter boolean legado para número
+  const toNum = (val, fallback) => {
+    if (typeof val === 'boolean') return val ? 99 : 0;
+    return typeof val === 'number' ? val : fallback;
+  };
+
   // Reclamações acima do limite de RESGATE
-  const maxReclamacoesResgate = cfg.reclamacoes_resgate ?? 99;
+  const maxReclamacoesResgate = toNum(cfg.reclamacoes_resgate, 99);
   if (qtdReclamacoes > maxReclamacoesResgate) {
     return { segmento: 'RESGATE', motivo: `${qtdReclamacoes} reclamacoes em aberto (limite: ${maxReclamacoesResgate})`, fatores };
   }
@@ -416,7 +422,7 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   // - Dias ativos >= threshold de crescimento
   // - Engajamento >= threshold de crescimento
   // - Reclamações dentro do limite permitido para CRESCIMENTO
-  const maxReclamacoesCrescimento = cfg.reclamacoes_crescimento ?? 0;
+  const maxReclamacoesCrescimento = toNum(cfg.reclamacoes_crescimento, 0);
   const podeSerCrescimento = qtdReclamacoes <= maxReclamacoesCrescimento;
 
   if (podeSerCrescimento && diasAtivos >= thDiasAtivosCrescimento && engajamentoScore >= thEngajamentoCrescimento) {
@@ -426,7 +432,7 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   // Verificar se atende criterios de ESTAVEL:
   // - Dias ativos >= threshold de estavel
   // - Reclamações dentro do limite permitido para ESTÁVEL
-  const maxReclamacoesEstavel = cfg.reclamacoes_estavel ?? 0;
+  const maxReclamacoesEstavel = toNum(cfg.reclamacoes_estavel, 0);
   const podeSerEstavel = qtdReclamacoes <= maxReclamacoesEstavel;
 
   if (podeSerEstavel && diasAtivos >= thDiasAtivosEstavel) {

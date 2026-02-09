@@ -129,7 +129,23 @@ export default function Configuracoes() {
         const configDocSnap = await getDoc(configDocRef);
         if (configDocSnap.exists()) {
           const data = configDocSnap.data();
-          if (data.segmentoConfig) setSegmentoConfig(data.segmentoConfig);
+          if (data.segmentoConfig) {
+            // Migrar campos antigos (booleans -> números)
+            const config = { ...data.segmentoConfig };
+            if (typeof config.reclamacoes_crescimento === 'boolean') {
+              config.reclamacoes_crescimento = config.reclamacoes_crescimento ? 1 : 0;
+            }
+            if (typeof config.reclamacoes_estavel === 'boolean') {
+              config.reclamacoes_estavel = config.reclamacoes_estavel ? 1 : 0;
+            }
+            if (typeof config.reclamacoes_alerta === 'boolean') {
+              config.reclamacoes_alerta = config.reclamacoes_alerta ? 2 : 0;
+            }
+            if (typeof config.reclamacoes_resgate === 'boolean') {
+              config.reclamacoes_resgate = config.reclamacoes_resgate ? 99 : 0;
+            }
+            setSegmentoConfig(prev => ({ ...prev, ...config }));
+          }
         }
 
         // Fetch sync status (n8n)
