@@ -54,27 +54,19 @@ export default function Configuracoes() {
     engajamento_estavel: 15,
     engajamento_alerta: 1,
     engajamento_resgate: 0,
-    // Reclamações em aberto (toggle por nível)
-    reclamacoes_crescimento: false,
-    reclamacoes_estavel: false,
-    reclamacoes_alerta: true,
-    reclamacoes_resgate: true,
-    // Thresholds adicionais
-    reclamacoes_max_resgate: 3,
-    bugs_max_alerta: 3,
-    // Toggles de regras especiais
-    aviso_previo_resgate: true,
-    champion_saiu_alerta: true,
-    tags_problema_alerta: true,
-    zero_producao_alerta: true,
+    // Reclamações em aberto (max permitido por nível - 0 = não aceita)
+    reclamacoes_crescimento: 0,
+    reclamacoes_estavel: 0,
+    reclamacoes_alerta: 2,
+    reclamacoes_resgate: 99,
     // Pesos do score de engajamento (ESCALA)
-    peso_logins: 0.5,
+    peso_logins: 1,
     peso_projetos: 3,
     peso_pecas: 2,
     peso_downloads: 1,
     // Pesos do score de engajamento (AI)
-    peso_creditos: 1.5,
-    peso_ia: 1.5, // Legado
+    peso_creditos: 2,
+    peso_ia: 2, // Legado
   };
 
   // Parâmetros de segmentação editáveis
@@ -87,22 +79,16 @@ export default function Configuracoes() {
     engajamento_estavel: 15,
     engajamento_alerta: 1,
     engajamento_resgate: 0,
-    reclamacoes_crescimento: false,
-    reclamacoes_estavel: false,
-    reclamacoes_alerta: true,
-    reclamacoes_resgate: true,
-    reclamacoes_max_resgate: 3,
-    bugs_max_alerta: 3,
-    aviso_previo_resgate: true,
-    champion_saiu_alerta: true,
-    tags_problema_alerta: true,
-    zero_producao_alerta: true,
-    peso_logins: 0.5,
+    reclamacoes_crescimento: 0,
+    reclamacoes_estavel: 0,
+    reclamacoes_alerta: 2,
+    reclamacoes_resgate: 99,
+    peso_logins: 1,
     peso_projetos: 3,
     peso_pecas: 2,
     peso_downloads: 1,
-    peso_creditos: 1.5,
-    peso_ia: 1.5,
+    peso_creditos: 2,
+    peso_ia: 2,
   });
 
   // Verificar se usuário é admin
@@ -240,6 +226,7 @@ export default function Configuracoes() {
     // Validar configurações numéricas
     const validationErrors = validateForm(configGeralSchema, config);
     if (validationErrors) {
+      console.warn('[Configuracoes] Validação falhou:', validationErrors);
       return; // Não salva se inválido, mas não mostra alerta
     }
 
@@ -287,8 +274,14 @@ export default function Configuracoes() {
   }, [segmentoConfig, autoSave]);
 
   const handleSegmentoConfigChange = (field, value) => {
-    // Se for booleano, usa direto; senão converte para número
-    const newValue = typeof value === 'boolean' ? value : (Number(value) || 0);
+    // Se for booleano, usa direto
+    if (typeof value === 'boolean') {
+      setSegmentoConfig(prev => ({ ...prev, [field]: value }));
+      return;
+    }
+
+    // Todos os campos numéricos são inteiros
+    const newValue = Math.floor(Number(value) || 0);
     setSegmentoConfig(prev => ({ ...prev, [field]: newValue }));
   };
 
@@ -375,33 +368,25 @@ export default function Configuracoes() {
             </tr>
           </thead>
           <tbody>
-            {/* Reclamações em aberto (VETO - maior prioridade) */}
+            {/* Reclamações em aberto (max permitido por nível) */}
             <tr>
               <td style={{ padding: '12px 16px', color: 'white', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                Reclamações em aberto
+                Reclamações (máx)
                 <span style={{ display: 'block', fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
-                  (veto: impede níveis superiores)
+                  (0 = não aceita reclamações)
                 </span>
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <button onClick={() => isAdmin && handleSegmentoConfigChange('reclamacoes_crescimento', !segmentoConfig.reclamacoes_crescimento)} disabled={!isAdmin} style={{ padding: '4px 10px', background: segmentoConfig.reclamacoes_crescimento ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.reclamacoes_crescimento ? 'rgba(16, 185, 129, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '6px', color: segmentoConfig.reclamacoes_crescimento ? '#10b981' : '#64748b', fontSize: '12px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
-                  {segmentoConfig.reclamacoes_crescimento ? 'Sim' : 'Não'}
-                </button>
+                <input type="number" min="0" value={segmentoConfig.reclamacoes_crescimento} onChange={(e) => handleSegmentoConfigChange('reclamacoes_crescimento', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px', color: '#10b981', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <button onClick={() => isAdmin && handleSegmentoConfigChange('reclamacoes_estavel', !segmentoConfig.reclamacoes_estavel)} disabled={!isAdmin} style={{ padding: '4px 10px', background: segmentoConfig.reclamacoes_estavel ? 'rgba(59, 130, 246, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.reclamacoes_estavel ? 'rgba(59, 130, 246, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '6px', color: segmentoConfig.reclamacoes_estavel ? '#3b82f6' : '#64748b', fontSize: '12px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
-                  {segmentoConfig.reclamacoes_estavel ? 'Sim' : 'Não'}
-                </button>
+                <input type="number" min="0" value={segmentoConfig.reclamacoes_estavel} onChange={(e) => handleSegmentoConfigChange('reclamacoes_estavel', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#3b82f6', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <button onClick={() => isAdmin && handleSegmentoConfigChange('reclamacoes_alerta', !segmentoConfig.reclamacoes_alerta)} disabled={!isAdmin} style={{ padding: '4px 10px', background: segmentoConfig.reclamacoes_alerta ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.reclamacoes_alerta ? 'rgba(245, 158, 11, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '6px', color: segmentoConfig.reclamacoes_alerta ? '#f59e0b' : '#64748b', fontSize: '12px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
-                  {segmentoConfig.reclamacoes_alerta ? 'Sim' : 'Não'}
-                </button>
+                <input type="number" min="0" value={segmentoConfig.reclamacoes_alerta} onChange={(e) => handleSegmentoConfigChange('reclamacoes_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', color: '#f59e0b', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
               <td style={{ textAlign: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                <button onClick={() => isAdmin && handleSegmentoConfigChange('reclamacoes_resgate', !segmentoConfig.reclamacoes_resgate)} disabled={!isAdmin} style={{ padding: '4px 10px', background: segmentoConfig.reclamacoes_resgate ? 'rgba(239, 68, 68, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.reclamacoes_resgate ? 'rgba(239, 68, 68, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '6px', color: segmentoConfig.reclamacoes_resgate ? '#ef4444' : '#64748b', fontSize: '12px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
-                  {segmentoConfig.reclamacoes_resgate ? 'Sim' : 'Não'}
-                </button>
+                <input type="number" min="0" value={segmentoConfig.reclamacoes_resgate} onChange={(e) => handleSegmentoConfigChange('reclamacoes_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '45px', padding: '6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#ef4444', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
               </td>
             </tr>
             {/* Dias ativos/mês (BASE) */}
@@ -465,13 +450,13 @@ export default function Configuracoes() {
               <p style={{ color: '#06b6d4', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>ESCALA</p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>(logins ×</span>
-                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_logins} onChange={(e) => handleSegmentoConfigChange('peso_logins', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" step="1" value={segmentoConfig.peso_logins} onChange={(e) => handleSegmentoConfigChange('peso_logins', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (projetos ×</span>
-                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_projetos} onChange={(e) => handleSegmentoConfigChange('peso_projetos', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" step="1" value={segmentoConfig.peso_projetos} onChange={(e) => handleSegmentoConfigChange('peso_projetos', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (assets ×</span>
-                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_pecas} onChange={(e) => handleSegmentoConfigChange('peso_pecas', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" step="1" value={segmentoConfig.peso_pecas} onChange={(e) => handleSegmentoConfigChange('peso_pecas', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (downloads ×</span>
-                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_downloads} onChange={(e) => handleSegmentoConfigChange('peso_downloads', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" step="1" value={segmentoConfig.peso_downloads} onChange={(e) => handleSegmentoConfigChange('peso_downloads', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>)</span>
               </div>
             </div>
@@ -480,77 +465,15 @@ export default function Configuracoes() {
               <p style={{ color: '#f97316', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>AI</p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>+ (créditos IA ×</span>
-                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_creditos} onChange={(e) => handleSegmentoConfigChange('peso_creditos', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '6px', color: '#f97316', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <input type="number" min="0" step="1" value={segmentoConfig.peso_creditos} onChange={(e) => handleSegmentoConfigChange('peso_creditos', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '6px', color: '#f97316', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>)</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Seção: Regras Especiais (Toggles e Thresholds) */}
-        <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-          <p style={{ color: '#a78bfa', fontSize: '13px', fontWeight: '600', margin: '0 0 12px 0' }}>Regras Especiais de Classificação</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            {/* Coluna 1: Regras de RESGATE */}
-            <div>
-              <p style={{ color: '#ef4444', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Condições de Resgate</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {/* Aviso prévio */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
-                  <span style={{ color: 'white', fontSize: '12px' }}>Aviso prévio = RESGATE</span>
-                  <button onClick={() => isAdmin && handleSegmentoConfigChange('aviso_previo_resgate', !segmentoConfig.aviso_previo_resgate)} disabled={!isAdmin} style={{ padding: '3px 8px', background: segmentoConfig.aviso_previo_resgate ? 'rgba(239, 68, 68, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.aviso_previo_resgate ? 'rgba(239, 68, 68, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '4px', color: segmentoConfig.aviso_previo_resgate ? '#ef4444' : '#64748b', fontSize: '11px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
-                    {segmentoConfig.aviso_previo_resgate ? 'Ativo' : 'Inativo'}
-                  </button>
-                </div>
-                {/* Reclamações máximas */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
-                  <span style={{ color: 'white', fontSize: '12px' }}>Reclamações ≥ X = RESGATE</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <input type="number" min="1" value={segmentoConfig.reclamacoes_max_resgate} onChange={(e) => handleSegmentoConfigChange('reclamacoes_max_resgate', e.target.value)} disabled={!isAdmin} style={{ width: '40px', padding: '3px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '4px', color: '#ef4444', fontSize: '12px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Coluna 2: Regras de ALERTA */}
-            <div>
-              <p style={{ color: '#f59e0b', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Condições de Alerta</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {/* Champion saiu */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.1)' }}>
-                  <span style={{ color: 'white', fontSize: '12px' }}>Champion saiu = ALERTA</span>
-                  <button onClick={() => isAdmin && handleSegmentoConfigChange('champion_saiu_alerta', !segmentoConfig.champion_saiu_alerta)} disabled={!isAdmin} style={{ padding: '3px 8px', background: segmentoConfig.champion_saiu_alerta ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.champion_saiu_alerta ? 'rgba(245, 158, 11, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '4px', color: segmentoConfig.champion_saiu_alerta ? '#f59e0b' : '#64748b', fontSize: '11px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
-                    {segmentoConfig.champion_saiu_alerta ? 'Ativo' : 'Inativo'}
-                  </button>
-                </div>
-                {/* Tags problema */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.1)' }}>
-                  <span style={{ color: 'white', fontSize: '12px' }}>Tags de problema = ALERTA</span>
-                  <button onClick={() => isAdmin && handleSegmentoConfigChange('tags_problema_alerta', !segmentoConfig.tags_problema_alerta)} disabled={!isAdmin} style={{ padding: '3px 8px', background: segmentoConfig.tags_problema_alerta ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.tags_problema_alerta ? 'rgba(245, 158, 11, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '4px', color: segmentoConfig.tags_problema_alerta ? '#f59e0b' : '#64748b', fontSize: '11px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
-                    {segmentoConfig.tags_problema_alerta ? 'Ativo' : 'Inativo'}
-                  </button>
-                </div>
-                {/* Zero produção */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.1)' }}>
-                  <span style={{ color: 'white', fontSize: '12px' }}>Zero produção = ALERTA</span>
-                  <button onClick={() => isAdmin && handleSegmentoConfigChange('zero_producao_alerta', !segmentoConfig.zero_producao_alerta)} disabled={!isAdmin} style={{ padding: '3px 8px', background: segmentoConfig.zero_producao_alerta ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: `1px solid ${segmentoConfig.zero_producao_alerta ? 'rgba(245, 158, 11, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`, borderRadius: '4px', color: segmentoConfig.zero_producao_alerta ? '#f59e0b' : '#64748b', fontSize: '11px', fontWeight: '500', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
-                    {segmentoConfig.zero_producao_alerta ? 'Ativo' : 'Inativo'}
-                  </button>
-                </div>
-                {/* Bugs máximos */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(245, 158, 11, 0.05)', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.1)' }}>
-                  <span style={{ color: 'white', fontSize: '12px' }}>Bugs abertos ≥ X = ALERTA</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <input type="number" min="1" value={segmentoConfig.bugs_max_alerta} onChange={(e) => handleSegmentoConfigChange('bugs_max_alerta', e.target.value)} disabled={!isAdmin} style={{ width: '40px', padding: '3px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px', color: '#f59e0b', fontSize: '12px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <p style={{ color: '#64748b', fontSize: '11px', margin: '12px 0 0 0', fontStyle: 'italic' }}>
-          Reclamação = thread negativa/urgente ou erro/reclamação não resolvida
+          Reclamação = thread negativa/urgente, erro/bug reportado ou reclamação não resolvida
         </p>
       </div>
 

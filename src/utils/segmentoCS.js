@@ -305,27 +305,20 @@ export const DEFAULT_SAUDE_CONFIG = {
   engajamento_estavel: 15,
   engajamento_alerta: 1,
   engajamento_resgate: 0,
-  // Reclamacoes em aberto - se TRUE, esse nivel considera reclamacoes
-  reclamacoes_crescimento: false,  // CRESCIMENTO nao pode ter reclamacoes
-  reclamacoes_estavel: false,      // ESTAVEL nao pode ter reclamacoes
-  reclamacoes_alerta: true,        // ALERTA pode ter reclamacoes
-  reclamacoes_resgate: true,       // RESGATE pode ter reclamacoes
-  // Thresholds adicionais
-  reclamacoes_max_resgate: 3,      // Qtd de reclamacoes que manda direto para RESGATE
-  bugs_max_alerta: 3,              // Qtd de bugs abertos que dispara ALERTA
-  // Toggles de regras especiais
-  aviso_previo_resgate: true,      // Aviso previo = RESGATE automatico
-  champion_saiu_alerta: true,      // Champion saiu = ALERTA
-  tags_problema_alerta: true,      // Tags de problema = ALERTA
-  zero_producao_alerta: true,      // Zero producao = ALERTA
-  // Pesos do score de engajamento (ESCALA)
-  peso_logins: 0.5,                // Peso para logins (baixo, evita gaming)
-  peso_projetos: 3,                // Peso para projetos criados (alto, indica uso real)
+  // Reclamacoes em aberto (max permitido por nivel - 0 = nao aceita)
+  // Bugs/erros reportados contam como reclamacao
+  reclamacoes_crescimento: 0,      // CRESCIMENTO nao pode ter reclamacoes
+  reclamacoes_estavel: 0,          // ESTAVEL nao pode ter reclamacoes
+  reclamacoes_alerta: 2,           // ALERTA aceita ate 2 reclamacoes
+  reclamacoes_resgate: 99,         // RESGATE aceita qualquer quantidade
+  // Pesos do score de engajamento (ESCALA) - INTEIROS
+  peso_logins: 1,                  // Peso para logins
+  peso_projetos: 3,                // Peso para projetos criados
   peso_pecas: 2,                   // Peso para pecas/designs criados
   peso_downloads: 1,               // Peso para downloads
-  // Pesos do score de engajamento (AI)
-  peso_creditos: 1.5,              // Peso para creditos de IA consumidos
-  peso_ia: 1.5,                    // Legado: alias para peso_creditos
+  // Pesos do score de engajamento (AI) - INTEIROS
+  peso_creditos: 2,                // Peso para creditos de IA consumidos
+  peso_ia: 2,                      // Legado: alias para peso_creditos
 };
 
 /**
@@ -375,16 +368,6 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   const thEngajamentoCrescimento = Math.ceil(cfg.engajamento_crescimento / divisor);
   const thEngajamentoEstavel = Math.ceil(cfg.engajamento_estavel / divisor);
 
-  // Flags especiais
-  const emAvisoPrevio = cliente?.status === 'aviso_previo';
-  const championSaiu = cliente?.champion_saiu === true;
-  const temTagsProblema = (cliente?.tags_problema || []).length > 0;
-  const bugsAbertos = (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length;
-
-  // Zero producao
-  const zeroProd = (metricas?.pecas_criadas || 0) === 0 &&
-                   (metricas?.downloads || 0) === 0 &&
-                   (metricas?.uso_ai_total || 0) === 0;
 
   // Montar objeto de fatores para debug/exibicao
   const fatores = {
@@ -394,9 +377,6 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
     qtd_reclamacoes: qtdReclamacoes,
     sazonalidade: sazonalidade,
     tipo_conta: tipoConta,
-    em_aviso_previo: emAvisoPrevio,
-    champion_saiu: championSaiu,
-    zero_producao: zeroProd,
     thresholds: {
       dias_ativos: { crescimento: thDiasAtivosCrescimento, estavel: thDiasAtivosEstavel, alerta: thDiasAtivosAlerta },
       engajamento: { crescimento: thEngajamentoCrescimento, estavel: thEngajamentoEstavel }
@@ -407,46 +387,20 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   // 1. PRIORIDADE MAXIMA: CONDICOES DE RESGATE
   // ============================================
 
-  // Aviso previo = RESGATE automatico (se toggle ativo)
-  if (cfg.aviso_previo_resgate && emAvisoPrevio) {
-    return { segmento: 'RESGATE', motivo: 'Em aviso previo', fatores };
+  // Reclamações acima do limite de RESGATE
+  const maxReclamacoesResgate = cfg.reclamacoes_resgate ?? 99;
+  if (qtdReclamacoes > maxReclamacoesResgate) {
+    return { segmento: 'RESGATE', motivo: `${qtdReclamacoes} reclamacoes em aberto (limite: ${maxReclamacoesResgate})`, fatores };
   }
 
-  // X+ reclamacoes em aberto = RESGATE (threshold configuravel)
-  const thReclamacoesResgate = cfg.reclamacoes_max_resgate ?? 3;
-  if (qtdReclamacoes >= thReclamacoesResgate) {
-    return { segmento: 'RESGATE', motivo: `${qtdReclamacoes} reclamacoes em aberto (limite: ${thReclamacoesResgate})`, fatores };
-  }
-
-  // Zero dias ativos + zero producao = RESGATE
-  if (diasAtivos === 0 && zeroProd) {
-    return { segmento: 'RESGATE', motivo: 'Sem atividade e sem producao no mes', fatores };
+  // Zero dias ativos = RESGATE
+  if (diasAtivos === 0) {
+    return { segmento: 'RESGATE', motivo: 'Sem atividade no mes', fatores };
   }
 
   // ============================================
-  // 2. PRIORIDADE MEDIA: OUTRAS CONDICOES DE ALERTA
+  // 2. VERIFICAR DIAS ATIVOS MINIMOS
   // ============================================
-
-  // Champion saiu (se toggle ativo)
-  if (cfg.champion_saiu_alerta && championSaiu) {
-    return { segmento: 'ALERTA', motivo: 'Champion saiu', fatores };
-  }
-
-  // Tags de problema ativas (se toggle ativo)
-  if (cfg.tags_problema_alerta && temTagsProblema) {
-    return { segmento: 'ALERTA', motivo: 'Tags de problema ativas', fatores };
-  }
-
-  // Muitos bugs abertos (threshold configuravel)
-  const thBugsAlerta = cfg.bugs_max_alerta ?? 3;
-  if (bugsAbertos >= thBugsAlerta) {
-    return { segmento: 'ALERTA', motivo: `${bugsAbertos} bugs abertos (limite: ${thBugsAlerta})`, fatores };
-  }
-
-  // Zero producao (se toggle ativo - logou sem produzir)
-  if (cfg.zero_producao_alerta && zeroProd) {
-    return { segmento: 'ALERTA', motivo: 'Login sem producao (0 pecas, 0 downloads, 0 AI)', fatores };
-  }
 
   // Poucos dias ativos
   if (diasAtivos < thDiasAtivosAlerta) {
@@ -461,8 +415,9 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   // Verificar se atende criterios de CRESCIMENTO:
   // - Dias ativos >= threshold de crescimento
   // - Engajamento >= threshold de crescimento
-  // - Se reclamacoes_crescimento = false (Não), ter reclamação impede CRESCIMENTO
-  const podeSerCrescimento = !reclamacoesEmAberto || cfg.reclamacoes_crescimento;
+  // - Reclamações dentro do limite permitido para CRESCIMENTO
+  const maxReclamacoesCrescimento = cfg.reclamacoes_crescimento ?? 0;
+  const podeSerCrescimento = qtdReclamacoes <= maxReclamacoesCrescimento;
 
   if (podeSerCrescimento && diasAtivos >= thDiasAtivosCrescimento && engajamentoScore >= thEngajamentoCrescimento) {
     return { segmento: 'CRESCIMENTO', motivo: `${diasAtivos} dias ativos + engajamento ${engajamentoScore}`, fatores };
@@ -470,8 +425,9 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
 
   // Verificar se atende criterios de ESTAVEL:
   // - Dias ativos >= threshold de estavel
-  // - Se reclamacoes_estavel = false (Não), ter reclamação impede ESTÁVEL
-  const podeSerEstavel = !reclamacoesEmAberto || cfg.reclamacoes_estavel;
+  // - Reclamações dentro do limite permitido para ESTÁVEL
+  const maxReclamacoesEstavel = cfg.reclamacoes_estavel ?? 0;
+  const podeSerEstavel = qtdReclamacoes <= maxReclamacoesEstavel;
 
   if (podeSerEstavel && diasAtivos >= thDiasAtivosEstavel) {
     return { segmento: 'ESTAVEL', motivo: `${diasAtivos} dias ativos no mes`, fatores };
@@ -481,8 +437,8 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   // 4. ALERTA (fallback quando não atinge CRESCIMENTO/ESTÁVEL)
   // ============================================
 
-  // Se tem reclamação e não pode ser ESTÁVEL, vai para ALERTA
-  if (reclamacoesEmAberto) {
+  // Se tem reclamação acima do limite de ESTÁVEL
+  if (qtdReclamacoes > maxReclamacoesEstavel) {
     return { segmento: 'ALERTA', motivo: `${qtdReclamacoes} reclamacao(es) em aberto`, fatores };
   }
 
