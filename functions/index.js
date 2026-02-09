@@ -1609,3 +1609,148 @@ export const verificarAlertasAutomatico = onSchedule({
 
   console.log(`[Alertas Auto] Concluido: ${alertasCriados} alertas, ${tarefasClickUpCriadas} tarefas ClickUp, ${alertasSincronizados} alertas sync, ${ongoingAcoesAtualizadas} ongoing sync`);
 });
+
+// ============================================
+// SUMMARIZE TRANSCRIPTION - RESUMO DE TRANSCRIÇÃO
+// ============================================
+
+/**
+ * Prompt para resumo estruturado da transcrição
+ */
+const TRANSCRIPTION_SUMMARY_PROMPT = `Analise a seguinte transcrição de uma reunião de Customer Success.
+
+TRANSCRIÇÃO:
+{transcricao}
+
+Retorne APENAS um JSON válido (sem markdown, sem explicações) com:
+{
+  "resumo": "Resumo em 3-5 frases do que foi discutido",
+  "pontos_chave": ["Ponto 1", "Ponto 2", "Ponto 3"],
+  "acoes_combinadas": ["Ação 1", "Ação 2"],
+  "sentimento_geral": "positivo" | "neutro" | "negativo"
+}
+
+Critérios para SENTIMENTO_GERAL:
+- positivo = reunião produtiva, cliente satisfeito, boas perspectivas
+- neutro = reunião padrão, sem indicadores fortes de satisfação ou insatisfação
+- negativo = cliente insatisfeito, problemas reportados, tensão na conversa`;
+
+/**
+ * Gera resumo estruturado de uma transcrição de reunião.
+ * Recebe texto da transcrição, gera resumo com GPT e atualiza a interação no Firestore.
+ */
+export const summarizeTranscription = onCall({
+  region: 'southamerica-east1',
+  secrets: ['OPENAI_API_KEY'],
+  timeoutSeconds: 120
+}, async (request) => {
+  await requireRole(request, ['cs', 'gestor', 'admin', 'super_admin']);
+  await checkRateLimit(request.auth.uid, { maxRequests: 30, windowMs: 3600000, endpoint: 'summarizeTranscription' });
+
+  const { transcricaoTexto, linkTranscricao, interacaoId, clienteId } = request.data;
+
+  // Validações de entrada
+  if (!transcricaoTexto || typeof transcricaoTexto !== 'string') {
+    throw new HttpsError('invalid-argument', 'Campo "transcricaoTexto" é obrigatório');
+  }
+
+  if (transcricaoTexto.length < 50) {
+    throw new HttpsError('invalid-argument', 'Transcrição muito curta (mínimo 50 caracteres)');
+  }
+
+  if (transcricaoTexto.length > 100000) {
+    throw new HttpsError('invalid-argument', 'Transcrição muito longa (máximo 100.000 caracteres)');
+  }
+
+  if (!interacaoId || typeof interacaoId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Campo "interacaoId" é obrigatório');
+  }
+
+  if (!clienteId || typeof clienteId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Campo "clienteId" é obrigatório');
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new HttpsError('failed-precondition', 'OPENAI_API_KEY não configurada no servidor');
+  }
+
+  // Atualizar status para "processing"
+  const interacaoRef = db.collection('interacoes').doc(interacaoId);
+  await interacaoRef.update({
+    transcricao_status: 'processing',
+    updated_at: Timestamp.now()
+  });
+
+  try {
+    // Chamar GPT para resumo estruturado
+    const summaryPrompt = TRANSCRIPTION_SUMMARY_PROMPT.replace('{transcricao}', transcricaoTexto);
+
+    const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Você é um assistente que analisa transcrições de reuniões de Customer Success. Responda APENAS com JSON válido.' },
+          { role: 'user', content: summaryPrompt }
+        ],
+        temperature: 0.3
+      })
+    });
+
+    if (!gptResponse.ok) {
+      console.error('GPT API error:', gptResponse.status);
+      throw new Error('Erro ao gerar resumo');
+    }
+
+    const gptData = await gptResponse.json();
+    const content = gptData.choices[0].message.content;
+    const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
+
+    let resumoIA;
+    try {
+      resumoIA = JSON.parse(jsonStr);
+    } catch {
+      console.warn('Resposta do GPT não é JSON válido:', jsonStr);
+      resumoIA = {
+        resumo: 'Não foi possível gerar resumo estruturado.',
+        pontos_chave: [],
+        acoes_combinadas: [],
+        sentimento_geral: 'neutro'
+      };
+    }
+
+    // Atualizar interação com resumo
+    await interacaoRef.update({
+      transcricao: transcricaoTexto,
+      link_transcricao: linkTranscricao || null,
+      resumo_ia: JSON.stringify(resumoIA),
+      transcricao_status: 'completed',
+      updated_at: Timestamp.now()
+    });
+
+    console.log(`[SummarizeTranscription] Sucesso: interacao=${interacaoId}, chars=${transcricaoTexto.length}`);
+
+    return {
+      success: true,
+      resumo_ia: resumoIA
+    };
+
+  } catch (error) {
+    console.error('[SummarizeTranscription] Erro:', error.message);
+
+    // Atualizar status para erro
+    await interacaoRef.update({
+      transcricao_status: 'error',
+      transcricao_erro: error.message || 'Erro desconhecido',
+      updated_at: Timestamp.now()
+    });
+
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', 'Erro ao gerar resumo. Tente novamente.');
+  }
+});

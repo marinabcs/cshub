@@ -15,5 +15,10 @@ export const interacaoSchema = z.object({
   participantes: z.string().optional().default(''),
   notas: z.string().optional().default(''),
   duracao: z.number().min(0).optional().default(0),
-  link_gravacao: z.string().optional().default('')
+  link_gravacao: z.string().optional().default(''),
+  // Campos de transcrição e resumo IA
+  transcricao: z.string().optional(),
+  link_transcricao: z.string().optional(), // Link para Google Docs ou similar
+  resumo_ia: z.string().optional(), // JSON stringificado
+  transcricao_status: z.enum(['pending', 'processing', 'completed', 'error']).optional()
 });

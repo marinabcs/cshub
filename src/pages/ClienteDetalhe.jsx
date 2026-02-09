@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin, GraduationCap, Search } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin, GraduationCap, Search, Loader2 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SEGMENTOS_CS, getSegmentoInfo, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge, SegmentoCard } from '../components/UI/SegmentoBadge';
@@ -19,6 +19,7 @@ import { documentoSchema, observacaoSchema, interacaoSchema } from '../validatio
 import { ErrorMessage } from '../components/UI/ErrorMessage';
 import { useUserActivityStatus } from '../hooks/useUserActivityStatus';
 import { UserActivityDot } from '../components/UserActivityBadge';
+import { summarizeTranscription, validateTranscriptionText, parseResumoIA, getSentimentoColor, getSentimentoLabel, TRANSCRIPTION_STATUS } from '../services/transcription';
 
 // Extrair iniciais do nome (ex: "Marina Barros" → "MB")
 const getInitials = (name) => {
@@ -208,6 +209,13 @@ export default function ClienteDetalhe() {
   const [editingInteracaoId, setEditingInteracaoId] = useState(null);
   const [filterInteracaoTexto, setFilterInteracaoTexto] = useState('');
   const [filterInteracaoTipo, setFilterInteracaoTipo] = useState('');
+
+  // Transcrição de reunião
+  const [transcricaoTexto, setTranscricaoTexto] = useState('');
+  const [linkTranscricao, setLinkTranscricao] = useState('');
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState('');
+  const [expandedTranscricao, setExpandedTranscricao] = useState({});
 
   // Stakeholders
   const [showStakeholderForm, setShowStakeholderForm] = useState(false);
@@ -851,6 +859,18 @@ export default function ClienteDetalhe() {
   const handleSaveInteracao = async () => {
     if (!interacaoForm.tipo || !interacaoForm.data) return;
     setSavingInteracao(true);
+    setTranscriptionError('');
+
+    // Validar transcrição se preenchida
+    if (transcricaoTexto.trim()) {
+      const validationError = validateTranscriptionText(transcricaoTexto);
+      if (validationError) {
+        setTranscriptionError(validationError);
+        setSavingInteracao(false);
+        return;
+      }
+    }
+
     try {
       const docData = {
         cliente_id: id,
@@ -863,12 +883,21 @@ export default function ClienteDetalhe() {
         updated_at: Timestamp.now()
       };
 
+      // Se tem transcrição, adicionar status pendente
+      if (transcricaoTexto.trim() && interacaoForm.tipo === 'reuniao') {
+        docData.transcricao_status = TRANSCRIPTION_STATUS.PENDING;
+        docData.link_transcricao = linkTranscricao.trim() || null;
+      }
+
+      let interacaoDocId = editingInteracaoId;
+
       if (editingInteracaoId) {
         await updateDoc(doc(db, 'interacoes', editingInteracaoId), docData);
       } else {
         docData.created_at = Timestamp.now();
         docData.created_by = 'CS';
-        await addDoc(collection(db, 'interacoes'), docData);
+        const newDoc = await addDoc(collection(db, 'interacoes'), docData);
+        interacaoDocId = newDoc.id;
       }
 
       // Atualizar ultima_interacao no cliente para exibir na listagem
@@ -878,10 +907,35 @@ export default function ClienteDetalhe() {
       });
       setCliente(prev => ({ ...prev, ultima_interacao_data: docData.data_interacao, ultima_interacao_tipo: docData.tipo }));
 
+      // Se tem transcrição, gerar resumo em background
+      if (transcricaoTexto.trim() && interacaoDocId && interacaoForm.tipo === 'reuniao') {
+        setTranscribing(true);
+        setShowInteracaoForm(false);
+
+        // Atualizar lista imediatamente para mostrar status "processando"
+        fetchInteracoes();
+
+        // Chamar geração de resumo em background
+        const result = await summarizeTranscription(transcricaoTexto.trim(), linkTranscricao.trim(), interacaoDocId, id);
+
+        if (!result.success) {
+          setTranscriptionError(result.error || 'Erro ao gerar resumo');
+        }
+
+        setTranscribing(false);
+        setTranscricaoTexto('');
+        setLinkTranscricao('');
+        // Atualizar lista novamente com resumo completo
+        fetchInteracoes();
+      } else {
+        setShowInteracaoForm(false);
+        fetchInteracoes();
+      }
+
       setInteracaoForm({ tipo: 'feedback', data: '', participantes: '', notas: '', duracao: '', link_gravacao: '' });
-      setShowInteracaoForm(false);
       setEditingInteracaoId(null);
-      fetchInteracoes();
+      setTranscricaoTexto('');
+      setLinkTranscricao('');
     } catch (error) {
       console.error('Erro ao salvar interação:', error);
     } finally {
@@ -1804,6 +1858,34 @@ export default function ClienteDetalhe() {
             </select>
           </div>
 
+          {/* Banner de resumo em andamento */}
+          {transcribing && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: '12px', marginBottom: '16px' }}>
+              <Loader2 style={{ width: '20px', height: '20px', color: '#8b5cf6', animation: 'spin 1s linear infinite' }} />
+              <div>
+                <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>Gerando resumo com IA...</p>
+                <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0 0' }}>Isso pode levar alguns segundos. A página será atualizada automaticamente.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Erro de transcrição */}
+          {transcriptionError && !transcribing && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '12px', marginBottom: '16px' }}>
+              <AlertTriangle style={{ width: '20px', height: '20px', color: '#ef4444', flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <p style={{ color: '#ef4444', fontSize: '14px', fontWeight: '500', margin: 0 }}>Erro no resumo</p>
+                <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0 0' }}>{transcriptionError}</p>
+              </div>
+              <button
+                onClick={() => setTranscriptionError('')}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+              >
+                <X style={{ width: '16px', height: '16px' }} />
+              </button>
+            </div>
+          )}
+
           {/* Formulário de Nova Observação */}
           {showObsForm && (
             <div style={{ background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
@@ -1909,9 +1991,65 @@ export default function ClienteDetalhe() {
                     style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
                   />
                 </div>
+
+                {/* Transcrição da reunião - apenas para reuniões */}
+                {interacaoForm.tipo === 'reuniao' && (
+                  <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.05)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                      <Sparkles style={{ width: '16px', height: '16px', color: '#a78bfa' }} />
+                      <span style={{ color: '#a78bfa', fontSize: '13px', fontWeight: '600' }}>Transcrição + Resumo IA</span>
+                      <span style={{ color: '#64748b', fontSize: '11px' }}>(opcional)</span>
+                    </div>
+
+                    <div style={{ marginBottom: '12px' }}>
+                      <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>
+                        Cole a transcrição da reunião
+                      </label>
+                      <textarea
+                        value={transcricaoTexto}
+                        onChange={e => setTranscricaoTexto(e.target.value)}
+                        placeholder="Cole aqui o texto da transcrição (copie do Google Docs, Otter.ai, etc.)..."
+                        rows={5}
+                        style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                      />
+                      {transcricaoTexto && (
+                        <p style={{ color: '#64748b', fontSize: '11px', marginTop: '4px' }}>
+                          {transcricaoTexto.length.toLocaleString()} caracteres
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '4px' }}>
+                        Link do documento (Google Docs, etc.)
+                      </label>
+                      <input
+                        type="url"
+                        value={linkTranscricao}
+                        onChange={e => setLinkTranscricao(e.target.value)}
+                        placeholder="https://docs.google.com/document/d/..."
+                        style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    {transcriptionError && (
+                      <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '8px' }}>
+                        {transcriptionError}
+                      </p>
+                    )}
+
+                    {transcricaoTexto.trim() && (
+                      <p style={{ color: '#10b981', fontSize: '11px', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Sparkles style={{ width: '12px', height: '12px' }} />
+                        A IA irá gerar um resumo automático com pontos-chave e ações combinadas.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                   <button
-                    onClick={() => { setShowInteracaoForm(false); setEditingInteracaoId(null); }}
+                    onClick={() => { setShowInteracaoForm(false); setEditingInteracaoId(null); setTranscricaoTexto(''); setLinkTranscricao(''); setTranscriptionError(''); }}
                     style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#94a3b8', fontSize: '13px', cursor: 'pointer' }}
                   >
                     Cancelar
@@ -2101,6 +2239,9 @@ export default function ClienteDetalhe() {
                 }
 
                 // Renderizar interação manual
+                const resumoData = item.resumo_ia ? parseResumoIA(item.resumo_ia) : null;
+                const isTranscricaoExpanded = expandedTranscricao[item.id];
+
                 return (
                   <div key={`i-${item.id}`} style={{ position: 'relative', marginBottom: idx < sortedItems.length - 1 ? '12px' : 0 }}>
                     <div style={{ position: 'absolute', left: '-20px', top: '14px', width: '12px', height: '12px', borderRadius: '50%', background: tipoInfo.color, border: '2px solid #0f0a1f' }} />
@@ -2121,6 +2262,23 @@ export default function ClienteDetalhe() {
                                 {item.duracao}min
                               </span>
                             )}
+                            {/* Status da transcrição */}
+                            {item.transcricao_status === 'processing' && (
+                              <span style={{ padding: '2px 8px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', borderRadius: '6px', fontSize: '10px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Loader2 style={{ width: '10px', height: '10px', animation: 'spin 1s linear infinite' }} />
+                                Gerando resumo...
+                              </span>
+                            )}
+                            {item.transcricao_status === 'completed' && (
+                              <span style={{ padding: '2px 8px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', borderRadius: '6px', fontSize: '10px', fontWeight: '600' }}>
+                                Com resumo IA
+                              </span>
+                            )}
+                            {item.transcricao_status === 'error' && (
+                              <span style={{ padding: '2px 8px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', borderRadius: '6px', fontSize: '10px', fontWeight: '600' }}>
+                                Erro no resumo
+                              </span>
+                            )}
                           </div>
                           {item.participantes && (
                             <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -2133,10 +2291,79 @@ export default function ClienteDetalhe() {
                               {item.notas}
                             </p>
                           )}
+
+                          {/* Resumo IA da transcrição */}
+                          {resumoData && (
+                            <div style={{ marginTop: '10px', padding: '12px', background: 'rgba(139, 92, 246, 0.08)', borderRadius: '10px', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                                <Sparkles style={{ width: '14px', height: '14px', color: '#a78bfa' }} />
+                                <span style={{ color: '#a78bfa', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Resumo IA</span>
+                                {resumoData.sentimento_geral && (
+                                  <span style={{ padding: '2px 8px', background: `${getSentimentoColor(resumoData.sentimento_geral)}20`, color: getSentimentoColor(resumoData.sentimento_geral), borderRadius: '6px', fontSize: '10px', fontWeight: '500' }}>
+                                    {getSentimentoLabel(resumoData.sentimento_geral)}
+                                  </span>
+                                )}
+                              </div>
+                              {resumoData.resumo && (
+                                <p style={{ color: '#e2e8f0', fontSize: '13px', margin: '0 0 8px 0', lineHeight: '1.5' }}>
+                                  {resumoData.resumo}
+                                </p>
+                              )}
+                              {resumoData.pontos_chave && resumoData.pontos_chave.length > 0 && (
+                                <div style={{ marginBottom: '8px' }}>
+                                  <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600' }}>Pontos-chave:</span>
+                                  <ul style={{ margin: '4px 0 0 0', paddingLeft: '16px' }}>
+                                    {resumoData.pontos_chave.map((ponto, i) => (
+                                      <li key={i} style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '2px' }}>{ponto}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {resumoData.acoes_combinadas && resumoData.acoes_combinadas.length > 0 && (
+                                <div>
+                                  <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600' }}>Ações combinadas:</span>
+                                  <ul style={{ margin: '4px 0 0 0', paddingLeft: '16px' }}>
+                                    {resumoData.acoes_combinadas.map((acao, i) => (
+                                      <li key={i} style={{ color: '#10b981', fontSize: '12px', marginBottom: '2px' }}>{acao}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Transcrição completa (collapsible) */}
+                          {item.transcricao && (
+                            <div style={{ marginTop: '8px' }}>
+                              <button
+                                onClick={() => setExpandedTranscricao(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                style={{ background: 'none', border: 'none', color: '#06b6d4', fontSize: '12px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <FileText style={{ width: '12px', height: '12px' }} />
+                                {isTranscricaoExpanded ? 'Ocultar transcrição' : 'Ver transcrição completa'}
+                                <ChevronDown style={{ width: '12px', height: '12px', transform: isTranscricaoExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                              </button>
+                              {isTranscricaoExpanded && (
+                                <div style={{ marginTop: '8px', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '8px', border: '1px solid rgba(100, 116, 139, 0.2)', maxHeight: '300px', overflowY: 'auto' }}>
+                                  <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                    {item.transcricao}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {item.link_gravacao && (
-                            <a href={item.link_gravacao} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}>
+                            <a href={item.link_gravacao} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none', marginTop: '6px' }}>
                               <Video style={{ width: '12px', height: '12px' }} />
                               Ver gravação
+                            </a>
+                          )}
+
+                          {item.link_transcricao && (
+                            <a href={item.link_transcricao} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none', marginTop: '6px' }}>
+                              <FileText style={{ width: '12px', height: '12px' }} />
+                              Ver transcrição completa
                             </a>
                           )}
                         </div>

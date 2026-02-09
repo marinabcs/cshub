@@ -13,7 +13,8 @@
 - ✅ Página Analytics com 5 abas (Uso, Conversas, Usuários, Vendas, Churn)
 - ✅ Otimizações de performance (Promise.all, queries paralelas)
 - ✅ Firebase configurado com índices + Firestore rules com RBAC
-- ✅ 8 Cloud Functions deployadas (segurança completa)
+- ✅ 9 Cloud Functions deployadas (segurança completa)
+- ✅ Transcrição de reuniões com Whisper + resumo IA
 - ✅ Sistema Ongoing completo (ações recorrentes por saúde)
 - ✅ Minha Carteira com filtros multiselect (Status, Saúde, Responsável)
 - ✅ Seção "Sem Playbook" em Minha Carteira
@@ -294,6 +295,7 @@ if (cliente.times && Array.isArray(cliente.times)) {
 - `generateSummary` — proxy OpenAI para resumo executivo (onCall, rate limited 30/min)
 - `clickupProxy` — proxy ClickUp API (onCall, rate limited 60/min)
 - `clickupWebhook` — recebe webhooks do ClickUp com verificacao HMAC (onRequest, rate limited 120/min)
+- `summarizeTranscription` — gera resumo de transcrição de reunião com GPT (onCall, rate limited 30/hora)
 
 ### ✅ Segurança Implementada:
 1. ✅ API keys movidas para Firebase Secrets (OpenAI, ClickUp, Webhook)

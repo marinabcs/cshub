@@ -465,17 +465,36 @@ export default function Clientes() {
   useEffect(() => { setCurrentPage(1); }, [searchTerm, filterClienteStatus, filterType, filterSegmento, filterAreaAtuacao, filterProblemas, sortOption]);
 
   const exportToCSV = () => {
-    const headers = ['Nome', 'Responsável', 'Email Responsável', 'Tags', 'Status', 'Saúde CS', 'Área de Atuação', 'Qtd Times'];
-    const rows = filteredClientes.map(cliente => [
-      cliente.team_name || cliente.nome || '',
-      cliente.responsavel_nome || '',
-      cliente.responsavel_email || '',
-      (cliente.tags || []).join('; '),
-      getStatusLabel(cliente.status || 'ativo'),
-      getSegmentoLabel(getClienteSegmento(cliente)),
-      getAreaLabel(cliente.area_atuacao),
-      (cliente.times || []).length
-    ]);
+    const headers = ['Nome', 'Responsáveis', 'Emails Responsáveis', 'Escopos', 'Team Type', 'Tags', 'Status', 'Saúde CS', 'Área de Atuação', 'Qtd Times'];
+    const rows = filteredClientes.map(cliente => {
+      // Todos os responsáveis (array ou legado)
+      const responsaveis = cliente.responsaveis && cliente.responsaveis.length > 0
+        ? cliente.responsaveis
+        : cliente.responsavel_nome
+          ? [{ nome: cliente.responsavel_nome, email: cliente.responsavel_email }]
+          : [];
+      const nomesResponsaveis = responsaveis.map(r => r.nome).filter(Boolean).join('; ');
+      const emailsResponsaveis = responsaveis.map(r => r.email).filter(Boolean).join('; ');
+
+      // Escopos (categorias_produto)
+      const escopos = (cliente.categorias_produto || []).join('; ');
+
+      // Team Type (BR LCS, Vendas B2B, etc)
+      const teamType = cliente.team_type || '';
+
+      return [
+        cliente.team_name || cliente.nome || '',
+        nomesResponsaveis,
+        emailsResponsaveis,
+        escopos,
+        teamType,
+        (cliente.tags || []).join('; '),
+        getStatusLabel(cliente.status || 'ativo'),
+        getSegmentoLabel(getClienteSegmento(cliente)),
+        getAreaLabel(cliente.area_atuacao),
+        (cliente.times || []).length
+      ];
+    });
 
     const csvContent = [
       headers.join(','),
