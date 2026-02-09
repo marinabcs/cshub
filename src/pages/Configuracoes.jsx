@@ -67,10 +67,14 @@ export default function Configuracoes() {
     champion_saiu_alerta: true,
     tags_problema_alerta: true,
     zero_producao_alerta: true,
-    // Pesos do score de engajamento
+    // Pesos do score de engajamento (ESCALA)
+    peso_logins: 0.5,
+    peso_projetos: 3,
     peso_pecas: 2,
-    peso_ia: 1.5,
     peso_downloads: 1,
+    // Pesos do score de engajamento (AI)
+    peso_creditos: 1.5,
+    peso_ia: 1.5, // Legado
   };
 
   // Parâmetros de segmentação editáveis
@@ -93,9 +97,12 @@ export default function Configuracoes() {
     champion_saiu_alerta: true,
     tags_problema_alerta: true,
     zero_producao_alerta: true,
+    peso_logins: 0.5,
+    peso_projetos: 3,
     peso_pecas: 2,
-    peso_ia: 1.5,
     peso_downloads: 1,
+    peso_creditos: 1.5,
+    peso_ia: 1.5,
   });
 
   // Verificar se usuário é admin
@@ -452,14 +459,31 @@ export default function Configuracoes() {
         {/* Seção: Pesos do Score de Engajamento */}
         <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
           <p style={{ color: '#a78bfa', fontSize: '13px', fontWeight: '600', margin: '0 0 12px 0' }}>Fórmula do Score de Engajamento</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ color: '#94a3b8', fontSize: '13px' }}>Score = (peças ×</span>
-            <input type="number" min="0.1" step="0.1" value={segmentoConfig.peso_pecas} onChange={(e) => handleSegmentoConfigChange('peso_pecas', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', color: '#a78bfa', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
-            <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (IA ×</span>
-            <input type="number" min="0.1" step="0.1" value={segmentoConfig.peso_ia} onChange={(e) => handleSegmentoConfigChange('peso_ia', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', color: '#a78bfa', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
-            <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (downloads ×</span>
-            <input type="number" min="0.1" step="0.1" value={segmentoConfig.peso_downloads} onChange={(e) => handleSegmentoConfigChange('peso_downloads', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '6px', color: '#a78bfa', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
-            <span style={{ color: '#94a3b8', fontSize: '13px' }}>)</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* ESCALA */}
+            <div>
+              <p style={{ color: '#06b6d4', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>ESCALA</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>(logins ×</span>
+                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_logins} onChange={(e) => handleSegmentoConfigChange('peso_logins', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (projetos ×</span>
+                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_projetos} onChange={(e) => handleSegmentoConfigChange('peso_projetos', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (assets ×</span>
+                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_pecas} onChange={(e) => handleSegmentoConfigChange('peso_pecas', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>) + (downloads ×</span>
+                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_downloads} onChange={(e) => handleSegmentoConfigChange('peso_downloads', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '6px', color: '#06b6d4', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>)</span>
+              </div>
+            </div>
+            {/* AI */}
+            <div>
+              <p style={{ color: '#f97316', fontSize: '11px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase' }}>AI</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>+ (créditos IA ×</span>
+                <input type="number" min="0" step="0.1" value={segmentoConfig.peso_creditos} onChange={(e) => handleSegmentoConfigChange('peso_creditos', parseFloat(e.target.value) || 0)} disabled={!isAdmin} style={{ width: '50px', padding: '4px 6px', background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)', border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '6px', color: '#f97316', fontSize: '13px', textAlign: 'center', outline: 'none', cursor: isAdmin ? 'text' : 'not-allowed' }} />
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>)</span>
+              </div>
+            </div>
           </div>
         </div>
 

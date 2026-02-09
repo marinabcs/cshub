@@ -200,24 +200,43 @@ export async function getHeavyUsers(teamIds, days = 30, topN = 10) {
         user_email: m.user_email,
         user_nome: m.user_nome,
         team_id: m.team_id,
+        // ESCALA
         logins: 0,
+        projetos_criados: 0,
         pecas_criadas: 0,
         downloads: 0,
-        uso_ai_total: 0,
+        // AI
+        creditos_consumidos: 0,
+        features_usadas: {},
+        uso_ai_total: 0, // retrocompatibilidade
         dias_ativos: 0
       }
     }
+    // ESCALA
     userMap[key].logins += m.logins || 0
+    userMap[key].projetos_criados += m.projetos_criados || 0
     userMap[key].pecas_criadas += m.pecas_criadas || 0
     userMap[key].downloads += m.downloads || 0
-    userMap[key].uso_ai_total += m.uso_ai_total || 0
+    // AI
+    userMap[key].creditos_consumidos += m.creditos_consumidos || 0
+    userMap[key].uso_ai_total += m.uso_ai_total || m.creditos_consumidos || 0
+    // Agregar features_usadas
+    if (m.features_usadas && typeof m.features_usadas === 'object') {
+      for (const [feature, count] of Object.entries(m.features_usadas)) {
+        userMap[key].features_usadas[feature] = (userMap[key].features_usadas[feature] || 0) + count
+      }
+    }
     userMap[key].dias_ativos += 1
   })
 
-  // Calcular score de atividade
+  // Calcular score de atividade (usando novos campos com fallback)
   const users = Object.values(userMap).map(u => ({
     ...u,
-    activity_score: u.logins + (u.pecas_criadas * 2) + u.downloads + (u.uso_ai_total * 1.5)
+    activity_score: (u.logins * 0.5) +
+                    (u.projetos_criados * 3) +
+                    (u.pecas_criadas * 2) +
+                    u.downloads +
+                    (u.creditos_consumidos * 1.5)
   }))
 
   // Ordenar por score (decrescente)

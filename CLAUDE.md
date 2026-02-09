@@ -180,6 +180,12 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
 17. **Transcrição de reuniões simplificada** (09/02/2026). Usuário cola texto da transcrição (Google Docs) + link opcional. IA gera resumo estruturado (resumo, pontos_chave, acoes_combinadas, sentimento)
 18. **Export CSV melhorado** (09/02/2026). Inclui todos os responsáveis, escopos (categorias_produto) e team_type
 19. **Filtros de email centralizados no CS Hub** (09/02/2026). n8n busca filtros do Firestore (`config/email_filters`) ao invés de usar listas hardcoded. Gerenciamento via Configurações → Filtros de Email
+20. **Nova estrutura de métricas** (09/02/2026). Métricas divididas em dois pilares:
+    - **ESCALA**: `logins`, `projetos_criados`, `pecas_criadas` (assets), `downloads`
+    - **AI**: `creditos_consumidos`, `features_usadas` (objeto com breakdown por feature)
+    - Campos `uso_ai_total` mantido para retrocompatibilidade
+    - Fórmula de engajamento: `(logins × 0.5) + (projetos × 3) + (assets × 2) + (downloads × 1) + (créditos IA × 1.5)`
+    - Pesos configuráveis em Configurações → Saúde CS
 
 ---
 

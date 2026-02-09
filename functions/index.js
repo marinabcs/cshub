@@ -1065,16 +1065,21 @@ export const recalcularSaudeDiaria = onSchedule({
         // Agregar metricas dos ultimos 30 dias
         const metricas = metricasRaw.reduce((acc, d) => {
           const dataDate = d.data?.toDate?.() || (d.data ? new Date(d.data) : null);
-          const temAtividade = (d.logins || 0) > 0 || (d.pecas_criadas || 0) > 0 || (d.downloads || 0) > 0 || (d.uso_ai_total || 0) > 0;
+          const temAtividade = (d.logins || 0) > 0 || (d.pecas_criadas || 0) > 0 || (d.downloads || 0) > 0 || (d.creditos_consumidos || d.uso_ai_total || 0) > 0;
           return {
+            // ESCALA
             logins: acc.logins + (d.logins || 0),
+            projetos_criados: acc.projetos_criados + (d.projetos_criados || 0),
             pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
             downloads: acc.downloads + (d.downloads || 0),
-            uso_ai_total: acc.uso_ai_total + (d.uso_ai_total || 0),
+            // AI
+            creditos_consumidos: acc.creditos_consumidos + (d.creditos_consumidos || 0),
+            uso_ai_total: acc.uso_ai_total + (d.uso_ai_total || d.creditos_consumidos || 0), // retrocompatibilidade
+            // Geral
             dias_ativos: acc.dias_ativos + (temAtividade ? 1 : 0),
             ultima_atividade: dataDate && (!acc.ultima_atividade || dataDate > acc.ultima_atividade) ? dataDate : acc.ultima_atividade
           };
-        }, { logins: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0, dias_ativos: 0, ultima_atividade: null });
+        }, { logins: 0, projetos_criados: 0, pecas_criadas: 0, downloads: 0, creditos_consumidos: 0, uso_ai_total: 0, dias_ativos: 0, ultima_atividade: null });
 
         const resultado = calcularSegmentoCS(cliente, threads, metricas, totalUsers, saudeConfig);
         const segmentoAtual = normalizarSegmento(cliente.segmento_cs);

@@ -36,10 +36,14 @@ export const configGeralSchema = z.object({
   champion_saiu_alerta: z.boolean().optional(),
   tags_problema_alerta: z.boolean().optional(),
   zero_producao_alerta: z.boolean().optional(),
-  // Pesos do score de engajamento
+  // Pesos do score de engajamento (ESCALA)
+  peso_logins: posNum.optional(),
+  peso_projetos: posNum.optional(),
   peso_pecas: posNum.optional(),
-  peso_ia: posNum.optional(),
   peso_downloads: posNum.optional(),
+  // Pesos do score de engajamento (AI)
+  peso_creditos: posNum.optional(),
+  peso_ia: posNum.optional(), // Legado: alias para peso_creditos
 });
 
 export const configAlertasSchema = z.object({

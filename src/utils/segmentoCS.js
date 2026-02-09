@@ -254,16 +254,40 @@ function contarReclamacoesEmAberto(threads) {
 
 /**
  * Calcular score de engajamento
- * Score = (pecas x peso_pecas) + (IA x peso_ia) + (downloads x peso_downloads)
- * Os pesos sao configuraveis
+ *
+ * ESCALA: logins, projetos_criados, pecas_criadas, downloads
+ * AI: creditos_consumidos (ou uso_ai_total para retrocompatibilidade)
+ *
+ * Os pesos sao configuraveis em Configuracoes > Saude CS
  */
 function calcularEngajamentoScore(metricas, config = {}) {
   if (!metricas) return 0;
+
+  // Pesos configuraveis
+  const pesoLogins = config.peso_logins ?? 0.5;
+  const pesoProjetos = config.peso_projetos ?? 3;
   const pesoPecas = config.peso_pecas ?? 2;
-  const pesoIA = config.peso_ia ?? 1.5;
   const pesoDownloads = config.peso_downloads ?? 1;
-  const { pecas_criadas = 0, uso_ai_total = 0, downloads = 0 } = metricas;
-  return (pecas_criadas * pesoPecas) + (uso_ai_total * pesoIA) + (downloads * pesoDownloads);
+  const pesoCreditos = config.peso_creditos ?? 1.5;
+
+  // Extrair metricas (com fallbacks para retrocompatibilidade)
+  const {
+    logins = 0,
+    projetos_criados = 0,
+    pecas_criadas = 0,
+    downloads = 0,
+    creditos_consumidos = 0,
+    uso_ai_total = 0  // fallback legado
+  } = metricas;
+
+  // Usar creditos_consumidos se disponivel, senao uso_ai_total
+  const creditosIA = creditos_consumidos || uso_ai_total;
+
+  return (logins * pesoLogins) +
+         (projetos_criados * pesoProjetos) +
+         (pecas_criadas * pesoPecas) +
+         (downloads * pesoDownloads) +
+         (creditosIA * pesoCreditos);
 }
 
 /**
@@ -294,10 +318,14 @@ export const DEFAULT_SAUDE_CONFIG = {
   champion_saiu_alerta: true,      // Champion saiu = ALERTA
   tags_problema_alerta: true,      // Tags de problema = ALERTA
   zero_producao_alerta: true,      // Zero producao = ALERTA
-  // Pesos do score de engajamento
-  peso_pecas: 2,                   // Peso para pecas criadas
-  peso_ia: 1.5,                    // Peso para uso de IA
+  // Pesos do score de engajamento (ESCALA)
+  peso_logins: 0.5,                // Peso para logins (baixo, evita gaming)
+  peso_projetos: 3,                // Peso para projetos criados (alto, indica uso real)
+  peso_pecas: 2,                   // Peso para pecas/designs criados
   peso_downloads: 1,               // Peso para downloads
+  // Pesos do score de engajamento (AI)
+  peso_creditos: 1.5,              // Peso para creditos de IA consumidos
+  peso_ia: 1.5,                    // Legado: alias para peso_creditos
 };
 
 /**

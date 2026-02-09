@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Crown, LogIn, FileImage, Sparkles, TrendingUp } from 'lucide-react';
+import { Crown, LogIn, FileImage, Sparkles, TrendingUp, FolderPlus, Coins } from 'lucide-react';
 import { getHeavyUsers } from '../../services/api';
 
 const getInitials = (name, email) => {
@@ -127,23 +127,29 @@ export default function HeavyUsersCard({ teamIds, days = 30, topN = 5 }) {
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: '16px' }}>
-                <div style={{ textAlign: 'center' }}>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <div style={{ textAlign: 'center' }} title="Logins">
                   <LogIn style={{ width: '14px', height: '14px', color: '#8b5cf6', margin: '0 auto 2px' }} />
                   <p style={{ color: 'white', fontSize: '13px', fontWeight: '600', margin: 0 }}>
                     {user.logins}
                   </p>
                 </div>
-                <div style={{ textAlign: 'center' }}>
+                <div style={{ textAlign: 'center' }} title="Projetos criados">
+                  <FolderPlus style={{ width: '14px', height: '14px', color: '#10b981', margin: '0 auto 2px' }} />
+                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '600', margin: 0 }}>
+                    {user.projetos_criados || 0}
+                  </p>
+                </div>
+                <div style={{ textAlign: 'center' }} title="Assets criados">
                   <FileImage style={{ width: '14px', height: '14px', color: '#06b6d4', margin: '0 auto 2px' }} />
                   <p style={{ color: 'white', fontSize: '13px', fontWeight: '600', margin: 0 }}>
                     {user.pecas_criadas}
                   </p>
                 </div>
-                <div style={{ textAlign: 'center' }}>
-                  <Sparkles style={{ width: '14px', height: '14px', color: '#f97316', margin: '0 auto 2px' }} />
+                <div style={{ textAlign: 'center' }} title="Créditos AI consumidos">
+                  <Coins style={{ width: '14px', height: '14px', color: '#f97316', margin: '0 auto 2px' }} />
                   <p style={{ color: 'white', fontSize: '13px', fontWeight: '600', margin: 0 }}>
-                    {user.uso_ai_total}
+                    {user.creditos_consumidos || user.uso_ai_total || 0}
                   </p>
                 </div>
               </div>
