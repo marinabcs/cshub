@@ -179,6 +179,7 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
 16. **Filtro "Esconder informativos"** (09/02/2026). Timeline de interações tem checkbox para ocultar threads com `requer_acao: false` (compartilhamentos, etc). Ativo por padrão
 17. **Transcrição de reuniões simplificada** (09/02/2026). Usuário cola texto da transcrição (Google Docs) + link opcional. IA gera resumo estruturado (resumo, pontos_chave, acoes_combinadas, sentimento)
 18. **Export CSV melhorado** (09/02/2026). Inclui todos os responsáveis, escopos (categorias_produto) e team_type
+19. **Filtros de email centralizados no CS Hub** (09/02/2026). n8n busca filtros do Firestore (`config/email_filters`) ao invés de usar listas hardcoded. Gerenciamento via Configurações → Filtros de Email
 
 ---
 
@@ -276,10 +277,15 @@ Salvar threads/mensagens                                      (7:30 e 13:30)
 - **Processa:** Batches de 5, usa GPT-4o-mini
 - **Atualiza:** `categoria`, `sentimento`, `resumo_ia`, `classificado_por: 'ia_automatico'`
 
-### Filtros de Spam (no n8n):
-- **Remetentes ignorados:** noreply, mailer-daemon, calendar-notification, newsletters, etc.
-- **Assuntos ignorados:** Aceito/Recusado (calendário), newsletters, out of office, etc.
-- **Assuntos informativos:** Compartilhamentos Google Drive (requer_acao: false)
+### Filtros de Spam (integrados):
+- **Configuração:** CS Hub → Configurações → Filtros de Email
+- **Storage:** Firestore `config/email_filters`
+- **n8n:** Busca filtros do Firestore antes de processar emails
+- **Campos configuráveis:**
+  - `dominios_bloqueados` - Prefixos de email (noreply@, newsletter@, etc.)
+  - `dominios_completos_bloqueados` - Domínios inteiros (mailchimp.com, sendgrid.net)
+  - `palavras_chave_assunto` - Palavras para ignorar (unsubscribe, out of office)
+  - `assuntos_informativos` - Registra mas marca como `requer_acao: false`
 
 ### Timeline no CS Hub:
 - Checkbox "Esconder informativos" (ativo por padrão)
