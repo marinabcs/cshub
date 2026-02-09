@@ -9,6 +9,14 @@
       ]
     },
     {
+      "collectionGroup": "threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "classificado_por", "order": "ASCENDING" },
+        { "fieldPath": "updated_at", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "metricas_diarias",
       "queryScope": "COLLECTION",
       "fields": [

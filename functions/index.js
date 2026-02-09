@@ -1615,12 +1615,13 @@ export const verificarAlertasAutomatico = onSchedule({
 // ============================================
 
 /**
- * Classifica threads pendentes automaticamente.
+ * Classifica threads automaticamente.
  * Roda a cada 30 minutos das 7h às 19h (horário comercial).
  *
  * Busca threads onde:
  * - classificado_por é null/undefined (ainda não classificado)
  * - OU classificado_por é 'pendente' (importado sem classificação)
+ * - OU classificado_por é 'ia' (classificado pelo n8n, precisa padronizar)
  *
  * Usa GPT-4o-mini para classificar e atualiza o documento.
  */
@@ -1638,55 +1639,39 @@ export const classifyPendingThreads = onSchedule({
     return;
   }
 
-  console.log('[ClassifyThreads] Iniciando classificação de threads pendentes...');
+  console.log('[ClassifyThreads] Iniciando classificação de threads...');
 
-  // Buscar threads não classificadas (últimos 7 dias para limitar)
-  const sevenDaysAgo = Timestamp.fromDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+  // Buscar threads para classificar (últimos 30 dias)
+  const thirtyDaysAgo = Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
 
-  // Query 1: classificado_por == null
-  const threadsNullSnap = await db.collection('threads')
-    .where('classificado_por', '==', null)
-    .where('updated_at', '>=', sevenDaysAgo)
-    .limit(50)
-    .get();
-
-  // Query 2: classificado_por == 'pendente'
-  const threadsPendenteSnap = await db.collection('threads')
-    .where('classificado_por', '==', 'pendente')
-    .where('updated_at', '>=', sevenDaysAgo)
-    .limit(50)
-    .get();
-
-  // Query 3: threads sem campo classificado_por (importadas antes da mudança)
-  // Firestore não suporta "field does not exist", então buscamos threads recentes
-  // e filtramos no código
-  const threadsRecentesSnap = await db.collection('threads')
-    .where('updated_at', '>=', sevenDaysAgo)
+  // Buscar TODAS as threads recentes e filtrar no código
+  // Isso é mais simples que múltiplas queries com índices diferentes
+  const threadsSnap = await db.collection('threads')
+    .where('updated_at', '>=', thirtyDaysAgo)
     .orderBy('updated_at', 'desc')
-    .limit(100)
+    .limit(200)
     .get();
 
-  // Combinar e deduplicar
+  // Filtrar threads que precisam de classificação
   const threadMap = new Map();
 
-  for (const doc of threadsNullSnap.docs) {
-    threadMap.set(doc.id, { id: doc.id, ref: doc.ref, ...doc.data() });
-  }
+  for (const doc of threadsSnap.docs) {
+    const data = doc.data();
 
-  for (const doc of threadsPendenteSnap.docs) {
-    if (!threadMap.has(doc.id)) {
-      threadMap.set(doc.id, { id: doc.id, ref: doc.ref, ...doc.data() });
+    // Pular threads já classificadas pela Cloud Function
+    if (data.classificado_por === 'ia_automatico') {
+      continue;
     }
-  }
 
-  // Adicionar threads sem classificado_por
-  for (const doc of threadsRecentesSnap.docs) {
-    if (!threadMap.has(doc.id)) {
-      const data = doc.data();
-      // Se não tem classificado_por ou é null/pendente
-      if (!data.classificado_por || data.classificado_por === 'pendente') {
-        threadMap.set(doc.id, { id: doc.id, ref: doc.ref, ...data });
-      }
+    // Incluir threads que precisam classificação:
+    // - classificado_por é null, undefined, 'pendente', ou 'ia' (n8n antigo)
+    const classificadoPor = data.classificado_por;
+    const precisaClassificar = !classificadoPor ||
+                               classificadoPor === 'pendente' ||
+                               classificadoPor === 'ia';
+
+    if (precisaClassificar) {
+      threadMap.set(doc.id, { id: doc.id, ref: doc.ref, ...data });
     }
   }
 
