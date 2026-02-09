@@ -320,7 +320,8 @@ function verifyClickUpSignature(req, secret) {
  */
 export const clickupWebhook = onRequest({
   region: 'southamerica-east1',
-  cors: false
+  cors: false,
+  secrets: ['CLICKUP_WEBHOOK_SECRET']
 }, async (req, res) => {
   // Aceitar apenas POST
   if (req.method !== 'POST') {
@@ -352,8 +353,12 @@ export const clickupWebhook = onRequest({
   try {
     const payload = req.body;
 
+    // Log do evento recebido para debug
+    console.log(`[ClickUp Webhook] Evento recebido: ${payload.event || 'sem evento'}, task_id: ${payload.task_id || 'sem id'}`);
+
     // Verificar se é um evento de mudança de status
     if (payload.event !== 'taskStatusUpdated' && payload.event !== 'taskUpdated') {
+      console.log(`[ClickUp Webhook] Evento ignorado: ${payload.event}`);
       res.status(200).json({ success: true, message: 'Evento ignorado' });
       return;
     }
@@ -391,9 +396,12 @@ export const clickupWebhook = onRequest({
     const novoStatusCSHub = CLICKUP_STATUS_MAP[normalizeStatus(novoStatusClickUp)];
 
     if (!novoStatusCSHub) {
+      console.log(`[ClickUp Webhook] Status nao mapeado: ${novoStatusClickUp}`);
       res.status(200).json({ success: true, message: 'Status nao mapeado' });
       return;
     }
+
+    console.log(`[ClickUp Webhook] Buscando alerta com clickup_task_id: ${taskId}, novo status: ${novoStatusClickUp} -> ${novoStatusCSHub}`);
 
     // Buscar alerta pelo clickup_task_id
     const alertasSnap = await db.collection('alertas')
@@ -402,6 +410,7 @@ export const clickupWebhook = onRequest({
       .get();
 
     if (alertasSnap.empty) {
+      console.log(`[ClickUp Webhook] Alerta nao encontrado para task_id: ${taskId}`);
       res.status(200).json({ success: true, message: 'Alerta nao encontrado' });
       return;
     }
@@ -430,8 +439,10 @@ export const clickupWebhook = onRequest({
 
       await alertaDoc.ref.update(updateData);
       atualizados++;
+      console.log(`[ClickUp Webhook] Alerta ${alertaDoc.id} atualizado: ${alertaAtual.status} -> ${novoStatusCSHub}`);
     }
 
+    console.log(`[ClickUp Webhook] Finalizado: ${atualizados} alerta(s) atualizado(s)`);
     res.status(200).json({
       success: true,
       message: `${atualizados} alerta(s) atualizado(s)`
