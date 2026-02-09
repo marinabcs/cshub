@@ -1,6 +1,6 @@
 # CLAUDE.md - Diretrizes do CS Hub
 
-## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 05/02/2026)
+## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 09/02/2026)
 
 ### Status: Pré-lançamento - Revisão final em andamento ✅
 
@@ -13,8 +13,9 @@
 - ✅ Página Analytics com 5 abas (Uso, Conversas, Usuários, Vendas, Churn)
 - ✅ Otimizações de performance (Promise.all, queries paralelas)
 - ✅ Firebase configurado com índices + Firestore rules com RBAC
-- ✅ 9 Cloud Functions deployadas (segurança completa)
-- ✅ Transcrição de reuniões com Whisper + resumo IA
+- ✅ 11 Cloud Functions deployadas (segurança completa)
+- ✅ Transcrição de reuniões (texto manual + resumo IA)
+- ✅ Classificação automática de threads via Cloud Function (não mais no n8n)
 - ✅ Sistema Ongoing completo (ações recorrentes por saúde)
 - ✅ Minha Carteira com filtros multiselect (Status, Saúde, Responsável)
 - ✅ Seção "Sem Playbook" em Minha Carteira
@@ -174,6 +175,10 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
 14. **Tipo de contato "Time Google"** adicionado aos stakeholders (decisor, operacional, financeiro, técnico, time_google, outro)
 11. **Stakeholders inline**: Botão "Adicionar" direto na aba Pessoas do ClienteDetalhe com formulário inline (nome, email, cargo, telefone, linkedin, tipo_contato). Botão excluir em cada card
 12. **Múltiplos responsáveis**: ClienteDetalhe header mostra todos os nomes do array `cliente.responsaveis` (campo `{ email, nome }[]`), com fallback para `responsavel_nome` legado
+15. **Classificação IA movida para Cloud Function** (09/02/2026). n8n agora só importa dados brutos com `classificado_por: 'pendente'`. A Cloud Function `classifyPendingThreads` classifica automaticamente a cada 30min
+16. **Filtro "Esconder informativos"** (09/02/2026). Timeline de interações tem checkbox para ocultar threads com `requer_acao: false` (compartilhamentos, etc). Ativo por padrão
+17. **Transcrição de reuniões simplificada** (09/02/2026). Usuário cola texto da transcrição (Google Docs) + link opcional. IA gera resumo estruturado (resumo, pontos_chave, acoes_combinadas, sentimento)
+18. **Export CSV melhorado** (09/02/2026). Inclui todos os responsáveis, escopos (categorias_produto) e team_type
 
 ---
 
@@ -223,6 +228,54 @@ VITE_CLICKUP_API_KEY=pk_xxxxxx
 VITE_CLICKUP_LIST_ID=xxxxxxx
 VITE_CLICKUP_TEAM_ID=xxxxxxx
 ```
+
+---
+
+## 📧 Integração n8n - Import de Emails (Atualizado: 09/02/2026)
+
+### Arquitetura:
+```
+n8n (import)              →  Firestore (dados brutos)    →  CS Hub (classificação IA)
+Gmail API → Filtros →        classificado_por: 'pendente'    classifyPendingThreads
+Salvar threads/mensagens                                      (a cada 30min)
+```
+
+### Fluxo no n8n:
+1. **Schedule** (7h, 13h) → Buscar emails das últimas 20h
+2. **Buscar Dominios** → Mapear domínios para clientes
+3. **Gmail API** → Buscar emails de cada colaborador CS
+4. **Consolidar Threads** → Filtrar spam, agrupar por thread, extrair dados
+5. **IF Thread** → Separar threads de mensagens
+6. **Salvar** → Upsert no Firestore (threads + mensagens)
+
+### Campos salvos nas threads (sem classificação IA):
+```javascript
+{
+  thread_id, team_id, cliente_id, team_name, team_type,
+  assunto, status, dias_sem_resposta_cliente,
+  total_mensagens, ultima_msg_cliente, ultima_msg_equipe,
+  colaborador_responsavel, conversa_para_resumo,
+  classificado_por: 'pendente',  // Cloud Function vai classificar
+  classificado_em: null,
+  resumo_ia: null, sentimento: null, categoria: null
+}
+```
+
+### Classificação Automática (Cloud Function):
+- **Função:** `classifyPendingThreads`
+- **Schedule:** A cada 30min, 7h-19h, seg-sex
+- **Busca:** Threads com `classificado_por: null` ou `'pendente'`
+- **Processa:** Batches de 5, usa GPT-4o-mini
+- **Atualiza:** `categoria`, `sentimento`, `resumo_ia`, `classificado_por: 'ia_automatico'`
+
+### Filtros de Spam (no n8n):
+- **Remetentes ignorados:** noreply, mailer-daemon, calendar-notification, newsletters, etc.
+- **Assuntos ignorados:** Aceito/Recusado (calendário), newsletters, out of office, etc.
+- **Assuntos informativos:** Compartilhamentos Google Drive (requer_acao: false)
+
+### Timeline no CS Hub:
+- Checkbox "Esconder informativos" (ativo por padrão)
+- Filtra threads com `requer_acao: false`
 
 ---
 
@@ -290,8 +343,9 @@ if (cliente.times && Array.isArray(cliente.times)) {
 - `syncUserRole` — sincroniza Custom Claims quando role muda (onDocumentWritten)
 - `recalcularSaudeDiaria` — recalcula segmento_cs de todos os clientes ativos (scheduled, 7h BRT)
 - `verificarAlertasAutomatico` — gera alertas automaticamente (scheduled, 9h/13h/17h seg-sex BRT)
+- `classifyPendingThreads` — classifica threads pendentes com GPT (scheduled, a cada 30min 7h-19h seg-sex)
 - `setUserRole` — admin define roles (onCall, rate limited 20/min)
-- `classifyThread` — proxy OpenAI para classificacao de threads (onCall, rate limited 30/min)
+- `classifyThread` — proxy OpenAI para reclassificação manual de threads (onCall, rate limited 30/min)
 - `generateSummary` — proxy OpenAI para resumo executivo (onCall, rate limited 30/min)
 - `clickupProxy` — proxy ClickUp API (onCall, rate limited 60/min)
 - `clickupWebhook` — recebe webhooks do ClickUp com verificacao HMAC (onRequest, rate limited 120/min)
