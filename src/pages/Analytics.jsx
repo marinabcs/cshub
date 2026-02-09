@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import {
   Users, TrendingUp, AlertTriangle, MessageSquare,
   Filter, X, ChevronDown, Activity, Clock,
@@ -843,15 +843,33 @@ export default function Analytics() {
   }, [clientesFiltrados, alertasFiltrados, threadsFiltradas]);
 
   // ========== EXPORTAÇÃO EXCEL ==========
-  const exportToExcel = (sectionName, data) => {
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, sectionName);
-    XLSX.writeFile(wb, `${sectionName}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  const exportToExcel = async (sectionName, data) => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(sectionName);
+    if (data.length > 0) {
+      ws.columns = Object.keys(data[0]).map(key => ({ header: key, key, width: 20 }));
+      data.forEach(row => ws.addRow(row));
+    }
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sectionName}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  const exportCompleteReport = () => {
-    const wb = XLSX.utils.book_new();
+  const exportCompleteReport = async () => {
+    const wb = new ExcelJS.Workbook();
+
+    const addSheet = (name, data) => {
+      const ws = wb.addWorksheet(name);
+      if (data.length > 0) {
+        ws.columns = Object.keys(data[0]).map(key => ({ header: key, key, width: 20 }));
+        data.forEach(row => ws.addRow(row));
+      }
+    };
 
     // Aba Resumo
     const resumoData = [{
@@ -864,7 +882,7 @@ export default function Analytics() {
       'Saúde Alerta': visaoGeral.segmentoCounts.ALERTA,
       'Saúde Resgate': visaoGeral.segmentoCounts.RESGATE
     }];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumoData), 'Resumo');
+    addSheet('Resumo', resumoData);
 
     // Aba Clientes
     const clientesExport = clientesFiltrados.map(c => ({
@@ -874,7 +892,7 @@ export default function Analytics() {
       'Responsável': c.responsaveis?.[0]?.nome || c.responsavel_nome || '-',
       'Saúde': getSegmentoLabel(getClienteSegmento(c))
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clientesExport), 'Clientes');
+    addSheet('Clientes', clientesExport);
 
     // Aba Times em Risco
     const riscoExport = timesEmRisco.map(c => ({
@@ -882,7 +900,7 @@ export default function Analytics() {
       'Saúde': getSegmentoLabel(getClienteSegmento(c)),
       'Responsável': c.responsaveis?.[0]?.nome || c.responsavel_nome || '-'
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(riscoExport), 'Times em Risco');
+    addSheet('Times em Risco', riscoExport);
 
     // Aba Threads
     const threadsExport = threadsFiltradas.map(t => ({
@@ -893,7 +911,7 @@ export default function Analytics() {
       'Status': t.status || '-',
       'Data': t.created_at?.toDate ? t.created_at.toDate().toLocaleDateString('pt-BR') : '-'
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(threadsExport), 'Threads');
+    addSheet('Threads', threadsExport);
 
     // Aba Alertas
     const alertasExport = alertasFiltrados.map(a => ({
@@ -903,7 +921,7 @@ export default function Analytics() {
       'Prioridade': a.prioridade || '-',
       'Data': a.created_at?.toDate ? a.created_at.toDate().toLocaleDateString('pt-BR') : '-'
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(alertasExport), 'Alertas');
+    addSheet('Alertas', alertasExport);
 
     // Aba Performance por Responsável
     const perfExport = performancePorResponsavel.map(p => ({
@@ -916,7 +934,7 @@ export default function Analytics() {
       'Alertas Pendentes': p.alertasPendentes,
       'Threads Aguardando': p.threadsAguardando
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(perfExport), 'Performance');
+    addSheet('Performance', perfExport);
 
     // Aba Bugs
     const bugsExport = clientesFiltrados.flatMap(c =>
@@ -932,7 +950,7 @@ export default function Analytics() {
       }))
     );
     if (bugsExport.length > 0) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bugsExport), 'Bugs');
+      addSheet('Bugs', bugsExport);
     }
 
     // Aba Tags Problema
@@ -955,10 +973,17 @@ export default function Analytics() {
         '% IA': data.count > 0 ? Math.round((data.ia / data.count) * 100) + '%' : '0%'
       }));
     if (tagsExport.length > 0) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tagsExport), 'Tags Problema');
+      addSheet('Tags Problema', tagsExport);
     }
 
-    XLSX.writeFile(wb, `relatorio_completo_${new Date().toISOString().split('T')[0]}.xlsx`);
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `relatorio_completo_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const clearFilters = () => {
