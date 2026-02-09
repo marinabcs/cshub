@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
-// Validadores base (todos inteiros)
+// Validadores base
 const posInt = z.number().int().positive('Deve ser inteiro positivo');
 const nonNegInt = z.number().int().nonnegative('Deve ser inteiro >= 0');
+const posNum = z.number().positive('Deve ser positivo'); // Para SLA (aceita decimais)
 
 /**
  * Schema de validacao para configuracoes de Saude CS
