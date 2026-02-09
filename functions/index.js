@@ -1611,6 +1611,206 @@ export const verificarAlertasAutomatico = onSchedule({
 });
 
 // ============================================
+// CLASSIFY PENDING THREADS - CLASSIFICAÇÃO AUTOMÁTICA
+// ============================================
+
+/**
+ * Classifica threads pendentes automaticamente.
+ * Roda a cada 30 minutos das 7h às 19h (horário comercial).
+ *
+ * Busca threads onde:
+ * - classificado_por é null/undefined (ainda não classificado)
+ * - OU classificado_por é 'pendente' (importado sem classificação)
+ *
+ * Usa GPT-4o-mini para classificar e atualiza o documento.
+ */
+export const classifyPendingThreads = onSchedule({
+  schedule: '*/30 7-19 * * 1-5', // A cada 30min, 7h-19h, seg-sex
+  timeZone: 'America/Sao_Paulo',
+  region: 'southamerica-east1',
+  timeoutSeconds: 540,
+  memory: '512MiB',
+  secrets: ['OPENAI_API_KEY']
+}, async () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.error('[ClassifyThreads] OPENAI_API_KEY não configurada');
+    return;
+  }
+
+  console.log('[ClassifyThreads] Iniciando classificação de threads pendentes...');
+
+  // Buscar threads não classificadas (últimos 7 dias para limitar)
+  const sevenDaysAgo = Timestamp.fromDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+
+  // Query 1: classificado_por == null
+  const threadsNullSnap = await db.collection('threads')
+    .where('classificado_por', '==', null)
+    .where('updated_at', '>=', sevenDaysAgo)
+    .limit(50)
+    .get();
+
+  // Query 2: classificado_por == 'pendente'
+  const threadsPendenteSnap = await db.collection('threads')
+    .where('classificado_por', '==', 'pendente')
+    .where('updated_at', '>=', sevenDaysAgo)
+    .limit(50)
+    .get();
+
+  // Query 3: threads sem campo classificado_por (importadas antes da mudança)
+  // Firestore não suporta "field does not exist", então buscamos threads recentes
+  // e filtramos no código
+  const threadsRecentesSnap = await db.collection('threads')
+    .where('updated_at', '>=', sevenDaysAgo)
+    .orderBy('updated_at', 'desc')
+    .limit(100)
+    .get();
+
+  // Combinar e deduplicar
+  const threadMap = new Map();
+
+  for (const doc of threadsNullSnap.docs) {
+    threadMap.set(doc.id, { id: doc.id, ref: doc.ref, ...doc.data() });
+  }
+
+  for (const doc of threadsPendenteSnap.docs) {
+    if (!threadMap.has(doc.id)) {
+      threadMap.set(doc.id, { id: doc.id, ref: doc.ref, ...doc.data() });
+    }
+  }
+
+  // Adicionar threads sem classificado_por
+  for (const doc of threadsRecentesSnap.docs) {
+    if (!threadMap.has(doc.id)) {
+      const data = doc.data();
+      // Se não tem classificado_por ou é null/pendente
+      if (!data.classificado_por || data.classificado_por === 'pendente') {
+        threadMap.set(doc.id, { id: doc.id, ref: doc.ref, ...data });
+      }
+    }
+  }
+
+  const threads = Array.from(threadMap.values());
+
+  if (threads.length === 0) {
+    console.log('[ClassifyThreads] Nenhuma thread pendente para classificar');
+    return;
+  }
+
+  console.log(`[ClassifyThreads] Encontradas ${threads.length} threads para classificar`);
+
+  // Processar em batches de 5 (para não sobrecarregar a API)
+  const BATCH_SIZE = 5;
+  let classificadas = 0;
+  let erros = 0;
+
+  for (let i = 0; i < threads.length; i += BATCH_SIZE) {
+    const batch = threads.slice(i, i + BATCH_SIZE);
+
+    const resultados = await Promise.all(batch.map(async (thread) => {
+      try {
+        // Montar conversa para classificação
+        // Usar conversa_para_resumo se existir, senão montar do assunto + snippet + body
+        let conversa = thread.conversa_para_resumo;
+
+        if (!conversa) {
+          const partes = [];
+          if (thread.assunto) partes.push(`Assunto: ${thread.assunto}`);
+          if (thread.snippet) partes.push(`Resumo: ${thread.snippet}`);
+          // Buscar body das mensagens se disponível
+          if (thread.body) partes.push(`Conteúdo: ${thread.body.substring(0, 3000)}`);
+          conversa = partes.join('\n\n');
+        }
+
+        if (!conversa || conversa.length < 20) {
+          // Thread sem conteúdo suficiente
+          return { threadId: thread.id, skipped: true, reason: 'conteudo_insuficiente' };
+        }
+
+        // Limitar tamanho
+        if (conversa.length > 15000) {
+          conversa = conversa.substring(0, 15000) + '...';
+        }
+
+        // Chamar GPT
+        const prompt = CLASSIFY_PROMPT
+          .replace('{conversa}', conversa)
+          .replace('{contexto}', '');
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: 'Você é um assistente que classifica conversas de suporte. Responda APENAS com JSON válido.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.3
+          })
+        });
+
+        if (!response.ok) {
+          console.error(`[ClassifyThreads] OpenAI error ${response.status} para thread ${thread.id}`);
+          return { threadId: thread.id, error: true };
+        }
+
+        const data = await response.json();
+        const content = data.choices[0].message.content;
+        const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
+
+        let classificacao;
+        try {
+          classificacao = JSON.parse(jsonStr);
+        } catch {
+          console.warn(`[ClassifyThreads] JSON inválido para thread ${thread.id}`);
+          classificacao = { categoria: 'outro', sentimento: 'neutro', resumo: 'Não foi possível classificar' };
+        }
+
+        // Atualizar thread no Firestore
+        await thread.ref.update({
+          categoria: classificacao.categoria || 'outro',
+          sentimento: classificacao.sentimento || 'neutro',
+          resumo_ia: classificacao.resumo || null,
+          classificado_por: 'ia_automatico',
+          classificado_em: Timestamp.now(),
+          updated_at: Timestamp.now()
+        });
+
+        return { threadId: thread.id, success: true, categoria: classificacao.categoria };
+
+      } catch (error) {
+        console.error(`[ClassifyThreads] Erro na thread ${thread.id}:`, error.message);
+        return { threadId: thread.id, error: true };
+      }
+    }));
+
+    // Contar resultados
+    for (const r of resultados) {
+      if (r.success) classificadas++;
+      else if (r.error) erros++;
+    }
+
+    // Pequena pausa entre batches para não sobrecarregar
+    if (i + BATCH_SIZE < threads.length) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  // Salvar status da execução
+  await db.collection('config').doc('sync_status').set({
+    ultima_classificacao_threads: Timestamp.now(),
+    threads_classificadas: classificadas,
+    threads_erros: erros
+  }, { merge: true });
+
+  console.log(`[ClassifyThreads] Concluído: ${classificadas} classificadas, ${erros} erros`);
+});
+
+// ============================================
 // SUMMARIZE TRANSCRIPTION - RESUMO DE TRANSCRIÇÃO
 // ============================================
 

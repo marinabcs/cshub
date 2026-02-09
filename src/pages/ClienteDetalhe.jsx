@@ -209,6 +209,7 @@ export default function ClienteDetalhe() {
   const [editingInteracaoId, setEditingInteracaoId] = useState(null);
   const [filterInteracaoTexto, setFilterInteracaoTexto] = useState('');
   const [filterInteracaoTipo, setFilterInteracaoTipo] = useState('');
+  const [hideInformativos, setHideInformativos] = useState(true); // Esconder informativos por padrão
 
   // Transcrição de reunião
   const [transcricaoTexto, setTranscricaoTexto] = useState('');
@@ -1777,10 +1778,14 @@ export default function ClienteDetalhe() {
             return { _source: 'alerta', _date: d, _tipo: 'alerta', ...a };
           })
         ];
+        // Filtrar informativos (threads com requer_acao: false)
+        const filteredByInformativo = hideInformativos
+          ? timelineItems.filter(item => item._source !== 'thread' || item.requer_acao !== false)
+          : timelineItems;
         // Filtrar por tipo
         const filteredByTipo = filterInteracaoTipo
-          ? timelineItems.filter(item => item._tipo === filterInteracaoTipo)
-          : timelineItems;
+          ? filteredByInformativo.filter(item => item._tipo === filterInteracaoTipo)
+          : filteredByInformativo;
         // Filtrar por texto
         const searchLower = filterInteracaoTexto.toLowerCase();
         const filteredItems = searchLower
@@ -1856,6 +1861,15 @@ export default function ClienteDetalhe() {
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: hideInformativos ? 'rgba(139, 92, 246, 0.15)' : 'rgba(15, 10, 31, 0.6)', border: '1px solid', borderColor: hideInformativos ? 'rgba(139, 92, 246, 0.3)' : '#3730a3', borderRadius: '10px', cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={hideInformativos}
+                onChange={e => setHideInformativos(e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: '#8b5cf6', cursor: 'pointer' }}
+              />
+              <span style={{ color: hideInformativos ? '#a78bfa' : '#64748b', fontSize: '13px', whiteSpace: 'nowrap' }}>Esconder informativos</span>
+            </label>
           </div>
 
           {/* Banner de resumo em andamento */}
