@@ -17,6 +17,12 @@ import {
 
 // Tipos de ações auditáveis
 export const ACOES = {
+  // Autenticação
+  LOGIN_SUCESSO: 'login_sucesso',
+  LOGIN_FALHA: 'login_falha',
+  LOGOUT: 'logout',
+  SESSION_TIMEOUT: 'session_timeout',
+  // Operações
   CLASSIFICACAO_THREAD: 'classificacao_thread',
   MUDANCA_STATUS: 'mudanca_status',
   ATRIBUICAO_RESPONSAVEL: 'atribuicao_responsavel',
@@ -32,6 +38,7 @@ export const ENTIDADES = {
   THREAD: 'thread',
   CLIENTE: 'cliente',
   ALERTA: 'alerta',
+  AUTH: 'auth',
 };
 
 // Nome da collection no Firestore
@@ -280,6 +287,18 @@ export function formatarDescricaoAcao(log) {
   const { acao, dados_anteriores, dados_novos } = log;
 
   switch (acao) {
+    case ACOES.LOGIN_SUCESSO:
+      return 'Login realizado com sucesso';
+
+    case ACOES.LOGIN_FALHA:
+      return `Tentativa de login falhou: ${dados_novos?.motivo || 'credenciais inválidas'}`;
+
+    case ACOES.LOGOUT:
+      return 'Logout realizado';
+
+    case ACOES.SESSION_TIMEOUT:
+      return 'Sessão encerrada por inatividade';
+
     case ACOES.CLASSIFICACAO_THREAD:
       if (dados_anteriores?.categoria) {
         return `Reclassificou de "${dados_anteriores.categoria}" para "${dados_novos?.categoria}"`;
@@ -322,6 +341,14 @@ export function formatarDescricaoAcao(log) {
  */
 export function getIconeAcao(acao) {
   switch (acao) {
+    case ACOES.LOGIN_SUCESSO:
+      return 'log-in';
+    case ACOES.LOGIN_FALHA:
+      return 'x-circle';
+    case ACOES.LOGOUT:
+      return 'log-out';
+    case ACOES.SESSION_TIMEOUT:
+      return 'clock';
     case ACOES.CLASSIFICACAO_THREAD:
       return 'tag';
     case ACOES.MUDANCA_STATUS:
@@ -350,6 +377,14 @@ export function getIconeAcao(acao) {
  */
 export function getCorAcao(acao) {
   switch (acao) {
+    case ACOES.LOGIN_SUCESSO:
+      return 'green';
+    case ACOES.LOGIN_FALHA:
+      return 'red';
+    case ACOES.LOGOUT:
+      return 'gray';
+    case ACOES.SESSION_TIMEOUT:
+      return 'orange';
     case ACOES.CLASSIFICACAO_THREAD:
       return 'blue';
     case ACOES.MUDANCA_STATUS:
@@ -434,6 +469,77 @@ export async function registrarResolucaoAlerta(firestore, auth, alertaId, dadosA
   });
 }
 
+/**
+ * Helper para registrar login com sucesso
+ */
+export async function registrarLoginSucesso(firestore, email) {
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown';
+
+  return registrarAcao(firestore, null, {
+    acao: ACOES.LOGIN_SUCESSO,
+    entidadeTipo: ENTIDADES.AUTH,
+    entidadeId: email,
+    dadosNovos: {
+      email,
+      user_agent: userAgent,
+      timestamp: new Date().toISOString(),
+    },
+  });
+}
+
+/**
+ * Helper para registrar login com falha
+ */
+export async function registrarLoginFalha(firestore, email, motivo) {
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown';
+
+  return registrarAcao(firestore, null, {
+    acao: ACOES.LOGIN_FALHA,
+    entidadeTipo: ENTIDADES.AUTH,
+    entidadeId: email || 'desconhecido',
+    dadosNovos: {
+      email: email || 'desconhecido',
+      motivo,
+      user_agent: userAgent,
+      timestamp: new Date().toISOString(),
+    },
+  });
+}
+
+/**
+ * Helper para registrar logout
+ */
+export async function registrarLogout(firestore, auth) {
+  const usuario = getUsuarioAtual(auth);
+
+  return registrarAcao(firestore, auth, {
+    acao: ACOES.LOGOUT,
+    entidadeTipo: ENTIDADES.AUTH,
+    entidadeId: usuario.email,
+    dadosNovos: {
+      email: usuario.email,
+      timestamp: new Date().toISOString(),
+    },
+  });
+}
+
+/**
+ * Helper para registrar session timeout
+ */
+export async function registrarSessionTimeout(firestore, auth) {
+  const usuario = getUsuarioAtual(auth);
+
+  return registrarAcao(firestore, auth, {
+    acao: ACOES.SESSION_TIMEOUT,
+    entidadeTipo: ENTIDADES.AUTH,
+    entidadeId: usuario.email,
+    dadosNovos: {
+      email: usuario.email,
+      timestamp: new Date().toISOString(),
+    },
+  });
+}
+
 export default {
   // Constantes
   ACOES,
@@ -443,7 +549,12 @@ export default {
   buscarHistorico,
   buscarAcoesPorUsuario,
   buscarPorTipoAcao,
-  // Helpers
+  // Helpers - Auth
+  registrarLoginSucesso,
+  registrarLoginFalha,
+  registrarLogout,
+  registrarSessionTimeout,
+  // Helpers - Operações
   registrarClassificacao,
   registrarMudancaStatus,
   registrarAtribuicaoResponsavel,

@@ -4,7 +4,12 @@ import {
   signOut,
   onAuthStateChanged
 } from 'firebase/auth'
-import { auth } from '../services/firebase'
+import { auth, db } from '../services/firebase'
+import {
+  registrarLoginSucesso,
+  registrarLoginFalha,
+  registrarLogout
+} from '../services/auditService'
 
 const AuthContext = createContext(null)
 
@@ -63,15 +68,33 @@ export function AuthProvider({ children }) {
 
   async function login(email, password) {
     if (!email.endsWith('@trakto.io')) {
+      // Registrar tentativa de login com domínio inválido
+      await registrarLoginFalha(db, email, 'Domínio não autorizado')
       throw new Error('Apenas emails @trakto.io podem acessar o sistema.')
     }
-    const result = await signInWithEmailAndPassword(auth, email, password)
-    // Salvar timestamp de início da sessão para logout automático em 7 dias
-    saveSessionStart()
-    return result.user
+
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password)
+      // Salvar timestamp de início da sessão para logout automático em 7 dias
+      saveSessionStart()
+      // Registrar login com sucesso (não bloqueia)
+      registrarLoginSucesso(db, email).catch(() => {})
+      return result.user
+    } catch (error) {
+      // Registrar falha de login
+      const motivo = error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found'
+        ? 'Credenciais inválidas'
+        : error.code === 'auth/too-many-requests'
+        ? 'Muitas tentativas - conta bloqueada temporariamente'
+        : error.message
+      await registrarLoginFalha(db, email, motivo)
+      throw error
+    }
   }
 
   async function logout() {
+    // Registrar logout antes de sair (não bloqueia)
+    registrarLogout(db, auth).catch(() => {})
     await signOut(auth)
     clearSession()
     setUser(null)

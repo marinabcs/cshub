@@ -1,5 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { db, auth } from '../services/firebase';
+import { registrarSessionTimeout } from '../services/auditService';
 
 // Tempo de inatividade antes do logout (em minutos)
 const INACTIVITY_TIMEOUT_MINUTES = 480; // 8 horas
@@ -36,10 +38,14 @@ export function useSessionTimeout() {
     }
   }, []);
 
-  const handleLogout = useCallback(async () => {
+  const handleLogout = useCallback(async (isTimeout = false) => {
     clearAllTimers();
     setShowWarning(false);
     try {
+      // Registrar session timeout antes do logout
+      if (isTimeout) {
+        await registrarSessionTimeout(db, auth).catch(() => {});
+      }
       await logout();
     } catch (error) {
       // Silently fail - user will be redirected to login anyway
@@ -61,9 +67,9 @@ export function useSessionTimeout() {
       });
     }, 1000);
 
-    // Logout após WARNING_SECONDS
+    // Logout após WARNING_SECONDS (por timeout)
     warningTimeoutRef.current = setTimeout(() => {
-      handleLogout();
+      handleLogout(true); // true = é timeout
     }, WARNING_SECONDS * 1000);
   }, [handleLogout]);
 
