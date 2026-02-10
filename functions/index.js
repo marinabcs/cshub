@@ -487,10 +487,13 @@ Critérios para SENTIMENTO:
 - negativo = cliente insatisfeito, frustrado ou reclamando
 - urgente = problema crítico que impede o uso ou precisa atenção imediata
 
-Critérios para STATUS (baseado no estado atual da conversa):
-- resolvido = problema foi solucionado, cliente agradeceu, confirmou que funcionou, ou não há pendência
-- aguardando_cliente = equipe fez uma pergunta, pediu informação ou aguarda ação/resposta do cliente
-- aguardando_equipe = cliente fez pergunta, reportou problema ou aguarda resposta/ação da equipe`;
+Critérios para STATUS (baseado na ÚLTIMA MENSAGEM da conversa):
+- resolvido = cliente confirmou que o problema foi resolvido, agradeceu explicitamente ("obrigado", "valeu", "perfeito"), ou disse que funcionou
+- aguardando_cliente = a ÚLTIMA MENSAGEM é da EQUIPE (respondeu dúvida, enviou material, disse "fico à disposição", aguarda retorno do cliente)
+- aguardando_equipe = a ÚLTIMA MENSAGEM é do CLIENTE (fez pergunta, reportou problema, pediu algo que ainda não foi respondido)
+
+IMPORTANTE: Se a equipe respondeu por último (mesmo que seja "fico à disposição"), o status é "aguardando_cliente".
+Se o cliente respondeu "obrigado" ou similar, o status é "resolvido".`;
 
 export const classifyThread = onCall({
   region: 'southamerica-east1',
