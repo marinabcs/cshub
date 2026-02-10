@@ -394,10 +394,11 @@ if (cliente.times && Array.isArray(cliente.times)) {
 14. ✅ npm audit: 0 vulnerabilidades (xlsx substituído por ExcelJS)
 15. ✅ Session timeout: auto-logout após 8h de inatividade + aviso 60s antes
 16. ✅ Audit log de autenticação: login_sucesso, login_falha, logout, session_timeout (email, user_agent, timestamp)
+17. ✅ Backup automático diário: 3h (Brasília), 7 collections, retenção 30 dias, Cloud Storage
 
-### ⚠️ Segurança Pendente:
-- Backup automático do Firestore (Cloud Function scheduled → Cloud Storage)
+### ⚠️ Segurança Pendente (baixa prioridade):
 - 2FA para admins (Firebase Auth suporta, mas precisa implementar UI)
+- Dependabot (GitHub) para alertas de vulnerabilidades em dependências
 
 ### Firebase Secrets (Google Secret Manager):
 - `OPENAI_API_KEY` — chave OpenAI
