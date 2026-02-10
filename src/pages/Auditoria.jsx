@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, orderBy, limit, where, startAfter } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { ArrowLeft, History, Search, Filter, X, ChevronDown, ChevronRight, User, FileText, Users, Settings, MessageSquare, Calendar, RefreshCw, Download } from 'lucide-react';
+import { ArrowLeft, History, Search, Filter, X, ChevronDown, ChevronRight, User, FileText, Users, Settings, MessageSquare, Calendar, RefreshCw, Download, LogIn, LogOut, Clock, Shield } from 'lucide-react';
 import { getActionLabel, getEntityLabel, getActionColor, formatValue } from '../utils/audit';
 import { Pagination } from '../components/UI/Pagination';
 
@@ -11,13 +11,20 @@ const ENTITIES = [
   { value: 'cliente', label: 'Cliente', icon: Users },
   { value: 'thread', label: 'Conversa', icon: MessageSquare },
   { value: 'usuario_sistema', label: 'Usuário do Sistema', icon: User },
-  { value: 'config', label: 'Configuração', icon: Settings }
+  { value: 'config', label: 'Configuração', icon: Settings },
+  { value: 'auth', label: 'Autenticação', icon: Shield },
+  { value: 'system', label: 'Sistema', icon: Settings }
 ];
 
 const ACTIONS = [
   { value: 'create', label: 'Criação', color: '#10b981' },
   { value: 'update', label: 'Atualização', color: '#8b5cf6' },
-  { value: 'delete', label: 'Exclusão', color: '#ef4444' }
+  { value: 'delete', label: 'Exclusão', color: '#ef4444' },
+  { value: 'login_sucesso', label: 'Login', color: '#10b981' },
+  { value: 'login_falha', label: 'Login Falhou', color: '#ef4444' },
+  { value: 'logout', label: 'Logout', color: '#64748b' },
+  { value: 'session_timeout', label: 'Sessão Expirada', color: '#f59e0b' },
+  { value: 'backup_firestore', label: 'Backup', color: '#06b6d4' }
 ];
 
 const PAGE_SIZE = 50;
