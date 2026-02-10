@@ -1,8 +1,8 @@
 # CLAUDE.md - Diretrizes do CS Hub
 
-## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 09/02/2026)
+## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 10/02/2026)
 
-### Status: Pré-lançamento - Revisão final em andamento ✅
+### Status: Pronto para Lançamento ✅
 
 **O que está pronto:**
 - ✅ Frontend React completo com todas as 17 páginas
@@ -43,11 +43,18 @@
 - ✅ Onboarding — OK
 - ✅ Alertas — OK (reduzido para: sentimento_negativo, problema_reclamacao, entrou_resgate)
 - ✅ Configurações — OK (Saúde CS: reclamações como números, pesos inteiros, regras especiais removidas, inputs 60px)
-- Usuários — pendente
-- Auditoria — pendente
-- Validar segmentação com 5 contas reais — pendente
-- Testar Calculadora de Onboarding com cliente real — pendente
-- Métricas: validar que números/contagens estão corretos em todas as páginas (Dashboard KPIs, contagens de clientes, filtros, totais em Analytics, etc.) — pendente
+- ✅ Usuarios — OK (CRUD completo, 5 roles, atribuição de carteira multi-responsável, reset senha, validação senha forte)
+- ✅ Auditoria — OK (filtros por entidade/ação/usuário/data, paginação 50/página, export CSV, entidades auth+system adicionadas)
+
+**Validações manuais pós-lançamento:**
+- Validar segmentação com 5 contas reais
+- Testar Calculadora de Onboarding com cliente real
+- Métricas: validar números/contagens em Dashboard KPIs, Analytics, etc.
+
+**Adiado para V3:**
+- 2FA para admins
+- Calculadora de Onboarding (refinamentos)
+- Analytics PDF (números grandes cortam na parte inferior)
 
 ### Arquivos de documentação:
 - `/docs/TECHNICAL.md` - Documentação técnica completa (arquitetura, APIs, etc)
@@ -192,6 +199,7 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
 23. **Cards ClienteDetalhe atualizados** (09/02/2026). Cards de métricas: Logins, Projetos, Assets, Créditos IA. Resumo simplificado: "X dias ativos no mês | Score engajamento: Y"
 24. **Session timeout** (09/02/2026). Auto-logout após 8h de inatividade. Modal de aviso 60s antes do logout. Hook: `useSessionTimeout.js`
 25. **ExcelJS** (09/02/2026). Biblioteca xlsx (vulnerável) substituída por ExcelJS. npm audit agora retorna 0 vulnerabilidades.
+26. **Auditoria expandida** (10/02/2026). Página Auditoria atualizada com novas entidades (auth, system) e ações (login_sucesso, login_falha, logout, session_timeout, backup_firestore). Filtros funcionais por entidade, ação, usuário e período.
 
 ---
 
