@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { Users, BarChart3, Bell, MessageSquare, LogIn, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { Users, BarChart3, Bell, MessageSquare, LogIn, Eye, EyeOff, Loader2, Shield } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -15,23 +16,28 @@ export default function Login() {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    // Validar domínio @trakto.io
-    if (!email.toLowerCase().endsWith('@trakto.io')) {
-      setError('Apenas emails @trakto.io podem acessar o sistema');
-      return;
-    }
-
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      // Usa login do AuthContext (inclui audit log automático)
+      await login(email.toLowerCase(), password);
       navigate('/');
     } catch (err) {
-      setError('Email ou senha inválidos');
+      // Mensagens de erro amigáveis
+      if (err.message?.includes('@trakto.io')) {
+        setError('Apenas emails @trakto.io podem acessar o sistema');
+      } else if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        setError('Email ou senha inválidos');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+      } else {
+        setError('Erro ao fazer login. Tente novamente.');
+      }
     } finally {
       setLoading(false);
     }
@@ -122,10 +128,10 @@ export default function Login() {
         {/* Features */}
         <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {[
-            { icon: Users, title: 'Gestão de Clientes', desc: 'Acompanhe todos os clientes em um só lugar com informações completas.' },
-            { icon: BarChart3, title: 'Health Score', desc: 'Monitore a saúde dos clientes em tempo real com métricas inteligentes.' },
-            { icon: Bell, title: 'Alertas Inteligentes', desc: 'Receba notificações sobre clientes em risco ou que precisam de atenção.' },
-            { icon: MessageSquare, title: 'Timeline de Conversas', desc: 'Histórico completo de todas as interações com cada cliente.' }
+            { icon: Users, title: 'Gestão de Clientes', desc: 'Acompanhe todos os clientes em um só lugar com métricas de engajamento.' },
+            { icon: BarChart3, title: 'Saúde CS Automática', desc: 'Classificação inteligente: Crescimento, Estável, Alerta e Resgate.' },
+            { icon: Bell, title: 'Alertas com IA', desc: 'Detecção automática de sentimento negativo e clientes em risco.' },
+            { icon: Shield, title: 'Segurança', desc: 'Backup diário, audit log e session timeout para proteção dos dados.' }
           ].map((item, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
               <div style={{
