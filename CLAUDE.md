@@ -55,6 +55,7 @@
 - 2FA para admins
 - Calculadora de Onboarding (refinamentos)
 - Analytics PDF (números grandes cortam na parte inferior)
+- Bugs com peso por severidade (ver decisão 27)
 
 ### Arquivos de documentação:
 - `/docs/TECHNICAL.md` - Documentação técnica completa (arquitetura, APIs, etc)
@@ -200,6 +201,11 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
 24. **Session timeout** (09/02/2026). Auto-logout após 8h de inatividade. Modal de aviso 60s antes do logout. Hook: `useSessionTimeout.js`
 25. **ExcelJS** (09/02/2026). Biblioteca xlsx (vulnerável) substituída por ExcelJS. npm audit agora retorna 0 vulnerabilidades.
 26. **Auditoria expandida** (10/02/2026). Página Auditoria atualizada com novas entidades (auth, system) e ações (login_sucesso, login_falha, logout, session_timeout, backup_firestore). Filtros funcionais por entidade, ação, usuário e período.
+27. **[V3] Bugs com peso por severidade** (10/02/2026). Proposta para substituir contagem simples de bugs por sistema de pontos:
+    - **Severidades:** Crítico (3 pts: não exporta, plataforma trava), Médio (2 pts: funcionalidade quebrada), Baixo (1 pt: UI, erro pontual)
+    - **Regra:** 0 pts = normal, 1-2 pts = ALERTA, 3+ pts = RESGATE
+    - **Benefício:** 2 bugs visuais (2 pts) → Alerta, 1 bug crítico (3 pts) → Resgate direto
+    - **Implementação:** IA classifica severidade automaticamente ou CS ajusta manualmente
 
 ---
 
