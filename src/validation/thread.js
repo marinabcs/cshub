@@ -17,6 +17,12 @@ export const SENTIMENTOS_VALIDOS = [
   'urgente'
 ];
 
+export const STATUS_VALIDOS = [
+  'resolvido',
+  'aguardando_cliente',
+  'aguardando_equipe'
+];
+
 export const classificacaoManualSchema = z.object({
   categoria: z.enum(CATEGORIAS_VALIDAS, {
     errorMap: () => ({ message: 'Selecione uma categoria' })
@@ -30,5 +36,6 @@ export const classificacaoManualSchema = z.object({
 export const classificacaoIASchema = z.object({
   categoria: z.enum(CATEGORIAS_VALIDAS).catch('outro'),
   sentimento: z.enum(SENTIMENTOS_VALIDOS).catch('neutro'),
+  status: z.enum(STATUS_VALIDOS).catch('aguardando_equipe'),
   resumo: z.string().max(500).catch('Não foi possível gerar um resumo.')
 });

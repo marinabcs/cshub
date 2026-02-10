@@ -1074,11 +1074,12 @@ export default function ClienteDetalhe() {
     );
 
     if (result.success) {
-      // Atualizar a thread selecionada com os novos dados
+      // Atualizar a thread selecionada com os novos dados (incluindo status da IA)
       setSelectedThread(prev => ({
         ...prev,
         categoria: result.resultado.categoria,
         sentimento: result.resultado.sentimento,
+        status: result.resultado.status,
         resumo_ia: result.resultado.resumo,
         classificado_por: 'ia'
       }));
@@ -1087,7 +1088,7 @@ export default function ClienteDetalhe() {
       const currentThreadId = selectedThread.thread_id || selectedThread.id;
       setThreads(prev => prev.map(t =>
         (t.thread_id || t.id) === currentThreadId
-          ? { ...t, categoria: result.resultado.categoria, sentimento: result.resultado.sentimento, resumo_ia: result.resultado.resumo, classificado_por: 'ia' }
+          ? { ...t, categoria: result.resultado.categoria, sentimento: result.resultado.sentimento, status: result.resultado.status, resumo_ia: result.resultado.resumo, classificado_por: 'ia' }
           : t
       ));
     }
