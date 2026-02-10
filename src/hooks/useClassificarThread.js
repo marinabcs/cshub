@@ -33,10 +33,11 @@ export function useClassificarThread() {
       // Chamar a IA para classificar
       const resultado = await classificarThread(conversa, contextoCliente);
 
-      // Preparar dados para salvar
+      // Preparar dados para salvar (incluindo status da IA)
       const classificacaoData = {
         categoria: resultado.categoria,
         sentimento: resultado.sentimento,
+        status: resultado.status || 'aguardando_equipe',
         resumo_ia: resultado.resumo,
         classificado_em: Timestamp.now(),
         classificado_por: 'ia'

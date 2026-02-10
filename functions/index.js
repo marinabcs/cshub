@@ -468,6 +468,7 @@ Retorne APENAS um JSON válido (sem markdown, sem explicações) com:
 {
   "categoria": "erro_bug" | "reclamacao" | "problema_tecnico" | "feedback" | "duvida_pergunta" | "solicitacao" | "outro",
   "sentimento": "positivo" | "neutro" | "negativo" | "urgente",
+  "status": "resolvido" | "aguardando_cliente" | "aguardando_equipe",
   "resumo": "Resumo em 1-2 frases do que foi discutido"
 }
 
@@ -484,7 +485,12 @@ Critérios para SENTIMENTO:
 - positivo = cliente satisfeito, agradecendo ou elogiando
 - neutro = conversa normal, sem emoção forte detectada
 - negativo = cliente insatisfeito, frustrado ou reclamando
-- urgente = problema crítico que impede o uso ou precisa atenção imediata`;
+- urgente = problema crítico que impede o uso ou precisa atenção imediata
+
+Critérios para STATUS (baseado no estado atual da conversa):
+- resolvido = problema foi solucionado, cliente agradeceu, confirmou que funcionou, ou não há pendência
+- aguardando_cliente = equipe fez uma pergunta, pediu informação ou aguarda ação/resposta do cliente
+- aguardando_equipe = cliente fez pergunta, reportou problema ou aguarda resposta/ação da equipe`;
 
 export const classifyThread = onCall({
   region: 'southamerica-east1',
@@ -554,6 +560,7 @@ export const classifyThread = onCall({
       return {
         categoria: 'outro',
         sentimento: 'neutro',
+        status: 'aguardando_equipe',
         resumo: 'Não foi possível classificar esta conversa.'
       };
     }
@@ -561,6 +568,7 @@ export const classifyThread = onCall({
     return {
       categoria: parsed.categoria || 'outro',
       sentimento: parsed.sentimento || 'neutro',
+      status: parsed.status || 'aguardando_equipe',
       resumo: parsed.resumo || 'Sem resumo'
     };
   } catch (error) {
@@ -2129,20 +2137,21 @@ export const classifyPendingThreads = onSchedule({
           classificacao = JSON.parse(jsonStr);
         } catch {
           console.warn(`[ClassifyThreads] JSON inválido para thread ${thread.id}`);
-          classificacao = { categoria: 'outro', sentimento: 'neutro', resumo: 'Não foi possível classificar' };
+          classificacao = { categoria: 'outro', sentimento: 'neutro', status: 'aguardando_equipe', resumo: 'Não foi possível classificar' };
         }
 
-        // Atualizar thread no Firestore
+        // Atualizar thread no Firestore (incluindo status da IA)
         await thread.ref.update({
           categoria: classificacao.categoria || 'outro',
           sentimento: classificacao.sentimento || 'neutro',
+          status: classificacao.status || 'aguardando_equipe',
           resumo_ia: classificacao.resumo || null,
           classificado_por: 'ia_automatico',
           classificado_em: Timestamp.now(),
           updated_at: Timestamp.now()
         });
 
-        return { threadId: thread.id, success: true, categoria: classificacao.categoria };
+        return { threadId: thread.id, success: true, categoria: classificacao.categoria, status: classificacao.status };
 
       } catch (error) {
         console.error(`[ClassifyThreads] Erro na thread ${thread.id}:`, error.message);

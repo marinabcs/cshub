@@ -236,6 +236,16 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
     - **UI:** Card colorido quando ativa, botão para adicionar quando inativa, formulário com tipos selecionáveis
     - **Ações:** Criar, Editar, Remover oportunidade
     - **Constante:** `TIPOS_OPORTUNIDADE` no OngoingSection.jsx
+32. **Status de Thread Classificado por IA** (10/02/2026). IA agora determina o status da conversa:
+    - **Problema anterior:** n8n usava regra simples (última msg do cliente → aguardando_equipe), ignorando contexto
+    - **Solução:** IA analisa conteúdo da conversa para determinar status correto
+    - **Valores possíveis:** `resolvido`, `aguardando_cliente`, `aguardando_equipe`
+    - **Critérios IA:**
+      - `resolvido` → problema solucionado, cliente agradeceu, confirmou que funcionou
+      - `aguardando_cliente` → equipe fez pergunta ou aguarda ação do cliente
+      - `aguardando_equipe` → cliente fez pergunta ou aguarda resposta da equipe
+    - **Arquivos:** `functions/index.js` (CLASSIFY_PROMPT, classifyThread, classifyPendingThreads), `useClassificarThread.js`
+    - **Benefício:** Threads com "Obrigado, resolvido!" agora são marcadas corretamente como `resolvido`
 
 ---
 
