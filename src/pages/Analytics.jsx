@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
-import ExcelJS from 'exceljs';
+// ExcelJS é carregado dinamicamente só quando o usuário exporta (lazy load)
 import {
   Users, TrendingUp, AlertTriangle, MessageSquare,
   Filter, X, ChevronDown, Activity, Clock,
@@ -844,6 +844,8 @@ export default function Analytics() {
 
   // ========== EXPORTAÇÃO EXCEL ==========
   const exportToExcel = async (sectionName, data) => {
+    // Lazy load ExcelJS apenas quando necessário
+    const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet(sectionName);
     if (data.length > 0) {
@@ -861,6 +863,8 @@ export default function Analytics() {
   };
 
   const exportCompleteReport = async () => {
+    // Lazy load ExcelJS apenas quando necessário
+    const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
 
     const addSheet = (name, data) => {

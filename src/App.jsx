@@ -10,12 +10,15 @@ import { db } from './services/firebase'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 
-// Lazy — carregamento sob demanda
-const Clientes = lazy(() => import('./pages/Clientes'))
-const ClienteDetalhe = lazy(() => import('./pages/ClienteDetalhe'))
+// Lazy com prefetch — páginas frequentes são pré-carregadas em idle
+const MinhaCarteira = lazy(() => import(/* webpackPrefetch: true */ './pages/MinhaCarteira'))
+const Clientes = lazy(() => import(/* webpackPrefetch: true */ './pages/Clientes'))
+const ClienteDetalhe = lazy(() => import(/* webpackPrefetch: true */ './pages/ClienteDetalhe'))
+const Alertas = lazy(() => import(/* webpackPrefetch: true */ './pages/Alertas'))
+
+// Lazy — carregamento sob demanda (menos frequentes)
 const ClienteForm = lazy(() => import('./pages/ClienteForm'))
 const Analytics = lazy(() => import('./pages/Analytics'))
-const Alertas = lazy(() => import('./pages/Alertas'))
 const Configuracoes = lazy(() => import('./pages/Configuracoes'))
 const FiltrosEmail = lazy(() => import('./pages/FiltrosEmail'))
 const Usuarios = lazy(() => import('./pages/Usuarios'))
@@ -24,7 +27,6 @@ const Playbooks = lazy(() => import('./pages/Playbooks'))
 const PlaybookDetalhe = lazy(() => import('./pages/PlaybookDetalhe'))
 const PlaybookForm = lazy(() => import('./pages/PlaybookForm'))
 const OnGoing = lazy(() => import('./pages/OnGoing'))
-const MinhaCarteira = lazy(() => import('./pages/MinhaCarteira'))
 const Documentos = lazy(() => import('./pages/Documentos'))
 const ResumoExecutivo = lazy(() => import('./pages/ResumoExecutivo'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
