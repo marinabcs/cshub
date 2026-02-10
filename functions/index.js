@@ -6,6 +6,7 @@
 
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { onRequest, onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getAuth } from 'firebase-admin/auth';
 import { beforeUserCreated } from 'firebase-functions/v2/identity';
@@ -1955,3 +1956,150 @@ export const summarizeTranscription = onCall({
     throw new HttpsError('internal', 'Erro ao gerar resumo. Tente novamente.');
   }
 });
+
+// ============================================
+// BACKUP AUTOMÁTICO DO FIRESTORE
+// ============================================
+
+/**
+ * Backup diário das collections críticas para Cloud Storage
+ * Roda às 3h da manhã (horário de Brasília), todos os dias
+ *
+ * Collections exportadas:
+ * - clientes (dados principais)
+ * - threads (conversas)
+ * - alertas (alertas do sistema)
+ * - audit_logs (logs de auditoria)
+ * - config (configurações)
+ * - usuarios_sistema (usuários)
+ *
+ * Retenção: 30 dias (backups antigos são deletados automaticamente)
+ */
+export const backupFirestore = onSchedule(
+  {
+    schedule: '0 3 * * *', // 3h da manhã, todos os dias
+    timeZone: 'America/Sao_Paulo',
+    region: 'southamerica-east1',
+    timeoutSeconds: 540, // 9 minutos
+    memory: '1GiB'
+  },
+  async () => {
+    console.log('[Backup] Iniciando backup diário do Firestore...');
+
+    const bucket = getStorage().bucket();
+    const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const backupFolder = `backups/${timestamp}`;
+
+    // Collections para backup (críticas)
+    const collections = [
+      'clientes',
+      'threads',
+      'alertas',
+      'audit_logs',
+      'config',
+      'usuarios_sistema',
+      'metricas_diarias'
+    ];
+
+    const results = {
+      success: [],
+      failed: [],
+      totalDocs: 0
+    };
+
+    for (const collectionName of collections) {
+      try {
+        console.log(`[Backup] Exportando ${collectionName}...`);
+
+        const snapshot = await db.collection(collectionName).get();
+        const docs = [];
+
+        snapshot.forEach(doc => {
+          docs.push({
+            id: doc.id,
+            data: doc.data()
+          });
+        });
+
+        // Salvar como JSON no Cloud Storage
+        const fileName = `${backupFolder}/${collectionName}.json`;
+        const file = bucket.file(fileName);
+
+        await file.save(JSON.stringify(docs, null, 2), {
+          contentType: 'application/json',
+          metadata: {
+            backupDate: timestamp,
+            collection: collectionName,
+            documentCount: docs.length.toString()
+          }
+        });
+
+        results.success.push(collectionName);
+        results.totalDocs += docs.length;
+        console.log(`[Backup] ${collectionName}: ${docs.length} documentos exportados`);
+
+      } catch (error) {
+        console.error(`[Backup] Erro ao exportar ${collectionName}:`, error.message);
+        results.failed.push({ collection: collectionName, error: error.message });
+      }
+    }
+
+    // Limpar backups antigos (mais de 30 dias)
+    try {
+      console.log('[Backup] Limpando backups antigos...');
+
+      const [files] = await bucket.getFiles({ prefix: 'backups/' });
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 30);
+
+      let deletedCount = 0;
+      for (const file of files) {
+        const fileDate = file.name.split('/')[1]; // backups/YYYY-MM-DD/...
+        if (fileDate && new Date(fileDate) < cutoffDate) {
+          await file.delete();
+          deletedCount++;
+        }
+      }
+
+      if (deletedCount > 0) {
+        console.log(`[Backup] ${deletedCount} arquivos antigos removidos`);
+      }
+    } catch (error) {
+      console.error('[Backup] Erro ao limpar backups antigos:', error.message);
+    }
+
+    // Registrar backup na auditoria
+    try {
+      await db.collection('audit_logs').add({
+        acao: 'backup_firestore',
+        entidade_tipo: 'system',
+        entidade_id: 'backup',
+        usuario_email: 'sistema@cshub.local',
+        usuario_nome: 'Sistema',
+        dados_novos: {
+          date: timestamp,
+          collections_success: results.success,
+          collections_failed: results.failed.map(f => f.collection),
+          total_documents: results.totalDocs
+        },
+        created_at: Timestamp.now()
+      });
+    } catch (error) {
+      console.error('[Backup] Erro ao registrar na auditoria:', error.message);
+    }
+
+    console.log(`[Backup] Concluído! ${results.success.length} collections, ${results.totalDocs} documentos`);
+
+    if (results.failed.length > 0) {
+      console.error('[Backup] Falhas:', results.failed);
+    }
+
+    return {
+      success: results.failed.length === 0,
+      date: timestamp,
+      collections: results.success,
+      totalDocs: results.totalDocs,
+      failed: results.failed
+    };
+  }
+);
