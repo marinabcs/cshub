@@ -21,12 +21,15 @@ import {
 // ============================================
 
 describe('Constantes de alertas', () => {
-  it('ALERTA_TIPOS tem 5 tipos (3 ativos + 2 desativados)', () => {
-    expect(Object.keys(ALERTA_TIPOS)).toHaveLength(5);
+  it('ALERTA_TIPOS tem 7 tipos (5 ativos + 2 desativados)', () => {
+    expect(Object.keys(ALERTA_TIPOS)).toHaveLength(7);
     // Ativos
     expect(ALERTA_TIPOS).toHaveProperty('sentimento_negativo');
     expect(ALERTA_TIPOS).toHaveProperty('problema_reclamacao');
     expect(ALERTA_TIPOS).toHaveProperty('entrou_resgate');
+    // Carência de 7 dias (V1)
+    expect(ALERTA_TIPOS).toHaveProperty('carencia_comunicacao');
+    expect(ALERTA_TIPOS).toHaveProperty('carencia_playbook');
     // Desativados (mantidos para histórico)
     expect(ALERTA_TIPOS).toHaveProperty('sem_uso_plataforma');
     expect(ALERTA_TIPOS).toHaveProperty('sazonalidade_alta_inativo');

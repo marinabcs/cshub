@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Clock, AlertTriangle, AlertOctagon, Frown, RefreshCw, Check, ChevronRight, ChevronDown, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye } from 'lucide-react';
+import { Bell, Clock, AlertTriangle, AlertOctagon, Frown, RefreshCw, Check, ChevronRight, ChevronDown, Filter, X, Play, CheckCircle, XCircle, ExternalLink, ListTodo, Loader2, Pencil, Save, FileText, Eye, Timer, ClipboardList } from 'lucide-react';
 import { useAlertas, useAlertasCount, useAtualizarAlerta, useVerificarAlertas } from '../hooks/useAlertas';
 import {
   ALERTA_TIPOS,
@@ -22,6 +22,8 @@ const TIPO_ICONS = {
   problema_reclamacao: AlertTriangle,
   entrou_resgate: AlertOctagon,
   sem_uso_plataforma: Clock,
+  carencia_comunicacao: Timer,
+  carencia_playbook: ClipboardList,
 };
 
 export default function Alertas() {

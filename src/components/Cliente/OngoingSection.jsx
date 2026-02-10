@@ -1,10 +1,27 @@
 import { useState, useEffect } from 'react';
-import { ClipboardList, Check, Clock, ChevronDown, ChevronUp, Play, X, SkipForward, MessageSquare, Calendar, Loader2 } from 'lucide-react';
+import { ClipboardList, Check, Clock, ChevronDown, ChevronUp, Play, X, SkipForward, MessageSquare, Calendar, Loader2, AlertTriangle, Timer, ArrowDown, TrendingUp, DollarSign, Pencil, Trash2 } from 'lucide-react';
 import { buscarCiclosCliente, atualizarAcao, cancelarCiclo, ONGOING_STATUS, ACAO_STATUS, CADENCIA_OPTIONS, atribuirCiclo } from '../../services/ongoing';
 import { getSegmentoInfo, SEGMENTOS_CS, DEFAULT_ONGOING_ACOES } from '../../utils/segmentoCS';
 import { useAuth } from '../../contexts/AuthContext';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+
+// Calcular dias restantes da carência
+const calcularDiasRestantes = (dataFim) => {
+  if (!dataFim) return 0;
+  const fim = dataFim.toDate ? dataFim.toDate() : new Date(dataFim);
+  const agora = new Date();
+  const diffMs = fim.getTime() - agora.getTime();
+  return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+};
+
+// Tipos de oportunidade de vendas
+const TIPOS_OPORTUNIDADE = [
+  { value: 'upsell', label: 'Upsell', color: '#10b981', description: 'Upgrade de plano ou mais licenças' },
+  { value: 'cross_sell', label: 'Cross-sell', color: '#8b5cf6', description: 'Venda de produto/serviço adicional' },
+  { value: 'renovacao', label: 'Renovação Antecipada', color: '#06b6d4', description: 'Renovação antes do vencimento' },
+  { value: 'expansao', label: 'Expansão', color: '#f59e0b', description: 'Expansão para outros departamentos/times' },
+];
 
 export default function OngoingSection({ clienteId, segmentoAtual, cliente }) {
   const { user } = useAuth();
@@ -24,6 +41,12 @@ export default function OngoingSection({ clienteId, segmentoAtual, cliente }) {
   const [modalNovaAcao, setModalNovaAcao] = useState('');
   const [atribuindo, setAtribuindo] = useState(false);
   const [ongoingConfig, setOngoingConfig] = useState(null);
+
+  // Oportunidade de vendas
+  const [showOportunidadeForm, setShowOportunidadeForm] = useState(false);
+  const [oportunidadeForm, setOportunidadeForm] = useState({ tipo: 'upsell', valor_estimado: '', notas: '' });
+  const [salvandoOportunidade, setSalvandoOportunidade] = useState(false);
+  const [clienteLocal, setClienteLocal] = useState(cliente);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -49,6 +72,57 @@ export default function OngoingSection({ clienteId, segmentoAtual, cliente }) {
 
     if (clienteId) fetchData();
   }, [clienteId]);
+
+  // Sincronizar clienteLocal com prop cliente
+  useEffect(() => {
+    setClienteLocal(cliente);
+  }, [cliente]);
+
+  // Handlers de oportunidade de vendas
+  const handleSalvarOportunidade = async () => {
+    if (!clienteId) return;
+    setSalvandoOportunidade(true);
+    try {
+      const oportunidade = {
+        ativa: true,
+        tipo: oportunidadeForm.tipo,
+        valor_estimado: oportunidadeForm.valor_estimado ? parseFloat(oportunidadeForm.valor_estimado) : null,
+        notas: oportunidadeForm.notas || '',
+        criado_em: Timestamp.now(),
+        criado_por: user?.email || 'sistema'
+      };
+      await updateDoc(doc(db, 'clientes', clienteId), { oportunidade_vendas: oportunidade });
+      setClienteLocal(prev => ({ ...prev, oportunidade_vendas: oportunidade }));
+      setShowOportunidadeForm(false);
+      setOportunidadeForm({ tipo: 'upsell', valor_estimado: '', notas: '' });
+    } catch (error) {
+      console.error('Erro ao salvar oportunidade:', error);
+    } finally {
+      setSalvandoOportunidade(false);
+    }
+  };
+
+  const handleRemoverOportunidade = async () => {
+    if (!clienteId || !confirm('Remover esta oportunidade de vendas?')) return;
+    try {
+      await updateDoc(doc(db, 'clientes', clienteId), { oportunidade_vendas: null });
+      setClienteLocal(prev => ({ ...prev, oportunidade_vendas: null }));
+    } catch (error) {
+      console.error('Erro ao remover oportunidade:', error);
+    }
+  };
+
+  const handleEditarOportunidade = () => {
+    const op = clienteLocal?.oportunidade_vendas;
+    if (op) {
+      setOportunidadeForm({
+        tipo: op.tipo || 'upsell',
+        valor_estimado: op.valor_estimado ? String(op.valor_estimado) : '',
+        notas: op.notas || ''
+      });
+      setShowOportunidadeForm(true);
+    }
+  };
 
   const cicloAtivo = ciclos.find(c => c.status === 'em_andamento');
   const ciclosHistorico = ciclos.filter(c => c.status !== 'em_andamento');
@@ -152,8 +226,382 @@ export default function OngoingSection({ clienteId, segmentoAtual, cliente }) {
     );
   }
 
+  // Verificar se cliente tem carência ativa
+  const carencia = clienteLocal?.carencia_nivel;
+  const carenciaAtiva = carencia?.ativa === true;
+  const diasRestantes = carenciaAtiva ? calcularDiasRestantes(carencia.data_fim) : 0;
+
+  // Oportunidade de vendas ativa
+  const oportunidade = clienteLocal?.oportunidade_vendas;
+  const oportunidadeAtiva = oportunidade?.ativa === true;
+  const tipoOportunidade = TIPOS_OPORTUNIDADE.find(t => t.value === oportunidade?.tipo);
+
   return (
     <div>
+      {/* Card de Carência (7 dias) */}
+      {carenciaAtiva && (
+        <div style={{
+          background: 'rgba(245, 158, 11, 0.1)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          borderRadius: '20px',
+          padding: '24px',
+          marginBottom: '24px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '12px',
+              background: 'rgba(245, 158, 11, 0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <Timer style={{ width: '24px', height: '24px', color: '#f59e0b' }} />
+            </div>
+
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                <h3 style={{ color: '#f59e0b', fontSize: '16px', fontWeight: '700', margin: 0 }}>
+                  Período de Carência Ativo
+                </h3>
+                <span style={{
+                  padding: '4px 12px',
+                  background: diasRestantes <= 2 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                  color: diasRestantes <= 2 ? '#ef4444' : '#f59e0b',
+                  borderRadius: '20px',
+                  fontSize: '13px',
+                  fontWeight: '700'
+                }}>
+                  {diasRestantes} {diasRestantes === 1 ? 'dia restante' : 'dias restantes'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <span style={{
+                  padding: '4px 10px',
+                  background: SEGMENTOS_CS[carencia.segmento_de]?.bgColor || 'rgba(100, 116, 139, 0.2)',
+                  color: SEGMENTOS_CS[carencia.segmento_de]?.color || '#94a3b8',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: '600'
+                }}>
+                  {SEGMENTOS_CS[carencia.segmento_de]?.label || carencia.segmento_de}
+                </span>
+                <ArrowDown style={{ width: '16px', height: '16px', color: '#ef4444' }} />
+                <span style={{
+                  padding: '4px 10px',
+                  background: SEGMENTOS_CS[carencia.segmento_para]?.bgColor || 'rgba(100, 116, 139, 0.2)',
+                  color: SEGMENTOS_CS[carencia.segmento_para]?.color || '#94a3b8',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: '600'
+                }}>
+                  {SEGMENTOS_CS[carencia.segmento_para]?.label || carencia.segmento_para}
+                </span>
+              </div>
+
+              <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 12px', lineHeight: '1.5' }}>
+                <strong style={{ color: '#e2e8f0' }}>Motivo:</strong> {carencia.motivo || 'Queda de nível detectada'}
+              </p>
+
+              <div style={{
+                padding: '12px 16px',
+                background: 'rgba(15, 10, 31, 0.4)',
+                borderRadius: '10px',
+                border: '1px solid rgba(245, 158, 11, 0.1)'
+              }}>
+                <p style={{ color: '#f59e0b', fontSize: '13px', margin: 0, fontWeight: '500' }}>
+                  <AlertTriangle style={{ width: '14px', height: '14px', display: 'inline', verticalAlign: 'middle', marginRight: '6px' }} />
+                  {diasRestantes > 0
+                    ? `Comunique-se com o cliente. Se não recuperar em ${diasRestantes} ${diasRestantes === 1 ? 'dia' : 'dias'}, o playbook de ${SEGMENTOS_CS[carencia.segmento_para]?.label || carencia.segmento_para} será ativado automaticamente.`
+                    : 'Carência vencida. Verifique se o alerta de playbook foi criado.'
+                  }
+                </p>
+              </div>
+
+              {/* Barra de progresso da carência */}
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ color: '#64748b', fontSize: '11px' }}>Início: {formatDate(carencia.data_inicio)}</span>
+                  <span style={{ color: '#64748b', fontSize: '11px' }}>Fim: {formatDate(carencia.data_fim)}</span>
+                </div>
+                <div style={{
+                  height: '6px', background: 'rgba(15, 10, 31, 0.6)',
+                  borderRadius: '3px', overflow: 'hidden'
+                }}>
+                  <div style={{
+                    width: `${Math.max(0, Math.min(100, ((7 - diasRestantes) / 7) * 100))}%`,
+                    height: '100%',
+                    background: diasRestantes <= 2 ? '#ef4444' : '#f59e0b',
+                    borderRadius: '3px',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Card de Oportunidade de Vendas */}
+      {oportunidadeAtiva && !showOportunidadeForm && (
+        <div style={{
+          background: `${tipoOportunidade?.color || '#10b981'}10`,
+          border: `1px solid ${tipoOportunidade?.color || '#10b981'}40`,
+          borderRadius: '20px',
+          padding: '24px',
+          marginBottom: '24px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '12px',
+              background: `${tipoOportunidade?.color || '#10b981'}20`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <TrendingUp style={{ width: '24px', height: '24px', color: tipoOportunidade?.color || '#10b981' }} />
+            </div>
+
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                <h3 style={{ color: tipoOportunidade?.color || '#10b981', fontSize: '16px', fontWeight: '700', margin: 0 }}>
+                  Oportunidade de Vendas
+                </h3>
+                <span style={{
+                  padding: '4px 12px',
+                  background: `${tipoOportunidade?.color || '#10b981'}20`,
+                  color: tipoOportunidade?.color || '#10b981',
+                  borderRadius: '20px',
+                  fontSize: '13px',
+                  fontWeight: '700'
+                }}>
+                  {tipoOportunidade?.label || oportunidade.tipo}
+                </span>
+              </div>
+
+              <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 8px', lineHeight: '1.5' }}>
+                {tipoOportunidade?.description || 'Potencial de venda identificado'}
+              </p>
+
+              {oportunidade.valor_estimado && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <DollarSign style={{ width: '16px', height: '16px', color: '#10b981' }} />
+                  <span style={{ color: '#10b981', fontSize: '18px', fontWeight: '700' }}>
+                    R$ {oportunidade.valor_estimado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                  <span style={{ color: '#64748b', fontSize: '13px' }}>valor estimado</span>
+                </div>
+              )}
+
+              {oportunidade.notas && (
+                <div style={{
+                  padding: '12px 16px',
+                  background: 'rgba(15, 10, 31, 0.4)',
+                  borderRadius: '10px',
+                  marginBottom: '12px'
+                }}>
+                  <p style={{ color: '#e2e8f0', fontSize: '14px', margin: 0, lineHeight: '1.5' }}>
+                    {oportunidade.notas}
+                  </p>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: '#475569', fontSize: '12px' }}>
+                  Criado em {oportunidade.criado_em?.toDate ? oportunidade.criado_em.toDate().toLocaleDateString('pt-BR') : '-'}
+                  {oportunidade.criado_por && ` por ${oportunidade.criado_por}`}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleEditarOportunidade}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)',
+                  color: '#8b5cf6', cursor: 'pointer'
+                }}
+              >
+                <Pencil style={{ width: '16px', height: '16px' }} />
+              </button>
+              <button
+                onClick={handleRemoverOportunidade}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)',
+                  color: '#ef4444', cursor: 'pointer'
+                }}
+              >
+                <Trash2 style={{ width: '16px', height: '16px' }} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Formulário de Oportunidade de Vendas */}
+      {showOportunidadeForm && (
+        <div style={{
+          background: 'rgba(16, 185, 129, 0.05)',
+          border: '1px solid rgba(16, 185, 129, 0.2)',
+          borderRadius: '20px',
+          padding: '24px',
+          marginBottom: '24px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <TrendingUp style={{ width: '20px', height: '20px', color: '#10b981' }} />
+              <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>
+                {oportunidadeAtiva ? 'Editar Oportunidade' : 'Nova Oportunidade de Vendas'}
+              </h3>
+            </div>
+            <button
+              onClick={() => setShowOportunidadeForm(false)}
+              style={{
+                background: 'none', border: 'none', padding: '4px',
+                cursor: 'pointer', display: 'flex', alignItems: 'center'
+              }}
+            >
+              <X style={{ width: '20px', height: '20px', color: '#64748b' }} />
+            </button>
+          </div>
+
+          {/* Tipo de oportunidade */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
+              Tipo de Oportunidade
+            </label>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {TIPOS_OPORTUNIDADE.map(tipo => (
+                <button
+                  key={tipo.value}
+                  onClick={() => setOportunidadeForm(prev => ({ ...prev, tipo: tipo.value }))}
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: '10px',
+                    border: oportunidadeForm.tipo === tipo.value
+                      ? `2px solid ${tipo.color}`
+                      : '1px solid rgba(100, 116, 139, 0.3)',
+                    background: oportunidadeForm.tipo === tipo.value
+                      ? `${tipo.color}20`
+                      : 'rgba(15, 10, 31, 0.6)',
+                    color: oportunidadeForm.tipo === tipo.value ? tipo.color : '#94a3b8',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {tipo.label}
+                </button>
+              ))}
+            </div>
+            <p style={{ color: '#64748b', fontSize: '12px', margin: '8px 0 0' }}>
+              {TIPOS_OPORTUNIDADE.find(t => t.value === oportunidadeForm.tipo)?.description}
+            </p>
+          </div>
+
+          {/* Valor estimado */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+              Valor Estimado (R$) <span style={{ color: '#64748b', fontWeight: '400' }}>(opcional)</span>
+            </label>
+            <input
+              type="number"
+              placeholder="Ex: 5000"
+              value={oportunidadeForm.valor_estimado}
+              onChange={(e) => setOportunidadeForm(prev => ({ ...prev, valor_estimado: e.target.value }))}
+              style={{
+                width: '200px', padding: '10px 14px',
+                background: '#0f0a1f', border: '1px solid #3730a3',
+                borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none'
+              }}
+            />
+          </div>
+
+          {/* Notas */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+              Notas <span style={{ color: '#64748b', fontWeight: '400' }}>(opcional)</span>
+            </label>
+            <textarea
+              placeholder="Detalhes da oportunidade, contexto, próximos passos..."
+              value={oportunidadeForm.notas}
+              onChange={(e) => setOportunidadeForm(prev => ({ ...prev, notas: e.target.value }))}
+              style={{
+                width: '100%', padding: '12px 14px', minHeight: '80px',
+                background: '#0f0a1f', border: '1px solid #3730a3',
+                borderRadius: '10px', color: 'white', fontSize: '14px',
+                outline: 'none', resize: 'vertical', fontFamily: 'inherit'
+              }}
+            />
+          </div>
+
+          {/* Botões */}
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => setShowOportunidadeForm(false)}
+              style={{
+                padding: '10px 20px', background: 'rgba(100, 116, 139, 0.2)',
+                border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '12px',
+                color: '#94a3b8', fontSize: '14px', cursor: 'pointer'
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSalvarOportunidade}
+              disabled={salvandoOportunidade}
+              style={{
+                padding: '10px 24px',
+                background: salvandoOportunidade ? 'rgba(16, 185, 129, 0.3)' : 'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)',
+                border: 'none', borderRadius: '12px', color: 'white',
+                fontSize: '14px', fontWeight: '600',
+                cursor: salvandoOportunidade ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {salvandoOportunidade ? 'Salvando...' : 'Salvar Oportunidade'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Botão para adicionar oportunidade (quando não há ativa) */}
+      {!oportunidadeAtiva && !showOportunidadeForm && (
+        <div style={{
+          background: 'rgba(30, 27, 75, 0.4)',
+          border: '1px dashed rgba(16, 185, 129, 0.3)',
+          borderRadius: '16px',
+          padding: '16px 20px',
+          marginBottom: '24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <TrendingUp style={{ width: '20px', height: '20px', color: '#10b981' }} />
+            <span style={{ color: '#94a3b8', fontSize: '14px' }}>
+              Sinalize uma oportunidade de vendas para este cliente
+            </span>
+          </div>
+          <button
+            onClick={() => setShowOportunidadeForm(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '8px 16px',
+              background: 'rgba(16, 185, 129, 0.15)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              borderRadius: '10px',
+              color: '#10b981',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            <TrendingUp style={{ width: '14px', height: '14px' }} />
+            Adicionar Oportunidade
+          </button>
+        </div>
+      )}
+
       {/* Ciclo Ativo */}
       <div style={{
         background: 'rgba(30, 27, 75, 0.4)',

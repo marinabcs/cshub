@@ -894,15 +894,32 @@ const DEFAULT_SAUDE_CONFIG = {
   peso_pecas: 2,
   peso_ia: 1.5,
   peso_downloads: 1,
+  // Critérios de Saída do Resgate (V1)
+  saida_resgate_dias_ativos: 5,      // Dias ativos mínimos para sair do RESGATE
+  saida_resgate_engajamento: 15,     // Score engajamento mínimo
+  saida_resgate_bugs_zero: true,     // Exige 0 bugs para sair
 };
 
-function calcularSegmentoCS(cliente, threads, metricas, totalUsers, config = {}) {
+/**
+ * Calcular segmento do cliente (Cloud Function)
+ *
+ * HIERARQUIA DE PRIORIDADE (NOVA REGRA V1):
+ * 1. Bugs/Reclamacoes em aberto (OVERRIDE ABSOLUTO):
+ *    - 2+ bugs → RESGATE (ignora tudo)
+ *    - 1 bug → ALERTA (ignora tudo)
+ *    - 0 bugs → segue para proximas regras
+ * 2. Dias ativos (base) -> Define nivel base
+ * 3. Engajamento (elevacao) -> Pode subir para CRESCIMENTO
+ * 4. Critérios de Saída do Resgate (se cliente atual está em RESGATE)
+ *
+ * @param segmentoAtual - Segmento atual do cliente (usado para verificar saída do RESGATE)
+ */
+function calcularSegmentoCS(cliente, threads, metricas, totalUsers, config = {}, segmentoAtual = null) {
   const cfg = { ...DEFAULT_SAUDE_CONFIG, ...config };
 
   // Calcular fatores
   const diasAtivos = metricas?.dias_ativos || 0;
   const engajamentoScore = calcularEngajamentoScore(metricas, cfg);
-  const reclamacoesEmAberto = temReclamacoesEmAberto(threads);
   const qtdReclamacoes = contarReclamacoesEmAberto(threads);
 
   // Sazonalidade: mes de baixa divide thresholds por 2
@@ -923,75 +940,271 @@ function calcularSegmentoCS(cliente, threads, metricas, totalUsers, config = {})
   const thDiasAtivosAlerta = Math.ceil(cfg.dias_ativos_alerta / divisor);
   const thEngajamentoCrescimento = Math.ceil(cfg.engajamento_crescimento / divisor);
 
-  // Flags especiais
-  const emAvisoPrevio = cliente?.status === 'aviso_previo';
-  const championSaiu = cliente?.champion_saiu === true;
-  const temTagsProblema = (cliente?.tags_problema || []).length > 0;
-  const bugsAbertos = (cliente?.bugs_reportados || []).filter(b => b.status !== 'resolvido').length;
+  // ============================================
+  // 1. PRIORIDADE MAXIMA: REGRA DE BUGS (OVERRIDE ABSOLUTO)
+  // ============================================
+  // Nova regra V1: Bugs sobrepõem TODAS as outras métricas
+  // - 2+ bugs/reclamações → RESGATE (mesmo com 25 dias ativos e score 150)
+  // - 1 bug/reclamação → ALERTA (mesmo com métricas excelentes)
+  // - 0 bugs → classificar por métricas normalmente
 
-  // Zero producao
-  const zeroProd = (metricas?.pecas_criadas || 0) === 0 &&
-                   (metricas?.downloads || 0) === 0 &&
-                   (metricas?.uso_ai_total || 0) === 0;
-
-  // 1. PRIORIDADE MAXIMA: CONDICOES DE RESGATE
-  // Aviso previo = RESGATE automatico (se toggle ativo)
-  if (cfg.aviso_previo_resgate && emAvisoPrevio) {
-    return { segmento: 'RESGATE', motivo: 'Em aviso previo' };
-  }
-  // X+ reclamacoes em aberto = RESGATE (threshold configuravel)
-  const thReclamacoesResgate = cfg.reclamacoes_max_resgate ?? 3;
-  if (qtdReclamacoes >= thReclamacoesResgate) {
-    return { segmento: 'RESGATE', motivo: `${qtdReclamacoes} reclamacoes em aberto (limite: ${thReclamacoesResgate})` };
-  }
-  // Zero dias ativos + zero producao = RESGATE
-  if (diasAtivos === 0 && zeroProd) {
-    return { segmento: 'RESGATE', motivo: 'Sem atividade e sem producao no mes' };
+  if (qtdReclamacoes >= 2) {
+    return {
+      segmento: 'RESGATE',
+      motivo: `${qtdReclamacoes} bugs/reclamações em aberto (regra: 2+ = Resgate)`
+    };
   }
 
-  // 2. PRIORIDADE MEDIA: OUTRAS CONDICOES DE ALERTA
-  // Champion saiu (se toggle ativo)
-  if (cfg.champion_saiu_alerta && championSaiu) {
-    return { segmento: 'ALERTA', motivo: 'Champion saiu' };
+  if (qtdReclamacoes === 1) {
+    return {
+      segmento: 'ALERTA',
+      motivo: `1 bug/reclamação em aberto (regra: 1 = Alerta)`
+    };
   }
-  // Tags de problema ativas (se toggle ativo)
-  if (cfg.tags_problema_alerta && temTagsProblema) {
-    return { segmento: 'ALERTA', motivo: 'Tags de problema ativas' };
+
+  // ============================================
+  // 2. SEM BUGS: VERIFICAR CONDICOES DE RESGATE POR METRICAS
+  // ============================================
+
+  // Zero dias ativos = RESGATE
+  if (diasAtivos === 0) {
+    return { segmento: 'RESGATE', motivo: 'Sem atividade no mes' };
   }
-  // Muitos bugs abertos (threshold configuravel)
-  const thBugsAlerta = cfg.bugs_max_alerta ?? 3;
-  if (bugsAbertos >= thBugsAlerta) {
-    return { segmento: 'ALERTA', motivo: `${bugsAbertos} bugs abertos (limite: ${thBugsAlerta})` };
+
+  // ============================================
+  // 2.5. CRITÉRIOS DE SAÍDA DO RESGATE (V1)
+  // ============================================
+  // Se cliente está atualmente em RESGATE e teria sido promovido,
+  // verificar se atende os critérios de saída configuráveis
+  if (segmentoAtual === 'RESGATE') {
+    const thSaidaDias = cfg.saida_resgate_dias_ativos || 5;
+    const thSaidaEngajamento = cfg.saida_resgate_engajamento || 15;
+    const exigeBugsZero = cfg.saida_resgate_bugs_zero !== false; // default true
+
+    // Verificar critérios de saída
+    const atendeDias = diasAtivos >= thSaidaDias;
+    const atendeEngajamento = engajamentoScore >= thSaidaEngajamento;
+    const atendeBugs = !exigeBugsZero || qtdReclamacoes === 0;
+
+    // Se não atende TODOS os critérios, permanece em RESGATE
+    if (!atendeDias || !atendeEngajamento || !atendeBugs) {
+      const motivos = [];
+      if (!atendeDias) motivos.push(`${diasAtivos}/${thSaidaDias} dias`);
+      if (!atendeEngajamento) motivos.push(`score ${Math.round(engajamentoScore)}/${thSaidaEngajamento}`);
+      if (!atendeBugs) motivos.push(`${qtdReclamacoes} bugs (precisa 0)`);
+
+      return {
+        segmento: 'RESGATE',
+        motivo: `Não atingiu critérios de saída: ${motivos.join(', ')}`
+      };
+    }
+    // Se atende todos os critérios, permite a promoção (continua o fluxo normal)
   }
-  // Zero producao (se toggle ativo - logou sem produzir)
-  if (cfg.zero_producao_alerta && zeroProd) {
-    return { segmento: 'ALERTA', motivo: 'Login sem producao' };
-  }
+
+  // ============================================
+  // 3. VERIFICAR DIAS ATIVOS MINIMOS
+  // ============================================
+
   // Poucos dias ativos
   if (diasAtivos < thDiasAtivosAlerta) {
     return { segmento: 'ALERTA', motivo: `Apenas ${diasAtivos} dias ativos (minimo: ${thDiasAtivosAlerta})` };
   }
 
-  // 3. CLASSIFICACAO POSITIVA: ESTAVEL ou CRESCIMENTO
+  // ============================================
+  // 4. CLASSIFICACAO POSITIVA: ESTAVEL ou CRESCIMENTO
+  // (Só chega aqui se não tem bugs)
+  // ============================================
+
   // Verificar se atende criterios de CRESCIMENTO
-  const podeSerCrescimento = !reclamacoesEmAberto || cfg.reclamacoes_crescimento;
-  if (podeSerCrescimento && diasAtivos >= thDiasAtivosCrescimento && engajamentoScore >= thEngajamentoCrescimento) {
-    return { segmento: 'CRESCIMENTO', motivo: `${diasAtivos} dias ativos + engajamento ${engajamentoScore}` };
+  if (diasAtivos >= thDiasAtivosCrescimento && engajamentoScore >= thEngajamentoCrescimento) {
+    return { segmento: 'CRESCIMENTO', motivo: `${diasAtivos} dias ativos + engajamento ${Math.round(engajamentoScore)}` };
   }
 
   // Verificar se atende criterios de ESTAVEL
-  const podeSerEstavel = !reclamacoesEmAberto || cfg.reclamacoes_estavel;
-  if (podeSerEstavel && diasAtivos >= thDiasAtivosEstavel) {
+  if (diasAtivos >= thDiasAtivosEstavel) {
     return { segmento: 'ESTAVEL', motivo: `${diasAtivos} dias ativos no mes` };
   }
 
-  // Se tem reclamacao e nao pode ser ESTAVEL, vai para ALERTA
-  if (reclamacoesEmAberto) {
-    return { segmento: 'ALERTA', motivo: `${qtdReclamacoes} reclamacao(es) em aberto` };
-  }
+  // ============================================
+  // 5. ALERTA (fallback quando não atinge CRESCIMENTO/ESTÁVEL)
+  // ============================================
 
-  // Fallback
+  // Fallback para ALERTA
   return { segmento: 'ALERTA', motivo: `${diasAtivos} dias ativos (abaixo do ideal: ${thDiasAtivosEstavel})` };
+}
+
+// Ordem de prioridade dos segmentos (1 = melhor, 4 = pior)
+const SEGMENTO_PRIORIDADE = {
+  'CRESCIMENTO': 1,
+  'ESTAVEL': 2,
+  'ALERTA': 3,
+  'RESGATE': 4
+};
+
+// Dias de carência para quedas de nível (exceto para RESGATE)
+const DIAS_CARENCIA = 7;
+
+/**
+ * Registra transições de nível na collection interacoes.
+ * Cria um registro na timeline do cliente para cada mudança de saúde.
+ *
+ * NOVA REGRA V1 - Carência de 7 dias:
+ * - Quando cliente CAI de nível (exceto para RESGATE), inicia carência de 7 dias
+ * - Cria alerta imediato de comunicação
+ * - Após 7 dias, se não recuperou, sistema cria alerta de playbook
+ * - Se cliente SOBE de nível durante carência, cancela a carência
+ */
+async function registrarTransicoesNivel(transicoes) {
+  if (!transicoes || transicoes.length === 0) return;
+
+  const now = Timestamp.now();
+  const nowDate = now.toDate();
+
+  for (const t of transicoes) {
+    try {
+      const prioridadeAnterior = SEGMENTO_PRIORIDADE[t.segmentoAnterior] || 2;
+      const prioridadeNova = SEGMENTO_PRIORIDADE[t.novoSegmento] || 2;
+      const direcao = prioridadeNova > prioridadeAnterior ? 'descida' : 'subida';
+
+      // Criar documento de interação tipo transicao_nivel
+      await db.collection('interacoes').add({
+        cliente_id: t.clienteId,
+        tipo: 'transicao_nivel',
+        data: now,
+        created_at: now,
+        created_by: 'Sistema',
+        // Dados específicos da transição
+        segmento_anterior: t.segmentoAnterior,
+        segmento_novo: t.novoSegmento,
+        direcao: direcao, // 'subida' ou 'descida'
+        motivo: t.motivo,
+        // Notas formatadas para exibição
+        notas: `${direcao === 'descida' ? '🔻' : '🔺'} Transição de ${t.segmentoAnterior} para ${t.novoSegmento}. Motivo: ${t.motivo}`
+      });
+
+      console.log(`[Transição] ${t.clienteId}: ${t.segmentoAnterior} → ${t.novoSegmento} (${direcao})`);
+
+      // ============================================
+      // CARÊNCIA DE 7 DIAS (apenas para quedas, exceto para RESGATE)
+      // ============================================
+      const clienteRef = db.collection('clientes').doc(t.clienteId);
+      const clienteDoc = await clienteRef.get();
+      const clienteData = clienteDoc.exists ? clienteDoc.data() : {};
+      const clienteNome = clienteData.team_name || clienteData.nome || t.clienteId;
+
+      if (direcao === 'descida') {
+        // Queda para RESGATE = ação imediata, SEM carência
+        if (t.novoSegmento === 'RESGATE') {
+          console.log(`[Carência] ${t.clienteId}: Queda para RESGATE - ação imediata (sem carência)`);
+
+          // Cancelar carência existente se houver
+          if (clienteData.carencia_nivel?.ativa) {
+            await clienteRef.update({
+              'carencia_nivel.ativa': false,
+              'carencia_nivel.cancelada_em': now,
+              'carencia_nivel.motivo_cancelamento': 'Queda para RESGATE - ação imediata necessária'
+            });
+          }
+        } else {
+          // Queda para ESTÁVEL ou ALERTA = iniciar carência de 7 dias
+          const dataFim = new Date(nowDate);
+          dataFim.setDate(dataFim.getDate() + DIAS_CARENCIA);
+
+          // Criar alerta de comunicação imediata
+          const alertaComunicacao = await db.collection('alertas').add({
+            tipo: 'carencia_comunicacao',
+            titulo: `⏳ ${clienteNome} caiu para ${t.novoSegmento} - Comunicar cliente`,
+            mensagem: `Cliente caiu de ${t.segmentoAnterior} para ${t.novoSegmento}. Motivo: ${t.motivo}. Período de carência de ${DIAS_CARENCIA} dias iniciado. Comunique-se com o cliente para entender a situação.`,
+            prioridade: 'alta',
+            status: 'pendente',
+            cliente_id: t.clienteId,
+            cliente_nome: clienteNome,
+            responsaveis: clienteData.responsaveis || [],
+            responsavel_email: clienteData.responsaveis?.[0]?.email || clienteData.responsavel_email || null,
+            responsavel_nome: clienteData.responsaveis?.map(r => r.nome).join(', ') || clienteData.responsavel_nome || null,
+            created_at: now,
+            updated_at: now,
+            origem: 'automatico',
+            carencia_relacionada: true
+          });
+
+          // Salvar carência no cliente
+          await clienteRef.update({
+            carencia_nivel: {
+              ativa: true,
+              data_inicio: now,
+              data_fim: Timestamp.fromDate(dataFim),
+              segmento_de: t.segmentoAnterior,
+              segmento_para: t.novoSegmento,
+              motivo: t.motivo,
+              alerta_comunicacao_id: alertaComunicacao.id,
+              alerta_playbook_id: null // Será preenchido após 7 dias se não recuperar
+            }
+          });
+
+          console.log(`[Carência] ${t.clienteId}: Carência de ${DIAS_CARENCIA} dias iniciada (${t.segmentoAnterior} → ${t.novoSegmento})`);
+        }
+      } else if (direcao === 'subida') {
+        // Cliente SUBIU de nível = cancelar carência se existir
+        if (clienteData.carencia_nivel?.ativa) {
+          // Cancelar alerta de comunicação se ainda pendente
+          if (clienteData.carencia_nivel.alerta_comunicacao_id) {
+            try {
+              const alertaRef = db.collection('alertas').doc(clienteData.carencia_nivel.alerta_comunicacao_id);
+              const alertaDoc = await alertaRef.get();
+              if (alertaDoc.exists && alertaDoc.data().status === 'pendente') {
+                await alertaRef.update({
+                  status: 'resolvido',
+                  resolved_at: now,
+                  motivo_fechamento: 'Cliente recuperou nível durante carência'
+                });
+              }
+            } catch (e) {
+              console.error(`[Carência] Erro ao cancelar alerta de comunicação:`, e.message);
+            }
+          }
+
+          // Cancelar alerta de playbook se existir e ainda pendente
+          if (clienteData.carencia_nivel.alerta_playbook_id) {
+            try {
+              const alertaRef = db.collection('alertas').doc(clienteData.carencia_nivel.alerta_playbook_id);
+              const alertaDoc = await alertaRef.get();
+              if (alertaDoc.exists && alertaDoc.data().status === 'pendente') {
+                await alertaRef.update({
+                  status: 'resolvido',
+                  resolved_at: now,
+                  motivo_fechamento: 'Cliente recuperou nível durante carência'
+                });
+              }
+            } catch (e) {
+              console.error(`[Carência] Erro ao cancelar alerta de playbook:`, e.message);
+            }
+          }
+
+          // Marcar carência como cancelada (recuperação)
+          await clienteRef.update({
+            'carencia_nivel.ativa': false,
+            'carencia_nivel.cancelada_em': now,
+            'carencia_nivel.motivo_cancelamento': `Cliente recuperou: ${t.segmentoAnterior} → ${t.novoSegmento}`
+          });
+
+          // Registrar na timeline
+          await db.collection('interacoes').add({
+            cliente_id: t.clienteId,
+            tipo: 'carencia_cancelada',
+            data: now,
+            created_at: now,
+            created_by: 'Sistema',
+            notas: `✅ Carência cancelada - Cliente recuperou de ${clienteData.carencia_nivel.segmento_para} para ${t.novoSegmento}`
+          });
+
+          console.log(`[Carência] ${t.clienteId}: Carência CANCELADA - cliente recuperou para ${t.novoSegmento}`);
+        }
+      }
+    } catch (error) {
+      console.error(`[Transição] Erro ao registrar para ${t.clienteId}:`, error.message);
+    }
+  }
 }
 
 /**
@@ -1082,8 +1295,8 @@ export const recalcularSaudeDiaria = onSchedule({
           };
         }, { logins: 0, projetos_criados: 0, pecas_criadas: 0, downloads: 0, creditos_consumidos: 0, uso_ai_total: 0, dias_ativos: 0, ultima_atividade: null });
 
-        const resultado = calcularSegmentoCS(cliente, threads, metricas, totalUsers, saudeConfig);
         const segmentoAtual = normalizarSegmento(cliente.segmento_cs);
+        const resultado = calcularSegmentoCS(cliente, threads, metricas, totalUsers, saudeConfig, segmentoAtual);
 
         return {
           clienteId: cliente.id,
@@ -1101,6 +1314,7 @@ export const recalcularSaudeDiaria = onSchedule({
     // Batch write
     const batch = db.batch();
     let batchCount = 0;
+    const transicoesParaRegistrar = [];
 
     for (const r of results) {
       if (!r) continue;
@@ -1113,6 +1327,14 @@ export const recalcularSaudeDiaria = onSchedule({
           segmento_anterior: r.segmentoAnterior
         });
         updatedCount++;
+
+        // Preparar registro de transição para a timeline
+        transicoesParaRegistrar.push({
+          clienteId: r.clienteId,
+          segmentoAnterior: r.segmentoAnterior,
+          novoSegmento: r.novoSegmento,
+          motivo: r.motivo
+        });
       } else {
         batch.update(ref, { segmento_recalculado_em: Timestamp.now() });
       }
@@ -1120,9 +1342,147 @@ export const recalcularSaudeDiaria = onSchedule({
     }
 
     if (batchCount > 0) await batch.commit();
+
+    // Registrar transições na collection interacoes (após commit)
+    if (transicoesParaRegistrar.length > 0) {
+      await registrarTransicoesNivel(transicoesParaRegistrar);
+    }
   }
 
   console.log(`Saude recalculada: ${clientes.length} clientes processados, ${updatedCount} atualizados`);
+});
+
+// ============================================
+// VERIFICAR CARÊNCIAS VENCIDAS - DIÁRIO (após recálculo)
+// ============================================
+
+/**
+ * Verifica carências de 7 dias que venceram.
+ * Se cliente ainda está no nível inferior, cria alerta de playbook.
+ * Roda às 7h, após o recálculo de saúde (6:30).
+ */
+export const verificarCarenciasVencidas = onSchedule({
+  schedule: '0 7 * * *', // 7h BRT, todos os dias
+  timeZone: 'America/Sao_Paulo',
+  region: 'southamerica-east1',
+  timeoutSeconds: 300,
+  memory: '256MiB'
+}, async () => {
+  console.log('[Carências] Verificando carências vencidas...');
+
+  const now = Timestamp.now();
+  const nowDate = now.toDate();
+
+  // Buscar clientes com carência ativa
+  const clientesSnap = await db.collection('clientes')
+    .where('carencia_nivel.ativa', '==', true)
+    .get();
+
+  if (clientesSnap.empty) {
+    console.log('[Carências] Nenhuma carência ativa encontrada');
+    return;
+  }
+
+  console.log(`[Carências] Encontradas ${clientesSnap.size} carências ativas`);
+
+  let carenciasVencidas = 0;
+  let playbacksCriados = 0;
+
+  for (const doc of clientesSnap.docs) {
+    const cliente = { id: doc.id, ...doc.data() };
+    const carencia = cliente.carencia_nivel;
+
+    if (!carencia || !carencia.data_fim) continue;
+
+    // Verificar se carência venceu
+    const dataFim = carencia.data_fim.toDate ? carencia.data_fim.toDate() : new Date(carencia.data_fim);
+
+    if (nowDate < dataFim) {
+      // Carência ainda não venceu
+      continue;
+    }
+
+    carenciasVencidas++;
+    const clienteNome = cliente.team_name || cliente.nome || cliente.id;
+
+    // Verificar se cliente ainda está no nível inferior (não recuperou)
+    const segmentoAtual = cliente.segmento_cs;
+    const prioridadeAtual = SEGMENTO_PRIORIDADE[segmentoAtual] || 2;
+    const prioridadeCarencia = SEGMENTO_PRIORIDADE[carencia.segmento_para] || 3;
+
+    // Se cliente está no mesmo nível ou pior = não recuperou
+    if (prioridadeAtual >= prioridadeCarencia) {
+      // Criar alerta de playbook (cliente não recuperou após 7 dias)
+      const alertaPlaybook = await db.collection('alertas').add({
+        tipo: 'carencia_playbook',
+        titulo: `📋 ${clienteNome} não recuperou após ${DIAS_CARENCIA} dias - Iniciar playbook`,
+        mensagem: `Cliente caiu de ${carencia.segmento_de} para ${carencia.segmento_para} há ${DIAS_CARENCIA} dias e não recuperou. Motivo original: ${carencia.motivo}. É necessário iniciar o playbook de ${carencia.segmento_para}.`,
+        prioridade: carencia.segmento_para === 'ALERTA' ? 'alta' : 'media',
+        status: 'pendente',
+        cliente_id: cliente.id,
+        cliente_nome: clienteNome,
+        responsaveis: cliente.responsaveis || [],
+        responsavel_email: cliente.responsaveis?.[0]?.email || cliente.responsavel_email || null,
+        responsavel_nome: cliente.responsaveis?.map(r => r.nome).join(', ') || cliente.responsavel_nome || null,
+        created_at: now,
+        updated_at: now,
+        origem: 'automatico',
+        carencia_relacionada: true,
+        segmento_sugerido: carencia.segmento_para
+      });
+
+      // Atualizar carência com ID do alerta de playbook e marcar como finalizada
+      await doc.ref.update({
+        'carencia_nivel.ativa': false,
+        'carencia_nivel.alerta_playbook_id': alertaPlaybook.id,
+        'carencia_nivel.finalizada_em': now,
+        'carencia_nivel.resultado': 'nao_recuperou'
+      });
+
+      // Registrar na timeline
+      await db.collection('interacoes').add({
+        cliente_id: cliente.id,
+        tipo: 'carencia_vencida',
+        data: now,
+        created_at: now,
+        created_by: 'Sistema',
+        notas: `⏰ Carência de ${DIAS_CARENCIA} dias vencida - Cliente não recuperou de ${carencia.segmento_para}. Playbook necessário.`
+      });
+
+      playbacksCriados++;
+      console.log(`[Carências] ${cliente.id}: Carência vencida - alerta de playbook criado`);
+
+    } else {
+      // Cliente recuperou durante a carência (mas sistema não detectou a transição)
+      // Isso pode acontecer se o cliente subiu antes do recálculo diário
+      await doc.ref.update({
+        'carencia_nivel.ativa': false,
+        'carencia_nivel.finalizada_em': now,
+        'carencia_nivel.resultado': 'recuperou_tardio'
+      });
+
+      // Cancelar alerta de comunicação se ainda pendente
+      if (carencia.alerta_comunicacao_id) {
+        try {
+          const alertaRef = db.collection('alertas').doc(carencia.alerta_comunicacao_id);
+          const alertaDoc = await alertaRef.get();
+          if (alertaDoc.exists && alertaDoc.data().status === 'pendente') {
+            await alertaRef.update({
+              status: 'resolvido',
+              resolved_at: now,
+              motivo_fechamento: 'Cliente recuperou nível (verificação tardia)'
+            });
+          }
+        } catch (e) {
+          // Ignora erros
+        }
+      }
+
+      console.log(`[Carências] ${cliente.id}: Cliente já havia recuperado (${segmentoAtual})`);
+    }
+  }
+
+  console.log(`[Carências] Concluído: ${carenciasVencidas} carências vencidas processadas, ${playbacksCriados} alertas de playbook criados`);
 });
 
 // ============================================

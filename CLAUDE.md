@@ -206,6 +206,36 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
     - **Regra:** 0 pts = normal, 1-2 pts = ALERTA, 3+ pts = RESGATE
     - **Benefício:** 2 bugs visuais (2 pts) → Alerta, 1 bug crítico (3 pts) → Resgate direto
     - **Implementação:** IA classifica severidade automaticamente ou CS ajusta manualmente
+28. **Carência de 7 dias** (10/02/2026). Quando cliente cai de nível (exceto para RESGATE), período de carência de 7 dias:
+    - **Queda para RESGATE:** Ação imediata, sem carência
+    - **Queda para ALERTA/ESTÁVEL:** Inicia carência de 7 dias
+    - **Alerta imediato:** `carencia_comunicacao` - CS deve comunicar com cliente
+    - **Após 7 dias:** Se não recuperou, cria `carencia_playbook` - iniciar playbook do novo nível
+    - **Recuperação:** Se cliente subir de nível durante carência, alertas são cancelados automaticamente
+    - **Cloud Functions:** `registrarTransicoesNivel` gerencia carência, `verificarCarenciasVencidas` (7h BRT) verifica vencimentos
+    - **Campos no cliente:** `carencia_nivel { ativa, data_inicio, data_fim, segmento_de, segmento_para, motivo, alerta_comunicacao_id, alerta_playbook_id }`
+    - **UI:** Card de carência na aba Ongoing mostra dias restantes e barra de progresso
+29. **Critérios de Saída do Resgate** (10/02/2026). Configurações para cliente sair do nível RESGATE:
+    - **Parâmetros configuráveis:** `saida_resgate_dias_ativos` (default: 5), `saida_resgate_engajamento` (default: 15), `saida_resgate_bugs_zero` (default: true)
+    - **Regra:** Cliente em RESGATE só é promovido se atender TODOS os critérios simultaneamente
+    - **Lógica:** Se cliente está em RESGATE e teria sido promovido pela classificação normal, verifica critérios de saída primeiro
+    - **UI:** Configurações → Saúde CS → Seção "Critérios de Saída do Resgate" com 3 campos editáveis
+    - **Motivo exibido:** Quando não atinge critérios, motivo mostra quais critérios faltam (ex: "5/5 dias, score 10/15")
+30. **Tags em Observações** (10/02/2026). Tags predefinidas para categorizar observações qualitativas:
+    - **Tags disponíveis:** Roadmap, Sazonalidade, Champion Saiu, Reestruturação, Concorrência, Expansão, Treinamento, Integração
+    - **Constante:** `TAGS_OBSERVACAO` no ClienteDetalhe.jsx
+    - **UI:** Seleção múltipla com chips clicáveis no formulário de observação
+    - **Armazenamento:** Campo `tags` (array de strings) na collection `observacoes_cs`
+    - **Exibição:** Tags coloridas abaixo do texto da observação na timeline
+    - **Tooltip:** Cada tag tem descrição ao passar o mouse
+31. **Flag de Oportunidade de Vendas** (10/02/2026). Permite sinalizar clientes com potencial de vendas:
+    - **Tipos de oportunidade:** Upsell, Cross-sell, Renovação Antecipada, Expansão
+    - **Campos:** `tipo`, `valor_estimado` (opcional), `notas` (opcional), `criado_em`, `criado_por`
+    - **Localização:** Seção Ongoing na página ClienteDetalhe (antes do ciclo ativo)
+    - **Armazenamento:** Campo `oportunidade_vendas` no documento do cliente (`clientes/{id}`)
+    - **UI:** Card colorido quando ativa, botão para adicionar quando inativa, formulário com tipos selecionáveis
+    - **Ações:** Criar, Editar, Remover oportunidade
+    - **Constante:** `TIPOS_OPORTUNIDADE` no OngoingSection.jsx
 
 ---
 
@@ -382,6 +412,7 @@ if (cliente.times && Array.isArray(cliente.times)) {
 - `validateDomain` — bloqueia signup fora do @trakto.io (beforeUserCreated)
 - `syncUserRole` — sincroniza Custom Claims quando role muda (onDocumentWritten)
 - `recalcularSaudeDiaria` — recalcula segmento_cs de todos os clientes ativos (scheduled, 6:30 BRT)
+- `verificarCarenciasVencidas` — verifica carências de 7 dias vencidas e cria alertas de playbook (scheduled, 7h BRT)
 - `verificarAlertasAutomatico` — gera alertas automaticamente (scheduled, 9h/14h seg-sex BRT)
 - `classifyPendingThreads` — classifica threads pendentes com GPT (scheduled, 7:30/13:30 seg-sex)
 - `setUserRole` — admin define roles (onCall, rate limited 20/min)

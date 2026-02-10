@@ -25,6 +25,21 @@ export const ALERTA_TIPOS = {
     icon: 'AlertOctagon',
     color: '#dc2626', // vermelho escuro
   },
+  // CARÊNCIA DE 7 DIAS (novos alertas V1):
+  carencia_comunicacao: {
+    value: 'carencia_comunicacao',
+    label: 'Carência - Comunicação',
+    description: 'Cliente caiu de nível - comunicar durante período de carência (7 dias)',
+    icon: 'Timer',
+    color: '#f59e0b', // amarelo
+  },
+  carencia_playbook: {
+    value: 'carencia_playbook',
+    label: 'Carência - Playbook',
+    description: 'Carência expirou sem recuperação - iniciar playbook do novo nível',
+    icon: 'ClipboardList',
+    color: '#f97316', // laranja
+  },
   // DESATIVADOS (mantidos para alertas históricos):
   sem_uso_plataforma: {
     value: 'sem_uso_plataforma',

@@ -38,6 +38,18 @@ const TIPOS_CONTATO = [
   { value: 'outro', label: 'Outro', color: '#64748b' }
 ];
 
+// Tags predefinidas para observações (V1)
+const TAGS_OBSERVACAO = [
+  { value: 'roadmap', label: 'Roadmap', color: '#8b5cf6', description: 'Aguardando feature do roadmap' },
+  { value: 'sazonalidade', label: 'Sazonalidade', color: '#3b82f6', description: 'Baixo uso devido a sazonalidade' },
+  { value: 'champion_saiu', label: 'Champion Saiu', color: '#ef4444', description: 'Contato principal deixou a empresa' },
+  { value: 'reestruturacao', label: 'Reestruturação', color: '#f97316', description: 'Cliente em reestruturação interna' },
+  { value: 'concorrencia', label: 'Concorrência', color: '#dc2626', description: 'Avaliando concorrentes' },
+  { value: 'expansao', label: 'Expansão', color: '#10b981', description: 'Potencial de expansão/upsell' },
+  { value: 'treinamento', label: 'Treinamento', color: '#06b6d4', description: 'Precisa de treinamento adicional' },
+  { value: 'integracao', label: 'Integração', color: '#a855f7', description: 'Problemas ou demandas de integração' },
+];
+
 // Decodificar HTML entities e limpar conteúdo de mensagem
 const cleanMessageContent = (text) => {
   if (!text) return 'Sem conteúdo';
@@ -178,6 +190,7 @@ export default function ClienteDetalhe() {
   const [loadingObs, setLoadingObs] = useState(false);
   const [showObsForm, setShowObsForm] = useState(false);
   const [obsTexto, setObsTexto] = useState('');
+  const [obsTags, setObsTags] = useState([]);
   const [savingObs, setSavingObs] = useState(false);
   const [mostrarResolvidas, setMostrarResolvidas] = useState(false);
 
@@ -624,6 +637,7 @@ export default function ClienteDetalhe() {
       await addDoc(collection(db, 'observacoes_cs'), {
         cliente_id: id,
         texto: obsTexto.trim(),
+        tags: obsTags,
         status: 'ativa',
         criado_por: 'CS',
         criado_em: Timestamp.now(),
@@ -631,6 +645,7 @@ export default function ClienteDetalhe() {
         updated_at: Timestamp.now()
       });
       setObsTexto('');
+      setObsTags([]);
       setShowObsForm(false);
       fetchObservacoes();
     } catch (error) {
@@ -793,8 +808,17 @@ export default function ClienteDetalhe() {
     { value: 'suporte', label: 'Suporte', color: '#f59e0b' },
     { value: 'treinamento', label: 'Treinamento', color: '#10b981' },
     { value: 'qbr', label: 'QBR', color: '#f97316' },
+    { value: 'transicao_nivel', label: 'Transição', color: '#f97316' },
     { value: 'outro', label: 'Outro', color: '#64748b' }
   ];
+
+  // Cores para níveis de saúde (usado em transições)
+  const SAUDE_COLORS = {
+    CRESCIMENTO: '#10b981',
+    ESTAVEL: '#3b82f6',
+    ALERTA: '#f59e0b',
+    RESGATE: '#ef4444'
+  };
 
   // Stakeholders - Handlers
   const handleSaveStakeholder = async () => {
@@ -1766,7 +1790,9 @@ export default function ClienteDetalhe() {
             return { _source: 'thread', _date: d, _tipo: 'email', ...t };
           }),
           ...interacoes.map(i => {
-            const d = i.data_interacao?.toDate ? i.data_interacao.toDate() : new Date(i.data_interacao || 0);
+            // Suporta tanto data_interacao (interações manuais) quanto data (transições automáticas)
+            const dateField = i.data_interacao || i.data;
+            const d = dateField?.toDate ? dateField.toDate() : new Date(dateField || 0);
             return { _source: 'interacao', _date: d, _tipo: i.tipo || 'outro', ...i };
           }),
           ...observacoes.map(o => {
@@ -1915,8 +1941,37 @@ export default function ClienteDetalhe() {
                 style={{ width: '100%', padding: '10px 14px', background: '#0f0a1f', border: formErrors.texto ? '1px solid #ef4444' : '1px solid #3730a3', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
               />
               <ErrorMessage error={formErrors.texto} />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
-                <button onClick={() => { setShowObsForm(false); setObsTexto(''); }} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#94a3b8', fontSize: '13px', cursor: 'pointer' }}>Cancelar</button>
+              {/* Seleção de Tags */}
+              <div style={{ marginTop: '12px' }}>
+                <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '500', display: 'block', marginBottom: '6px' }}>Tags (opcional)</label>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {TAGS_OBSERVACAO.map(tag => {
+                    const isSelected = obsTags.includes(tag.value);
+                    return (
+                      <button
+                        key={tag.value}
+                        onClick={() => setObsTags(prev => isSelected ? prev.filter(t => t !== tag.value) : [...prev, tag.value])}
+                        title={tag.description}
+                        style={{
+                          padding: '5px 10px',
+                          border: `1px solid ${isSelected ? tag.color : 'rgba(139, 92, 246, 0.2)'}`,
+                          background: isSelected ? `${tag.color}20` : 'transparent',
+                          borderRadius: '8px',
+                          color: isSelected ? tag.color : '#64748b',
+                          fontSize: '11px',
+                          fontWeight: isSelected ? '600' : '400',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {tag.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+                <button onClick={() => { setShowObsForm(false); setObsTexto(''); setObsTags([]); }} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#94a3b8', fontSize: '13px', cursor: 'pointer' }}>Cancelar</button>
                 <button onClick={handleSaveObs} disabled={!obsTexto.trim() || savingObs} style={{ padding: '8px 16px', background: !obsTexto.trim() ? 'rgba(16, 185, 129, 0.3)' : 'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)', border: 'none', borderRadius: '10px', color: 'white', fontSize: '13px', fontWeight: '600', cursor: !obsTexto.trim() ? 'not-allowed' : 'pointer' }}>
                   {savingObs ? 'Salvando...' : 'Adicionar'}
                 </button>
@@ -2170,6 +2225,32 @@ export default function ClienteDetalhe() {
                             <p style={{ color: '#e2e8f0', fontSize: '13px', margin: 0, lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
                               {item.texto}
                             </p>
+                            {/* Tags da observação */}
+                            {item.tags && item.tags.length > 0 && (
+                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '8px' }}>
+                                {item.tags.map(tagValue => {
+                                  const tagInfo = TAGS_OBSERVACAO.find(t => t.value === tagValue);
+                                  if (!tagInfo) return null;
+                                  return (
+                                    <span
+                                      key={tagValue}
+                                      title={tagInfo.description}
+                                      style={{
+                                        padding: '2px 8px',
+                                        background: `${tagInfo.color}15`,
+                                        color: tagInfo.color,
+                                        borderRadius: '6px',
+                                        fontSize: '10px',
+                                        fontWeight: '600',
+                                        border: `1px solid ${tagInfo.color}30`
+                                      }}
+                                    >
+                                      {tagInfo.label}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                             <button
@@ -2246,6 +2327,47 @@ export default function ClienteDetalhe() {
                             <MessageSquare style={{ width: '12px', height: '12px', color: '#06b6d4' }} />
                             <span style={{ color: '#06b6d4', fontSize: '11px' }}>{item.clickup_comments.length} comentário{item.clickup_comments.length > 1 ? 's' : ''} do ClickUp</span>
                           </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Renderizar transição de nível (histórico automático de mudanças de saúde)
+                if (item._tipo === 'transicao_nivel') {
+                  const isDescida = item.direcao === 'descida';
+                  const corAnterior = SAUDE_COLORS[item.segmento_anterior] || '#64748b';
+                  const corNova = SAUDE_COLORS[item.segmento_novo] || '#64748b';
+                  const borderColor = isDescida ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)';
+                  const bgColor = isDescida ? 'rgba(239, 68, 68, 0.05)' : 'rgba(16, 185, 129, 0.05)';
+
+                  return (
+                    <div key={`tr-${item.id}`} style={{ position: 'relative', marginBottom: idx < sortedItems.length - 1 ? '12px' : 0 }}>
+                      <div style={{ position: 'absolute', left: '-20px', top: '14px', width: '12px', height: '12px', borderRadius: '50%', background: isDescida ? '#ef4444' : '#10b981', border: '2px solid #0f0a1f' }} />
+                      <div style={{ background: bgColor, border: `1px solid ${borderColor}`, borderRadius: '12px', padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '16px' }}>{isDescida ? '🔻' : '🔺'}</span>
+                          <span style={{ padding: '2px 8px', background: isDescida ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)', color: isDescida ? '#ef4444' : '#10b981', borderRadius: '6px', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>
+                            Transição de Saúde
+                          </span>
+                          <span style={{ color: '#94a3b8', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Calendar style={{ width: '11px', height: '11px' }} />
+                            {item._date.toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ padding: '3px 10px', background: `${corAnterior}20`, color: corAnterior, borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>
+                            {item.segmento_anterior}
+                          </span>
+                          <span style={{ color: '#64748b', fontSize: '14px' }}>→</span>
+                          <span style={{ padding: '3px 10px', background: `${corNova}20`, color: corNova, borderRadius: '6px', fontSize: '12px', fontWeight: '600' }}>
+                            {item.segmento_novo}
+                          </span>
+                        </div>
+                        {item.motivo && (
+                          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '8px 0 0 0' }}>
+                            <span style={{ fontWeight: '500' }}>Motivo:</span> {item.motivo}
+                          </p>
                         )}
                       </div>
                     </div>

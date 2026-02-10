@@ -67,6 +67,10 @@ export default function Configuracoes() {
     // Pesos do score de engajamento (AI)
     peso_creditos: 2,
     peso_ia: 2, // Legado
+    // Critérios de Saída do Resgate (V1)
+    saida_resgate_dias_ativos: 5,      // Dias ativos mínimos para sair do RESGATE
+    saida_resgate_engajamento: 15,     // Score engajamento mínimo
+    saida_resgate_bugs_zero: true,     // Exige 0 bugs para sair
   };
 
   // Parâmetros de segmentação editáveis
@@ -89,6 +93,10 @@ export default function Configuracoes() {
     peso_downloads: 1,
     peso_creditos: 2,
     peso_ia: 2,
+    // Critérios de Saída do Resgate
+    saida_resgate_dias_ativos: 5,
+    saida_resgate_engajamento: 15,
+    saida_resgate_bugs_zero: true,
   });
 
   // Verificar se usuário é admin
@@ -365,10 +373,15 @@ export default function Configuracoes() {
         {/* Hierarquia de regras */}
         <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
           <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0, lineHeight: '1.6' }}>
-            <strong style={{ color: '#a78bfa' }}>Classificação:</strong>{' '}
-            <span style={{ color: '#ef4444' }}>1º Reclamações/Bugs</span> (limite por nível) →{' '}
-            <span style={{ color: '#3b82f6' }}>2º Dias ativos</span> (base) →{' '}
-            <span style={{ color: '#10b981' }}>3º Engajamento</span> (eleva para Crescimento)
+            <strong style={{ color: '#a78bfa' }}>Regra de Bugs (override absoluto):</strong>{' '}
+            <span style={{ color: '#ef4444' }}>2+ bugs → RESGATE</span> |{' '}
+            <span style={{ color: '#f59e0b' }}>1 bug → ALERTA</span> |{' '}
+            <span style={{ color: '#64748b' }}>0 bugs → classificar por métricas</span>
+          </p>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '8px 0 0 0', lineHeight: '1.6' }}>
+            <strong style={{ color: '#a78bfa' }}>Classificação (sem bugs):</strong>{' '}
+            <span style={{ color: '#3b82f6' }}>1º Dias ativos</span> (base) →{' '}
+            <span style={{ color: '#10b981' }}>2º Engajamento</span> (eleva para Crescimento)
           </p>
         </div>
 
@@ -493,6 +506,90 @@ export default function Configuracoes() {
         <p style={{ color: '#64748b', fontSize: '11px', margin: '12px 0 0 0', fontStyle: 'italic' }}>
           Reclamação = thread negativa/urgente, erro/bug reportado ou reclamação não resolvida
         </p>
+
+        {/* Critérios de Saída do Resgate */}
+        <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '16px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            <span style={{ fontSize: '16px' }}>🚨</span>
+            <h3 style={{ color: '#ef4444', fontSize: '15px', fontWeight: '700', margin: 0 }}>Critérios de Saída do Resgate</h3>
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0', lineHeight: '1.5' }}>
+            Para um cliente sair do nível RESGATE, <strong style={{ color: '#e2e8f0' }}>todos</strong> os critérios abaixo precisam ser atendidos simultaneamente:
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+            {/* Dias Ativos Mínimos */}
+            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
+              <label style={{ color: '#ef4444', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
+                Dias ativos mínimos
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="number"
+                  min="1"
+                  value={segmentoConfig.saida_resgate_dias_ativos}
+                  onChange={(e) => handleSegmentoConfigChange('saida_resgate_dias_ativos', e.target.value)}
+                  disabled={!isAdmin}
+                  style={{
+                    width: '70px', padding: '8px 10px',
+                    background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px',
+                    color: '#ef4444', fontSize: '16px', fontWeight: '700',
+                    textAlign: 'center', outline: 'none',
+                    cursor: isAdmin ? 'text' : 'not-allowed'
+                  }}
+                />
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>dias no mês</span>
+              </div>
+            </div>
+            {/* Score Engajamento Mínimo */}
+            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
+              <label style={{ color: '#ef4444', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
+                Score engajamento mínimo
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="number"
+                  min="0"
+                  value={segmentoConfig.saida_resgate_engajamento}
+                  onChange={(e) => handleSegmentoConfigChange('saida_resgate_engajamento', e.target.value)}
+                  disabled={!isAdmin}
+                  style={{
+                    width: '70px', padding: '8px 10px',
+                    background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px',
+                    color: '#ef4444', fontSize: '16px', fontWeight: '700',
+                    textAlign: 'center', outline: 'none',
+                    cursor: isAdmin ? 'text' : 'not-allowed'
+                  }}
+                />
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>pontos</span>
+              </div>
+            </div>
+            {/* Zero Bugs */}
+            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
+              <label style={{ color: '#ef4444', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
+                Zero bugs/reclamações
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                  <input
+                    type="checkbox"
+                    checked={segmentoConfig.saida_resgate_bugs_zero}
+                    onChange={(e) => handleSegmentoConfigChange('saida_resgate_bugs_zero', e.target.checked)}
+                    disabled={!isAdmin}
+                    style={{ width: '18px', height: '18px', accentColor: '#ef4444', cursor: isAdmin ? 'pointer' : 'not-allowed' }}
+                  />
+                  <span style={{ color: segmentoConfig.saida_resgate_bugs_zero ? '#ef4444' : '#64748b', fontSize: '13px', fontWeight: segmentoConfig.saida_resgate_bugs_zero ? '600' : '400' }}>
+                    {segmentoConfig.saida_resgate_bugs_zero ? 'Obrigatório' : 'Não exigido'}
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <p style={{ color: '#64748b', fontSize: '11px', margin: '12px 0 0 0', fontStyle: 'italic' }}>
+            O recálculo diário (6:30 BRT) verifica estes critérios. Cliente que atender todos sobe para ALERTA automaticamente.
+          </p>
+        </div>
       </div>
 
       {/* SEÇÃO: Filtros de Email (largura total) */}

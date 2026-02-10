@@ -289,33 +289,80 @@ describe('isSegmentoOverride', () => {
 });
 
 // ============================================
-// calcularSegmentoCS - REGRAS DE CLASSIFICACAO
+// calcularSegmentoCS - REGRAS DE CLASSIFICACAO (V1)
 // ============================================
 
 describe('calcularSegmentoCS', () => {
-  // RESGATE - Condições críticas
+  // ============================================
+  // REGRA DE BUGS - OVERRIDE ABSOLUTO (V1)
+  // ============================================
 
-  describe('RESGATE', () => {
-    it('cliente em aviso_previo => RESGATE', () => {
-      const cliente = makeCliente({ status: 'aviso_previo' });
-      const result = calcularSegmentoCS(cliente, [], makeMetricas(), 1);
-      expect(result.segmento).toBe('RESGATE');
-      expect(result.motivo).toContain('aviso previo');
-    });
-
-    it('3+ reclamações em aberto => RESGATE', () => {
+  describe('REGRA DE BUGS (override absoluto)', () => {
+    it('2+ bugs/reclamações => RESGATE (mesmo com métricas excelentes)', () => {
       const cliente = makeCliente();
       const threads = [
         makeThread({ sentimento: 'negativo', status: 'aberto' }),
-        makeThread({ sentimento: 'negativo', status: 'aberto' }),
         makeThread({ categoria: 'reclamacao', status: 'aberto' }),
+      ];
+      // Métricas excelentes que normalmente seriam CRESCIMENTO
+      const metricas = makeMetricas({ dias_ativos: 25, pecas_criadas: 100, uso_ai_total: 50, downloads: 30 });
+      const result = calcularSegmentoCS(cliente, threads, metricas, 1);
+      expect(result.segmento).toBe('RESGATE');
+      expect(result.motivo).toContain('2+ = Resgate');
+    });
+
+    it('3 bugs => RESGATE', () => {
+      const cliente = makeCliente();
+      const threads = [
+        makeThread({ sentimento: 'negativo', status: 'aberto' }),
+        makeThread({ sentimento: 'urgente', status: 'aberto' }),
+        makeThread({ categoria: 'erro_bug', status: 'aberto' }),
       ];
       const result = calcularSegmentoCS(cliente, threads, makeMetricas(), 1);
       expect(result.segmento).toBe('RESGATE');
-      expect(result.motivo).toContain('reclamacoes em aberto');
     });
 
-    it('zero dias ativos + zero produção => RESGATE', () => {
+    it('1 bug/reclamação => ALERTA (mesmo com métricas excelentes)', () => {
+      const cliente = makeCliente();
+      const thread = makeThread({ sentimento: 'negativo', status: 'aberto' });
+      // Métricas excelentes que normalmente seriam CRESCIMENTO
+      const metricas = makeMetricas({ dias_ativos: 25, pecas_criadas: 100, uso_ai_total: 50, downloads: 30 });
+      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
+      expect(result.segmento).toBe('ALERTA');
+      expect(result.motivo).toContain('1 = Alerta');
+    });
+
+    it('0 bugs => classificar por métricas normalmente', () => {
+      const cliente = makeCliente();
+      const metricas = makeMetricas({ dias_ativos: 25, pecas_criadas: 100, uso_ai_total: 50, downloads: 30 });
+      const result = calcularSegmentoCS(cliente, [], metricas, 1);
+      expect(result.segmento).toBe('CRESCIMENTO');
+    });
+
+    it('bug resolvido não conta (thread com resolvido: true)', () => {
+      const cliente = makeCliente();
+      const thread = makeThread({ sentimento: 'negativo', resolvido: true });
+      const metricas = makeMetricas({ dias_ativos: 25, pecas_criadas: 100, uso_ai_total: 50, downloads: 30 });
+      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
+      // Não deve ser ALERTA pois bug está resolvido
+      expect(result.segmento).toBe('CRESCIMENTO');
+    });
+
+    it('bug resolvido não conta (thread com status: fechado)', () => {
+      const cliente = makeCliente();
+      const thread = makeThread({ sentimento: 'negativo', status: 'fechado' });
+      const metricas = makeMetricas({ dias_ativos: 25, pecas_criadas: 100, uso_ai_total: 50, downloads: 30 });
+      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
+      expect(result.segmento).toBe('CRESCIMENTO');
+    });
+  });
+
+  // ============================================
+  // RESGATE - Condições de métricas (quando 0 bugs)
+  // ============================================
+
+  describe('RESGATE (métricas)', () => {
+    it('zero dias ativos => RESGATE', () => {
       const cliente = makeCliente();
       const metricas = { dias_ativos: 0, pecas_criadas: 0, downloads: 0, uso_ai_total: 0 };
       const result = calcularSegmentoCS(cliente, [], metricas, 1);
@@ -324,54 +371,11 @@ describe('calcularSegmentoCS', () => {
     });
   });
 
-  // ALERTA - Sinais de atenção
+  // ============================================
+  // ALERTA - Sinais de atenção (quando 0 bugs)
+  // ============================================
 
-  describe('ALERTA', () => {
-    it('champion saiu => ALERTA', () => {
-      const cliente = makeCliente({ champion_saiu: true });
-      const metricas = makeMetricas();
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('Champion saiu');
-    });
-
-    it('tags de problema => ALERTA', () => {
-      const cliente = makeCliente({
-        tags_problema: [{ tag: 'Problema X' }],
-      });
-      const metricas = makeMetricas();
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('Tags de problema');
-    });
-
-    it('3+ bugs abertos => ALERTA', () => {
-      const cliente = makeCliente({
-        bugs_reportados: [
-          { id: '1', status: 'aberto' },
-          { id: '2', status: 'em_andamento' },
-          { id: '3', status: 'aberto' },
-        ],
-      });
-      const metricas = makeMetricas();
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('bugs abertos');
-    });
-
-    it('zero produção (com dias ativos) => ALERTA', () => {
-      const cliente = makeCliente();
-      const metricas = {
-        dias_ativos: 10,
-        pecas_criadas: 0,
-        downloads: 0,
-        uso_ai_total: 0,
-      };
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('Login sem producao');
-    });
-
+  describe('ALERTA (métricas)', () => {
     it('poucos dias ativos => ALERTA', () => {
       const cliente = makeCliente();
       const metricas = {
@@ -385,21 +389,22 @@ describe('calcularSegmentoCS', () => {
       expect(result.motivo).toContain('dias ativos');
     });
 
-    it('reclamação em aberto impede CRESCIMENTO/ESTÁVEL => ALERTA', () => {
+    it('dias ativos entre alerta e estável => ALERTA', () => {
       const cliente = makeCliente();
-      const thread = makeThread({
-        sentimento: 'negativo',
-        status: 'aberto',
-      });
-      // Métricas boas, mas tem reclamação
-      const metricas = makeMetricas({ dias_ativos: 25, pecas_criadas: 100, uso_ai_total: 50, downloads: 30 });
-      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
+      const metricas = {
+        dias_ativos: 5, // >= 3 (alerta) mas < 8 (estavel)
+        pecas_criadas: 5,
+        downloads: 2,
+        uso_ai_total: 1,
+      };
+      const result = calcularSegmentoCS(cliente, [], metricas, 1);
       expect(result.segmento).toBe('ALERTA');
-      expect(result.motivo).toContain('reclamacao');
     });
   });
 
-  // ESTÁVEL - Cliente saudável
+  // ============================================
+  // ESTÁVEL - Cliente saudável (quando 0 bugs)
+  // ============================================
 
   describe('ESTAVEL', () => {
     it('dias ativos >= 8 sem problemas => ESTAVEL', () => {
@@ -414,9 +419,24 @@ describe('calcularSegmentoCS', () => {
       expect(result.segmento).toBe('ESTAVEL');
       expect(result.motivo).toContain('dias ativos');
     });
+
+    it('dias ativos >= 8 mas engajamento baixo => ESTAVEL (não CRESCIMENTO)', () => {
+      const cliente = makeCliente();
+      const metricas = {
+        dias_ativos: 22, // >= 20 threshold crescimento
+        pecas_criadas: 5, // engajamento baixo
+        uso_ai_total: 2,
+        downloads: 1,
+        // Score = (5*2) + (2*1.5) + (1*1) = 10 + 3 + 1 = 14 (< 50)
+      };
+      const result = calcularSegmentoCS(cliente, [], metricas, 1);
+      expect(result.segmento).toBe('ESTAVEL');
+    });
   });
 
-  // CRESCIMENTO - Melhor classificação
+  // ============================================
+  // CRESCIMENTO - Melhor classificação (quando 0 bugs)
+  // ============================================
 
   describe('CRESCIMENTO', () => {
     it('dias ativos >= 20 + engajamento alto => CRESCIMENTO', () => {
@@ -433,36 +453,11 @@ describe('calcularSegmentoCS', () => {
       expect(result.motivo).toContain('dias ativos');
       expect(result.motivo).toContain('engajamento');
     });
-
-    it('NÃO crescimento se tem reclamação em aberto', () => {
-      const cliente = makeCliente();
-      const thread = makeThread({ sentimento: 'negativo', status: 'aberto' });
-      const metricas = {
-        dias_ativos: 25,
-        pecas_criadas: 100,
-        uso_ai_total: 50,
-        downloads: 30,
-      };
-      const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
-      expect(result.segmento).not.toBe('CRESCIMENTO');
-    });
-
-    it('NÃO crescimento se tem tags de problema', () => {
-      const cliente = makeCliente({
-        tags_problema: [{ tag: 'Problema X' }],
-      });
-      const metricas = {
-        dias_ativos: 25,
-        pecas_criadas: 100,
-        uso_ai_total: 50,
-        downloads: 30,
-      };
-      const result = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(result.segmento).not.toBe('CRESCIMENTO');
-    });
   });
 
+  // ============================================
   // SAZONALIDADE - Divisores aplicados
+  // ============================================
 
   describe('SAZONALIDADE', () => {
     it('mês de baixa divide thresholds por 2', () => {
@@ -495,7 +490,9 @@ describe('calcularSegmentoCS', () => {
     });
   });
 
+  // ============================================
   // CONFIG CUSTOMIZADA
+  // ============================================
 
   describe('config customizada', () => {
     it('usa thresholds customizados', () => {
@@ -527,7 +524,9 @@ describe('calcularSegmentoCS', () => {
     });
   });
 
-  // FATORES
+  // ============================================
+  // FATORES RETORNADOS
+  // ============================================
 
   describe('fatores retornados', () => {
     it('retorna todos os fatores esperados', () => {
@@ -537,16 +536,15 @@ describe('calcularSegmentoCS', () => {
       expect(result.fatores).toHaveProperty('engajamento_score');
       expect(result.fatores).toHaveProperty('reclamacoes_em_aberto');
       expect(result.fatores).toHaveProperty('qtd_reclamacoes');
-      expect(result.fatores).toHaveProperty('em_aviso_previo');
-      expect(result.fatores).toHaveProperty('champion_saiu');
       expect(result.fatores).toHaveProperty('tipo_conta');
       expect(result.fatores).toHaveProperty('sazonalidade');
-      expect(result.fatores).toHaveProperty('zero_producao');
       expect(result.fatores).toHaveProperty('thresholds');
     });
   });
 
+  // ============================================
   // EDGE CASES
+  // ============================================
 
   describe('edge cases', () => {
     it('funciona com threads e metricas vazias', () => {
@@ -585,6 +583,17 @@ describe('calcularSegmentoCS', () => {
       const metricas = makeMetricas();
       const result = calcularSegmentoCS(cliente, [thread], metricas, 1);
       expect(result.fatores.reclamacoes_em_aberto).toBe(false);
+    });
+
+    it('threads neutras não contam como bugs', () => {
+      const cliente = makeCliente();
+      const threads = [
+        makeThread({ sentimento: 'neutro', categoria: 'duvida_pergunta' }),
+        makeThread({ sentimento: 'positivo', categoria: 'feedback' }),
+      ];
+      const metricas = makeMetricas();
+      const result = calcularSegmentoCS(cliente, threads, metricas, 1);
+      expect(result.fatores.qtd_reclamacoes).toBe(0);
     });
   });
 });

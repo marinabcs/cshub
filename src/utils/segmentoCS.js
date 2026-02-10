@@ -319,13 +319,20 @@ export const DEFAULT_SAUDE_CONFIG = {
   // Pesos do score de engajamento (AI) - INTEIROS
   peso_creditos: 2,                // Peso para creditos de IA consumidos
   peso_ia: 2,                      // Legado: alias para peso_creditos
+  // Critérios de Saída do Resgate (V1)
+  saida_resgate_dias_ativos: 5,    // Dias ativos mínimos para sair do RESGATE
+  saida_resgate_engajamento: 15,   // Score engajamento mínimo
+  saida_resgate_bugs_zero: true,   // Exige 0 bugs para sair
 };
 
 /**
  * FUNCAO PRINCIPAL: Calcular segmento do cliente
  *
- * HIERARQUIA DE PRIORIDADE:
- * 1. Reclamacoes em aberto (veto) -> ALERTA/RESGATE
+ * HIERARQUIA DE PRIORIDADE (NOVA REGRA V1):
+ * 1. Bugs/Reclamacoes em aberto (OVERRIDE ABSOLUTO):
+ *    - 2+ bugs → RESGATE (ignora tudo)
+ *    - 1 bug → ALERTA (ignora tudo)
+ *    - 0 bugs → segue para proximas regras
  * 2. Dias ativos (base) -> Define nivel base
  * 3. Engajamento (elevacao) -> Pode subir para CRESCIMENTO
  *
@@ -384,20 +391,32 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   };
 
   // ============================================
-  // 1. PRIORIDADE MAXIMA: CONDICOES DE RESGATE
+  // 1. PRIORIDADE MAXIMA: REGRA DE BUGS (OVERRIDE ABSOLUTO)
   // ============================================
+  // Nova regra V1: Bugs sobrepõem TODAS as outras métricas
+  // - 2+ bugs/reclamações → RESGATE (mesmo com 25 dias ativos e score 150)
+  // - 1 bug/reclamação → ALERTA (mesmo com métricas excelentes)
+  // - 0 bugs → classificar por métricas normalmente
 
-  // Helper para converter boolean legado para número
-  const toNum = (val, fallback) => {
-    if (typeof val === 'boolean') return val ? 99 : 0;
-    return typeof val === 'number' ? val : fallback;
-  };
-
-  // Reclamações acima do limite de RESGATE
-  const maxReclamacoesResgate = toNum(cfg.reclamacoes_resgate, 99);
-  if (qtdReclamacoes > maxReclamacoesResgate) {
-    return { segmento: 'RESGATE', motivo: `${qtdReclamacoes} reclamacoes em aberto (limite: ${maxReclamacoesResgate})`, fatores };
+  if (qtdReclamacoes >= 2) {
+    return {
+      segmento: 'RESGATE',
+      motivo: `${qtdReclamacoes} bugs/reclamações em aberto (regra: 2+ = Resgate)`,
+      fatores
+    };
   }
+
+  if (qtdReclamacoes === 1) {
+    return {
+      segmento: 'ALERTA',
+      motivo: `1 bug/reclamação em aberto (regra: 1 = Alerta)`,
+      fatores
+    };
+  }
+
+  // ============================================
+  // 2. SEM BUGS: VERIFICAR CONDICOES DE RESGATE POR METRICAS
+  // ============================================
 
   // Zero dias ativos = RESGATE
   if (diasAtivos === 0) {
@@ -405,7 +424,7 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   }
 
   // ============================================
-  // 2. VERIFICAR DIAS ATIVOS MINIMOS
+  // 3. VERIFICAR DIAS ATIVOS MINIMOS
   // ============================================
 
   // Poucos dias ativos
@@ -414,39 +433,26 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
   }
 
   // ============================================
-  // 3. CLASSIFICACAO POSITIVA: ESTAVEL ou CRESCIMENTO
-  // Reclamacoes sao verificadas conforme config (toggles)
+  // 4. CLASSIFICACAO POSITIVA: ESTAVEL ou CRESCIMENTO
+  // (Só chega aqui se não tem bugs)
   // ============================================
 
   // Verificar se atende criterios de CRESCIMENTO:
   // - Dias ativos >= threshold de crescimento
   // - Engajamento >= threshold de crescimento
-  // - Reclamações dentro do limite permitido para CRESCIMENTO
-  const maxReclamacoesCrescimento = toNum(cfg.reclamacoes_crescimento, 0);
-  const podeSerCrescimento = qtdReclamacoes <= maxReclamacoesCrescimento;
-
-  if (podeSerCrescimento && diasAtivos >= thDiasAtivosCrescimento && engajamentoScore >= thEngajamentoCrescimento) {
-    return { segmento: 'CRESCIMENTO', motivo: `${diasAtivos} dias ativos + engajamento ${engajamentoScore}`, fatores };
+  if (diasAtivos >= thDiasAtivosCrescimento && engajamentoScore >= thEngajamentoCrescimento) {
+    return { segmento: 'CRESCIMENTO', motivo: `${diasAtivos} dias ativos + engajamento ${Math.round(engajamentoScore)}`, fatores };
   }
 
   // Verificar se atende criterios de ESTAVEL:
   // - Dias ativos >= threshold de estavel
-  // - Reclamações dentro do limite permitido para ESTÁVEL
-  const maxReclamacoesEstavel = toNum(cfg.reclamacoes_estavel, 0);
-  const podeSerEstavel = qtdReclamacoes <= maxReclamacoesEstavel;
-
-  if (podeSerEstavel && diasAtivos >= thDiasAtivosEstavel) {
+  if (diasAtivos >= thDiasAtivosEstavel) {
     return { segmento: 'ESTAVEL', motivo: `${diasAtivos} dias ativos no mes`, fatores };
   }
 
   // ============================================
-  // 4. ALERTA (fallback quando não atinge CRESCIMENTO/ESTÁVEL)
+  // 5. ALERTA (fallback quando não atinge CRESCIMENTO/ESTÁVEL)
   // ============================================
-
-  // Se tem reclamação acima do limite de ESTÁVEL
-  if (qtdReclamacoes > maxReclamacoesEstavel) {
-    return { segmento: 'ALERTA', motivo: `${qtdReclamacoes} reclamacao(es) em aberto`, fatores };
-  }
 
   // Fallback para ALERTA (dias ativos entre alerta e estavel)
   return { segmento: 'ALERTA', motivo: `${diasAtivos} dias ativos (abaixo do ideal: ${thDiasAtivosEstavel})`, fatores };
