@@ -393,9 +393,9 @@ if (cliente.times && Array.isArray(cliente.times)) {
 13. ✅ `.env` no `.gitignore`
 14. ✅ npm audit: 0 vulnerabilidades (xlsx substituído por ExcelJS)
 15. ✅ Session timeout: auto-logout após 8h de inatividade + aviso 60s antes
+16. ✅ Audit log de autenticação: login_sucesso, login_falha, logout, session_timeout (email, user_agent, timestamp)
 
 ### ⚠️ Segurança Pendente:
-- Audit log de login (registrar sucesso/falha com IP e timestamp)
 - Backup automático do Firestore (Cloud Function scheduled → Cloud Storage)
 - 2FA para admins (Firebase Auth suporta, mas precisa implementar UI)
 
