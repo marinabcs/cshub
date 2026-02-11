@@ -31,7 +31,7 @@ export default function Dashboard() {
         // Buscar clientes e sync info em paralelo
         const [clientesDocs, syncSnap] = await Promise.all([
           cachedGetDocs('clientes', collection(db, 'clientes'), 300000),
-          getDoc(doc(db, 'config', 'sync_emails'))
+          getDoc(doc(db, 'config', 'sync_status'))
         ]);
 
         const clientesData = clientesDocs.map(d => ({ id: d.id, ...d.data() }));
@@ -144,7 +144,7 @@ export default function Dashboard() {
             <p style={{ color: '#94a3b8', margin: 0 }}>
               Visão geral • {stats.total} clientes ativos
             </p>
-            {syncEmails?.ultima_sincronizacao && (
+            {syncEmails?.emails_ultima_sync && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '6px',
                 padding: '4px 10px', background: 'rgba(16, 185, 129, 0.1)',
@@ -152,7 +152,7 @@ export default function Dashboard() {
               }}>
                 <Mail style={{ width: '12px', height: '12px', color: '#10b981' }} />
                 <span style={{ color: '#6ee7b7', fontSize: '11px', fontWeight: '500' }}>
-                  Emails: {formatSyncTime(syncEmails.ultima_sincronizacao)}
+                  Emails: {formatSyncTime(syncEmails.emails_ultima_sync)}
                 </span>
               </div>
             )}
