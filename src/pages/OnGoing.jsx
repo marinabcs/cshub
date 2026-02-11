@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { ClipboardList, Plus, X, Save, CheckCircle, RotateCcw, Users, Search, Calendar, Play, BookOpen } from 'lucide-react';
+import { ClipboardList, Plus, X, Save, CheckCircle, RotateCcw, Users, Search, Calendar, Play, BookOpen, FileText, Mail, MessageSquare, Edit3, Trash2, Copy } from 'lucide-react';
 import { SEGMENTOS_CS, DEFAULT_ONGOING_ACOES, getClienteSegmento } from '../utils/segmentoCS';
 import { atribuirCiclo, buscarCicloAtivo, CADENCIA_OPTIONS, ONGOING_STATUS, ACAO_STATUS } from '../services/ongoing';
 
@@ -47,6 +47,37 @@ export default function OnGoing() {
   const [modalNovaAcao, setModalNovaAcao] = useState('');
   const [atribuindo, setAtribuindo] = useState(false);
 
+  // Templates state
+  const [templates, setTemplates] = useState([]);
+  const [templatesFiltro, setTemplatesFiltro] = useState('todos');
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [showTemplateForm, setShowTemplateForm] = useState(false);
+  const [templateForm, setTemplateForm] = useState({
+    titulo: '',
+    tipo: 'email',
+    categoria: 'ongoing',
+    assunto: '',
+    conteudo: '',
+    tags: []
+  });
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  // Constantes de templates
+  const TEMPLATE_TIPOS = [
+    { value: 'email', label: 'E-mail', icon: Mail },
+    { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
+    { value: 'documento', label: 'Documento', icon: FileText }
+  ];
+
+  const TEMPLATE_CATEGORIAS = [
+    { value: 'ongoing', label: 'Ongoing' },
+    { value: 'onboarding', label: 'Onboarding' },
+    { value: 'alerta', label: 'Alerta' },
+    { value: 'resgate', label: 'Resgate' },
+    { value: 'geral', label: 'Geral' }
+  ];
+
 
   // Verificar role do usuário
   useEffect(() => {
@@ -69,9 +100,10 @@ export default function OnGoing() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [configSnap, clientesSnap] = await Promise.all([
+        const [configSnap, clientesSnap, templatesSnap] = await Promise.all([
           getDoc(doc(db, 'config', 'ongoing')),
           getDocs(collection(db, 'clientes')),
+          getDocs(collection(db, 'templates_comunicacao')),
         ]);
 
         // Config
@@ -84,6 +116,10 @@ export default function OnGoing() {
             RESGATE: data.RESGATE || DEFAULT_ONGOING_ACOES.RESGATE,
           });
         }
+
+        // Templates
+        const templatesData = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setTemplates(templatesData);
 
         // Clientes + ciclo ativo de cada
         const clientesData = clientesSnap.docs
@@ -148,6 +184,89 @@ export default function OnGoing() {
     const acoes = getAcoesNormalizadas(segmento);
     setOngoingConfig(prev => ({ ...prev, [segmento]: acoes.filter((_, i) => i !== index) }));
   };
+
+  // ============ TEMPLATES HANDLERS ============
+  const handleSaveTemplate = async () => {
+    if (!templateForm.titulo.trim() || !templateForm.conteudo.trim()) return;
+    setSavingTemplate(true);
+    try {
+      const templateData = {
+        ...templateForm,
+        titulo: templateForm.titulo.trim(),
+        conteudo: templateForm.conteudo.trim(),
+        assunto: templateForm.assunto?.trim() || '',
+        updated_at: new Date(),
+        updated_by: user?.email || ''
+      };
+
+      if (editingTemplate) {
+        // Update
+        await setDoc(doc(db, 'templates_comunicacao', editingTemplate.id), templateData, { merge: true });
+        setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? { ...t, ...templateData } : t));
+      } else {
+        // Create
+        const newId = `template_${Date.now()}`;
+        templateData.created_at = new Date();
+        templateData.created_by = user?.email || '';
+        await setDoc(doc(db, 'templates_comunicacao', newId), templateData);
+        setTemplates(prev => [...prev, { id: newId, ...templateData }]);
+      }
+
+      setShowTemplateForm(false);
+      setEditingTemplate(null);
+      setTemplateForm({ titulo: '', tipo: 'email', categoria: 'ongoing', assunto: '', conteudo: '', tags: [] });
+    } catch (err) {
+      console.error('Erro ao salvar template:', err);
+      alert('Erro ao salvar template');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleEditTemplate = (template) => {
+    setEditingTemplate(template);
+    setTemplateForm({
+      titulo: template.titulo || '',
+      tipo: template.tipo || 'email',
+      categoria: template.categoria || 'ongoing',
+      assunto: template.assunto || '',
+      conteudo: template.conteudo || '',
+      tags: template.tags || []
+    });
+    setShowTemplateForm(true);
+  };
+
+  const handleDeleteTemplate = async (templateId) => {
+    if (!window.confirm('Tem certeza que deseja excluir este template?')) return;
+    try {
+      const { deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'templates_comunicacao', templateId));
+      setTemplates(prev => prev.filter(t => t.id !== templateId));
+    } catch (err) {
+      console.error('Erro ao excluir template:', err);
+    }
+  };
+
+  const handleCopyTemplate = (template) => {
+    const texto = template.tipo === 'email'
+      ? `Assunto: ${template.assunto}\n\n${template.conteudo}`
+      : template.conteudo;
+    navigator.clipboard.writeText(texto);
+    alert('Template copiado para a área de transferência!');
+  };
+
+  const templatesFiltrados = templates
+    .filter(t => {
+      if (templatesFiltro !== 'todos' && t.categoria !== templatesFiltro) return false;
+      if (templateSearch) {
+        const search = templateSearch.toLowerCase();
+        return (t.titulo || '').toLowerCase().includes(search) ||
+               (t.assunto || '').toLowerCase().includes(search) ||
+               (t.conteudo || '').toLowerCase().includes(search);
+      }
+      return true;
+    })
+    .sort((a, b) => (a.titulo || '').localeCompare(b.titulo || ''));
 
   // ============ MODAL HANDLERS ============
   const abrirModal = (cliente) => {
@@ -216,8 +335,9 @@ export default function OnGoing() {
   const segmentos = ['CRESCIMENTO', 'ESTAVEL', 'ALERTA', 'RESGATE'];
   const tabs = [
     { id: 'clientes', label: 'Clientes', icon: Users },
-    { id: 'config', label: 'Ações Padrão', icon: ClipboardList },
+    { id: 'templates', label: 'Templates', icon: FileText },
     { id: 'playbook', label: 'Playbook', icon: BookOpen },
+    { id: 'config', label: 'Ações Padrão', icon: ClipboardList },
   ];
 
   return (
@@ -519,7 +639,7 @@ export default function OnGoing() {
                               value={acao.dias}
                               onChange={(e) => atualizarDiasAcao(seg, idx, e.target.value)}
                               style={{
-                                width: '40px', padding: '4px 6px', background: '#0f0a1f',
+                                width: '50px', padding: '4px 6px', background: '#0f0a1f',
                                 border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '4px',
                                 color: '#8b5cf6', fontSize: '12px', fontWeight: '600', textAlign: 'center', outline: 'none'
                               }}
@@ -564,7 +684,7 @@ export default function OnGoing() {
                           value={novaAcao[seg]?.dias || 7}
                           onChange={(e) => setNovaAcao(prev => ({ ...prev, [seg]: { ...prev[seg], dias: parseInt(e.target.value, 10) || 7 } }))}
                           style={{
-                            width: '40px', padding: '8px 6px', background: '#0f0a1f',
+                            width: '50px', padding: '8px 6px', background: '#0f0a1f',
                             border: `1px solid ${info.borderColor}`, borderRadius: '8px',
                             color: 'white', fontSize: '13px', textAlign: 'center', outline: 'none'
                           }}
@@ -584,6 +704,296 @@ export default function OnGoing() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ====== ABA TEMPLATES ====== */}
+      {activeTab === 'templates' && (
+        <div>
+          {/* Header + Filtros */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flex: 1 }}>
+              <div style={{ position: 'relative', minWidth: '200px' }}>
+                <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#64748b' }} />
+                <input
+                  type="text"
+                  placeholder="Buscar template..."
+                  value={templateSearch}
+                  onChange={(e) => setTemplateSearch(e.target.value)}
+                  style={{
+                    width: '100%', padding: '10px 12px 10px 38px', background: 'rgba(15, 10, 31, 0.6)',
+                    border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px',
+                    color: 'white', fontSize: '14px', outline: 'none'
+                  }}
+                />
+              </div>
+              <select
+                value={templatesFiltro}
+                onChange={(e) => setTemplatesFiltro(e.target.value)}
+                style={{
+                  padding: '10px 14px', background: 'rgba(15, 10, 31, 0.6)',
+                  border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px',
+                  color: 'white', fontSize: '14px', outline: 'none'
+                }}
+              >
+                <option value="todos">Todas categorias</option>
+                {TEMPLATE_CATEGORIAS.map(cat => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
+              </select>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  setEditingTemplate(null);
+                  setTemplateForm({ titulo: '', tipo: 'email', categoria: 'ongoing', assunto: '', conteudo: '', tags: [] });
+                  setShowTemplateForm(true);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '10px 20px', background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                  border: 'none', borderRadius: '12px', color: 'white',
+                  fontSize: '14px', fontWeight: '600', cursor: 'pointer'
+                }}
+              >
+                <Plus style={{ width: '16px', height: '16px' }} />
+                Novo Template
+              </button>
+            )}
+          </div>
+
+          {/* Lista de Templates */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '16px' }}>
+            {templatesFiltrados.map(template => {
+              const TipoIcon = TEMPLATE_TIPOS.find(t => t.value === template.tipo)?.icon || FileText;
+              const catLabel = TEMPLATE_CATEGORIAS.find(c => c.value === template.categoria)?.label || template.categoria;
+              return (
+                <div key={template.id} style={{
+                  background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)',
+                  borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px'
+                }}>
+                  {/* Header do card */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                      <div style={{
+                        width: '36px', height: '36px', borderRadius: '10px',
+                        background: template.tipo === 'email' ? 'rgba(59, 130, 246, 0.2)' : template.tipo === 'whatsapp' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(139, 92, 246, 0.2)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        <TipoIcon style={{ width: '18px', height: '18px', color: template.tipo === 'email' ? '#3b82f6' : template.tipo === 'whatsapp' ? '#10b981' : '#8b5cf6' }} />
+                      </div>
+                      <div>
+                        <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>{template.titulo}</h3>
+                        <span style={{ color: '#64748b', fontSize: '11px' }}>{catLabel}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button onClick={() => handleCopyTemplate(template)} title="Copiar" style={{
+                        width: '32px', height: '32px', background: 'rgba(100, 116, 139, 0.2)',
+                        border: 'none', borderRadius: '8px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        <Copy style={{ width: '14px', height: '14px', color: '#94a3b8' }} />
+                      </button>
+                      {isAdmin && (
+                        <>
+                          <button onClick={() => handleEditTemplate(template)} title="Editar" style={{
+                            width: '32px', height: '32px', background: 'rgba(139, 92, 246, 0.2)',
+                            border: 'none', borderRadius: '8px', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                          }}>
+                            <Edit3 style={{ width: '14px', height: '14px', color: '#8b5cf6' }} />
+                          </button>
+                          <button onClick={() => handleDeleteTemplate(template.id)} title="Excluir" style={{
+                            width: '32px', height: '32px', background: 'rgba(239, 68, 68, 0.2)',
+                            border: 'none', borderRadius: '8px', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                          }}>
+                            <Trash2 style={{ width: '14px', height: '14px', color: '#ef4444' }} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Assunto (se email) */}
+                  {template.tipo === 'email' && template.assunto && (
+                    <div style={{ padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '8px' }}>
+                      <span style={{ color: '#64748b', fontSize: '11px' }}>Assunto:</span>
+                      <p style={{ color: '#e2e8f0', fontSize: '13px', margin: '2px 0 0' }}>{template.assunto}</p>
+                    </div>
+                  )}
+
+                  {/* Preview do conteúdo */}
+                  <div style={{ padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '8px', flex: 1 }}>
+                    <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0, lineHeight: '1.5', whiteSpace: 'pre-wrap', maxHeight: '80px', overflow: 'hidden' }}>
+                      {template.conteudo?.substring(0, 200)}{template.conteudo?.length > 200 ? '...' : ''}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {templatesFiltrados.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+              <FileText style={{ width: '48px', height: '48px', color: '#475569', marginBottom: '16px' }} />
+              <p style={{ color: '#64748b', fontSize: '15px', margin: 0 }}>
+                {templates.length === 0 ? 'Nenhum template cadastrado' : 'Nenhum template encontrado'}
+              </p>
+              {isAdmin && templates.length === 0 && (
+                <button
+                  onClick={() => setShowTemplateForm(true)}
+                  style={{
+                    marginTop: '16px', padding: '10px 20px',
+                    background: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.3)',
+                    borderRadius: '10px', color: '#8b5cf6', fontSize: '14px', fontWeight: '500', cursor: 'pointer'
+                  }}
+                >
+                  Criar primeiro template
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ====== MODAL TEMPLATE ====== */}
+      {showTemplateForm && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => setShowTemplateForm(false)}>
+          <div style={{
+            background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '20px', padding: '32px', width: '640px', maxHeight: '85vh',
+            overflowY: 'auto'
+          }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: '0 0 24px 0' }}>
+              {editingTemplate ? 'Editar Template' : 'Novo Template'}
+            </h2>
+
+            {/* Título */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>Título</label>
+              <input
+                type="text"
+                value={templateForm.titulo}
+                onChange={(e) => setTemplateForm(prev => ({ ...prev, titulo: e.target.value }))}
+                placeholder="Nome do template..."
+                style={{
+                  width: '100%', padding: '10px 14px', background: '#0f0a1f',
+                  border: '1px solid #3730a3', borderRadius: '10px', color: 'white',
+                  fontSize: '14px', outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Tipo e Categoria */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>Tipo</label>
+                <select
+                  value={templateForm.tipo}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, tipo: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '10px 14px', background: '#0f0a1f',
+                    border: '1px solid #3730a3', borderRadius: '10px', color: 'white',
+                    fontSize: '14px', outline: 'none'
+                  }}
+                >
+                  {TEMPLATE_TIPOS.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>Categoria</label>
+                <select
+                  value={templateForm.categoria}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, categoria: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '10px 14px', background: '#0f0a1f',
+                    border: '1px solid #3730a3', borderRadius: '10px', color: 'white',
+                    fontSize: '14px', outline: 'none'
+                  }}
+                >
+                  {TEMPLATE_CATEGORIAS.map(c => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Assunto (só para email) */}
+            {templateForm.tipo === 'email' && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>Assunto</label>
+                <input
+                  type="text"
+                  value={templateForm.assunto}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, assunto: e.target.value }))}
+                  placeholder="Assunto do e-mail..."
+                  style={{
+                    width: '100%', padding: '10px 14px', background: '#0f0a1f',
+                    border: '1px solid #3730a3', borderRadius: '10px', color: 'white',
+                    fontSize: '14px', outline: 'none'
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Conteúdo */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                Conteúdo
+                <span style={{ color: '#64748b', fontWeight: '400', marginLeft: '8px' }}>
+                  (use {'{{nome_cliente}}'}, {'{{nome_cs}}'} para variáveis)
+                </span>
+              </label>
+              <textarea
+                value={templateForm.conteudo}
+                onChange={(e) => setTemplateForm(prev => ({ ...prev, conteudo: e.target.value }))}
+                placeholder="Digite o conteúdo do template..."
+                rows={10}
+                style={{
+                  width: '100%', padding: '12px 14px', background: '#0f0a1f',
+                  border: '1px solid #3730a3', borderRadius: '10px', color: 'white',
+                  fontSize: '14px', outline: 'none', resize: 'vertical', lineHeight: '1.5'
+                }}
+              />
+            </div>
+
+            {/* Botões */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowTemplateForm(false)}
+                style={{
+                  padding: '10px 20px', background: 'rgba(100, 116, 139, 0.2)',
+                  border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '12px',
+                  color: '#94a3b8', fontSize: '14px', fontWeight: '500', cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveTemplate}
+                disabled={savingTemplate || !templateForm.titulo.trim() || !templateForm.conteudo.trim()}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '10px 24px',
+                  background: (!templateForm.titulo.trim() || !templateForm.conteudo.trim()) ? 'rgba(100,116,139,0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                  border: 'none', borderRadius: '12px', color: 'white',
+                  fontSize: '14px', fontWeight: '600',
+                  cursor: savingTemplate || !templateForm.titulo.trim() || !templateForm.conteudo.trim() ? 'not-allowed' : 'pointer'
+                }}
+              >
+                <Save style={{ width: '16px', height: '16px' }} />
+                {savingTemplate ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -693,7 +1103,7 @@ export default function OnGoing() {
                             setModalAcoes(prev => prev.map((a, i) => i === idx ? { ...normalizarAcao(a), dias: novosDias } : a));
                           }}
                           style={{
-                            width: '36px', padding: '3px 4px', background: '#0f0a1f',
+                            width: '50px', padding: '4px 6px', background: '#0f0a1f',
                             border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '4px',
                             color: '#8b5cf6', fontSize: '11px', fontWeight: '600', textAlign: 'center', outline: 'none'
                           }}
