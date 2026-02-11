@@ -1,11 +1,42 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { ArrowDown, ArrowRight, ArrowLeft, Bug, TrendingUp, Heart, Eye, AlertTriangle, Clock, CheckCircle, Users, Phone, Mail, Calendar, FileText } from 'lucide-react';
-import { SEGMENTOS_CS } from '../utils/segmentoCS';
+import { SEGMENTOS_CS, DEFAULT_SAUDE_CONFIG } from '../utils/segmentoCS';
 
 export default function PlaybookFluxograma() {
   const navigate = useNavigate();
   const [tabAtiva, setTabAtiva] = useState('classificacao');
+  const [config, setConfig] = useState(DEFAULT_SAUDE_CONFIG);
+  const [loading, setLoading] = useState(true);
+
+  // Buscar config do Firestore
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const configSnap = await getDoc(doc(db, 'config', 'geral'));
+        if (configSnap.exists() && configSnap.data().segmentoConfig) {
+          setConfig({ ...DEFAULT_SAUDE_CONFIG, ...configSnap.data().segmentoConfig });
+        }
+      } catch (err) {
+        console.error('Erro ao buscar config:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // Helper para gerar texto de critérios
+  const getCriterios = () => ({
+    CRESCIMENTO: `${config.dias_ativos_crescimento}+ dias\nScore ${config.engajamento_crescimento}+`,
+    ESTAVEL: `${config.dias_ativos_estavel}-${config.dias_ativos_crescimento - 1} dias\nScore ${config.engajamento_estavel}-${config.engajamento_crescimento - 1}`,
+    ALERTA: `${config.dias_ativos_alerta}-${config.dias_ativos_estavel - 1} dias\nScore ${config.engajamento_alerta}-${config.engajamento_estavel - 1}`,
+    RESGATE: `0-${config.dias_ativos_alerta - 1} dias\nScore 0-${config.engajamento_alerta - 1}`,
+  });
+
+  const criterios = getCriterios();
 
   const tabs = [
     { id: 'classificacao', label: 'Classificacao' },
@@ -31,10 +62,21 @@ export default function PlaybookFluxograma() {
           <ArrowLeft style={{ width: '14px', height: '14px' }} />
           Voltar para Ongoing
         </button>
-        <h1 style={{ color: 'white', fontSize: '28px', fontWeight: '700', margin: '0 0 8px 0' }}>
-          Playbook de Ongoing
-        </h1>
-        <p style={{ color: '#94a3b8', fontSize: '15px', margin: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h1 style={{ color: 'white', fontSize: '28px', fontWeight: '700', margin: 0 }}>
+            Playbook de Ongoing
+          </h1>
+          {!loading && (
+            <span style={{
+              padding: '4px 10px', background: 'rgba(16, 185, 129, 0.15)',
+              border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '6px',
+              color: '#10b981', fontSize: '11px', fontWeight: '600'
+            }}>
+              Valores sincronizados
+            </span>
+          )}
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: '15px', margin: '8px 0 0 0' }}>
           V1 — Basico Bem Feito — Fevereiro 2026
         </p>
       </div>
@@ -117,10 +159,10 @@ export default function PlaybookFluxograma() {
             {/* Os 4 Niveis */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
               {[
-                { seg: 'CRESCIMENTO', criterio: '20+ dias\nScore 100+', icon: TrendingUp },
-                { seg: 'ESTAVEL', criterio: '8-19 dias\nScore 30-99', icon: Heart },
-                { seg: 'ALERTA', criterio: '3-7 dias\nScore 5-29', icon: Eye },
-                { seg: 'RESGATE', criterio: '0-2 dias\nScore 0-4', icon: AlertTriangle },
+                { seg: 'CRESCIMENTO', criterio: criterios.CRESCIMENTO, icon: TrendingUp },
+                { seg: 'ESTAVEL', criterio: criterios.ESTAVEL, icon: Heart },
+                { seg: 'ALERTA', criterio: criterios.ALERTA, icon: Eye },
+                { seg: 'RESGATE', criterio: criterios.RESGATE, icon: AlertTriangle },
               ].map(({ seg, criterio, icon: Icon }) => (
                 <div key={seg} style={{
                   padding: '20px',
@@ -161,7 +203,7 @@ export default function PlaybookFluxograma() {
               <span style={{ padding: '4px 12px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '20px', fontSize: '12px', color: '#6ee7b7' }}>Mensal</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>20+ dias ativos, score 100+, 0 bugs</p></div>
+              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>{config.dias_ativos_crescimento}+ dias ativos, score {config.engajamento_crescimento}+, 0 bugs</p></div>
               <div><span style={{ color: '#64748b', fontSize: '12px' }}>Objetivo:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>Celebrar, coletar cases e expandir</p></div>
             </div>
             <div>
@@ -183,7 +225,7 @@ export default function PlaybookFluxograma() {
               <span style={{ padding: '4px 12px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '20px', fontSize: '12px', color: '#93c5fd' }}>Mensal</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>8-19 dias ativos, score 30-99, 0 bugs</p></div>
+              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>{config.dias_ativos_estavel}-{config.dias_ativos_crescimento - 1} dias ativos, score {config.engajamento_estavel}-{config.engajamento_crescimento - 1}, 0 bugs</p></div>
               <div><span style={{ color: '#64748b', fontSize: '12px' }}>Objetivo:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>Nutrir relacionamento e mapear sazonalidade</p></div>
             </div>
             <div>
@@ -206,7 +248,7 @@ export default function PlaybookFluxograma() {
               <span style={{ padding: '4px 12px', background: 'rgba(245, 158, 11, 0.2)', borderRadius: '20px', fontSize: '12px', color: '#fcd34d' }}>21 dias</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>1 bug OU 3-7 dias ativos, score 5-29</p></div>
+              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>1 bug OU {config.dias_ativos_alerta}-{config.dias_ativos_estavel - 1} dias ativos, score {config.engajamento_alerta}-{config.engajamento_estavel - 1}</p></div>
               <div><span style={{ color: '#64748b', fontSize: '12px' }}>Objetivo:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>Intervir antes de piorar para Resgate</p></div>
             </div>
             <div>
@@ -239,7 +281,7 @@ export default function PlaybookFluxograma() {
               <span style={{ padding: '4px 12px', background: 'rgba(239, 68, 68, 0.2)', borderRadius: '20px', fontSize: '12px', color: '#fca5a5' }}>15-30 dias</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>2+ bugs OU 0-2 dias ativos, score 0-4</p></div>
+              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>2+ bugs OU 0-{config.dias_ativos_alerta - 1} dias ativos, score 0-{config.engajamento_alerta - 1}</p></div>
               <div><span style={{ color: '#64748b', fontSize: '12px' }}>Objetivo:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>Recuperar antes do churn</p></div>
             </div>
             <div>
@@ -425,9 +467,9 @@ export default function PlaybookFluxograma() {
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
               {[
-                { criterio: 'Dias ativos no mes', valor: '≥ 3' },
-                { criterio: 'Score de engajamento', valor: '≥ 5' },
-                { criterio: 'Bugs/reclamacoes', valor: '0' },
+                { criterio: 'Dias ativos no mes', valor: `≥ ${config.saida_resgate_dias_ativos}` },
+                { criterio: 'Score de engajamento', valor: `≥ ${config.saida_resgate_engajamento}` },
+                { criterio: 'Bugs/reclamacoes', valor: config.saida_resgate_bugs_zero ? '0' : 'Qualquer' },
                 { criterio: 'Sustentacao', valor: 'Ate fim do roadmap' },
               ].map(({ criterio, valor }) => (
                 <div key={criterio} style={{ padding: '12px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '10px', textAlign: 'center' }}>
