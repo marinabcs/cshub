@@ -145,7 +145,7 @@ function AppRoutes() {
         <Route path="/clientes/:id" element={<ClienteDetalhe />} />
         <Route path="/clientes/:id/editar" element={<ClienteForm />} />
         <Route path="/ongoing" element={<OnGoing />} />
-        <Route path="/playbook" element={<PlaybookFluxograma />} />
+        <Route path="/ongoing/playbook" element={<PlaybookFluxograma />} />
         <Route path="/playbooks" element={<Playbooks />} />
         <Route path="/playbooks/novo" element={<PlaybookForm />} />
         <Route path="/playbooks/:id" element={<PlaybookDetalhe />} />

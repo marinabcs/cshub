@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowRight, Bug, TrendingUp, Heart, Eye, AlertTriangle, Clock, CheckCircle, Users, Phone, Mail, Calendar, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowDown, ArrowRight, ArrowLeft, Bug, TrendingUp, Heart, Eye, AlertTriangle, Clock, CheckCircle, Users, Phone, Mail, Calendar, FileText } from 'lucide-react';
 import { SEGMENTOS_CS } from '../utils/segmentoCS';
 
 export default function PlaybookFluxograma() {
+  const navigate = useNavigate();
   const [tabAtiva, setTabAtiva] = useState('classificacao');
 
   const tabs = [
@@ -16,6 +18,19 @@ export default function PlaybookFluxograma() {
     <div style={{ maxWidth: '1200px', margin: '0 auto', paddingTop: '24px' }}>
       {/* Header */}
       <div style={{ marginBottom: '32px' }}>
+        <button
+          onClick={() => navigate('/ongoing')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            padding: '8px 14px', background: 'rgba(100, 116, 139, 0.2)',
+            border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '8px',
+            color: '#94a3b8', fontSize: '13px', fontWeight: '500', cursor: 'pointer',
+            marginBottom: '16px'
+          }}
+        >
+          <ArrowLeft style={{ width: '14px', height: '14px' }} />
+          Voltar para Ongoing
+        </button>
         <h1 style={{ color: 'white', fontSize: '28px', fontWeight: '700', margin: '0 0 8px 0' }}>
           Playbook de Ongoing
         </h1>

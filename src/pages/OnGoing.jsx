@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { ClipboardList, Plus, X, Save, CheckCircle, RotateCcw, Users, Search, Calendar, Play } from 'lucide-react';
+import { ClipboardList, Plus, X, Save, CheckCircle, RotateCcw, Users, Search, Calendar, Play, BookOpen } from 'lucide-react';
 import { SEGMENTOS_CS, DEFAULT_ONGOING_ACOES, getClienteSegmento } from '../utils/segmentoCS';
 import { atribuirCiclo, buscarCicloAtivo, CADENCIA_OPTIONS, ONGOING_STATUS, ACAO_STATUS } from '../services/ongoing';
 
@@ -217,6 +217,7 @@ export default function OnGoing() {
   const tabs = [
     { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'config', label: 'Ações Padrão', icon: ClipboardList },
+    { id: 'playbook', label: 'Playbook', icon: BookOpen },
   ];
 
   return (
@@ -248,7 +249,13 @@ export default function OnGoing() {
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                if (tab.id === 'playbook') {
+                  navigate('/ongoing/playbook');
+                } else {
+                  setActiveTab(tab.id);
+                }
+              }}
               style={{
                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                 padding: '12px 20px', borderRadius: '10px', border: 'none',
