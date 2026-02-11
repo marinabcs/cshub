@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History, Briefcase, FileText, Sparkles, ClipboardList, GraduationCap } from 'lucide-react';
+import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History, Briefcase, FileText, Sparkles, ClipboardList, GraduationCap, BookOpen } from 'lucide-react';
 import { useAlertasCount } from '../../hooks/useAlertas';
 
 export default function Sidebar() {
@@ -53,6 +53,7 @@ export default function Sidebar() {
     // { to: '/documentos', icon: FileText, label: 'Documentos' }, // Oculto - usar aba no cliente
     { to: '/ongoing', icon: ClipboardList, label: 'Ongoing' },
     { to: '/onboarding', icon: GraduationCap, label: 'Onboarding' },
+    { to: '/playbook', icon: BookOpen, label: 'Playbook' },
     { to: '/alertas', icon: Bell, label: 'Alertas', badge: alertaCounts.pendentes, urgente: alertaCounts.urgentes > 0 },
   ];
 

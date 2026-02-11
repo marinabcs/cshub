@@ -73,10 +73,10 @@ export const SEGMENTOS_CS = {
       '0 bugs'
     ],
     acoes: [
-      'Reconhecimento + pedido de case',
-      'Compartilhar case de sucesso do segmento',
-      'Expansao estrategica (creditos, modulos, pico)',
-      'Sinalizar oportunidades para Vendas'
+      { nome: 'Reconhecimento + pedido de case', dias: 7 },
+      { nome: 'Compartilhar case de sucesso do segmento', dias: 14 },
+      { nome: 'Expansao estrategica (creditos, modulos, pico)', dias: 21 },
+      { nome: 'Sinalizar oportunidades para Vendas', dias: 28 }
     ]
   },
   ESTAVEL: {
@@ -95,10 +95,10 @@ export const SEGMENTOS_CS = {
       '0 bugs'
     ],
     acoes: [
-      'Check-in mensal',
-      'Compartilhar novidade Trakto/IA ou data do mercado',
-      'Mapear sazonalidade e calendario de campanhas',
-      'Monitorar renovacao'
+      { nome: 'Check-in mensal', dias: 7 },
+      { nome: 'Compartilhar novidade Trakto/IA ou data do mercado', dias: 14 },
+      { nome: 'Mapear sazonalidade e calendario de campanhas', dias: 21 },
+      { nome: 'Monitorar renovacao', dias: 28 }
     ]
   },
   ALERTA: {
@@ -116,12 +116,12 @@ export const SEGMENTOS_CS = {
       'Score 5-29'
     ],
     acoes: [
-      'D0-1: Comunicacao rapida ("estamos atentos")',
-      'D7: Verificar se resolveu',
-      'D7-8: E-mail aprofundado (se nao resolveu)',
-      'D8-14: Call de diagnostico (se necessario)',
-      'D14-21: Verificar metricas',
-      'D21+: Escalar para Resgate (se nao melhorou)'
+      { nome: 'Comunicacao rapida ao cliente', dias: 1 },
+      { nome: 'Verificar se resolveu', dias: 7 },
+      { nome: 'E-mail aprofundado (se nao resolveu)', dias: 8 },
+      { nome: 'Call de diagnostico (se necessario)', dias: 14 },
+      { nome: 'Verificar metricas', dias: 21 },
+      { nome: 'Escalar para Resgate (se nao melhorou)', dias: 21 }
     ]
   },
   RESGATE: {
@@ -139,13 +139,13 @@ export const SEGMENTOS_CS = {
       'Score 0-4'
     ],
     acoes: [
-      'D0: Alerta imediato (sem carencia)',
-      'D0-1: Revisar perfil + identificar causa',
-      'D1-2: E-mail de diagnostico',
-      'D2-3: Acionar Vendas (sem resposta)',
-      'D3-5: Call de diagnostico (30min)',
-      'D5-7: Criar roadmap de recuperacao',
-      'D7+: Acompanhamento semanal'
+      { nome: 'Alerta imediato (sem carencia)', dias: 0 },
+      { nome: 'Revisar perfil + identificar causa', dias: 1 },
+      { nome: 'E-mail de diagnostico', dias: 2 },
+      { nome: 'Acionar Vendas (sem resposta)', dias: 3 },
+      { nome: 'Call de diagnostico (30min)', dias: 5 },
+      { nome: 'Criar roadmap de recuperacao', dias: 7 },
+      { nome: 'Acompanhamento semanal', dias: 14 }
     ]
   }
 };
