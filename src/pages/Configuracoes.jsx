@@ -653,6 +653,7 @@ export default function Configuracoes() {
                 { key: 'times_ultima_sync', label: 'Times' },
                 { key: 'usuarios_ultima_sync', label: 'Usuários' },
                 { key: 'metricas_ultima_sync', label: 'Métricas' },
+                { key: 'emails_ultima_sync', label: 'Emails' },
               ].map(item => {
                 const info = formatSyncInfo(syncStatus?.[item.key]);
                 return (
