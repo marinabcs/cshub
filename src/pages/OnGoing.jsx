@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { ClipboardList, Plus, X, Save, CheckCircle, RotateCcw, Users, Search, Calendar, Play, BookOpen, FileText, Mail, MessageSquare, Edit3, Trash2, Copy } from 'lucide-react';
+import { ClipboardList, Plus, X, Save, CheckCircle, RotateCcw, Users, Search, Calendar, Play, BookOpen, FileText, Mail, MessageSquare, Edit3, Trash2, Copy, ChevronDown, ChevronRight, Crown, Circle, Star } from 'lucide-react';
 import { SEGMENTOS_CS, DEFAULT_ONGOING_ACOES, getClienteSegmento } from '../utils/segmentoCS';
-import { atribuirCiclo, buscarCicloAtivo, CADENCIA_OPTIONS, ONGOING_STATUS, ACAO_STATUS } from '../services/ongoing';
+import { atribuirCiclo, buscarCicloAtivo, ONGOING_STATUS, ACAO_STATUS } from '../services/ongoing';
+import { TEMPLATES_ONGOING } from '../scripts/seedTemplates';
+import { useUserActivityStatus, USER_ACTIVITY_CONFIG } from '../hooks/useUserActivityStatus';
 
 export default function OnGoing() {
   const { user } = useAuth();
@@ -41,7 +43,6 @@ export default function OnGoing() {
   const [showModal, setShowModal] = useState(false);
   const [modalCliente, setModalCliente] = useState(null);
   const [modalSegmento, setModalSegmento] = useState('');
-  const [modalCadencia, setModalCadencia] = useState('mensal');
   const [modalDataInicio, setModalDataInicio] = useState(new Date().toISOString().split('T')[0]);
   const [modalAcoes, setModalAcoes] = useState([]);
   const [modalNovaAcao, setModalNovaAcao] = useState('');
@@ -49,19 +50,133 @@ export default function OnGoing() {
 
   // Templates state
   const [templates, setTemplates] = useState([]);
-  const [templatesFiltro, setTemplatesFiltro] = useState('todos');
   const [templateSearch, setTemplateSearch] = useState('');
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [templateForm, setTemplateForm] = useState({
     titulo: '',
     tipo: 'email',
-    categoria: 'ongoing',
+    categoria: 'estavel',
     assunto: '',
     conteudo: '',
     tags: []
   });
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [importingTemplates, setImportingTemplates] = useState(false);
+  const [expandedSections, setExpandedSections] = useState({ resgate: false, alerta: false, estavel: false, crescimento: false });
+  const [expandedTemplates, setExpandedTemplates] = useState({});
+  const [copiedTemplateId, setCopiedTemplateId] = useState(null);
+
+  // Seleção de destinatários
+  const [showDestinatariosModal, setShowDestinatariosModal] = useState(false);
+  const [clienteSearchDestinatarios, setClienteSearchDestinatarios] = useState('');
+  const [clienteSelecionado, setClienteSelecionado] = useState(null);
+  const [emailsSelecionados, setEmailsSelecionados] = useState([]);
+  const [usuariosCliente, setUsuariosCliente] = useState([]);
+  const [timesCliente, setTimesCliente] = useState({});
+  const [loadingUsuarios, setLoadingUsuarios] = useState(false);
+
+  // Hook para status de atividade dos usuários
+  const teamIdsParaAtividade = clienteSelecionado?.times || (clienteSelecionado?.id ? [clienteSelecionado.id] : []);
+  const { getStatus: getUserActivityStatus, loading: loadingActivityStatus } = useUserActivityStatus(teamIdsParaAtividade, usuariosCliente);
+
+  // Buscar usuários do cliente selecionado
+  const fetchUsuariosCliente = async (cliente) => {
+    setLoadingUsuarios(true);
+    try {
+      // Pegar todos os IDs de times do cliente
+      const timeIds = [...(cliente.times || [])];
+      if (cliente.id && !timeIds.includes(cliente.id)) timeIds.push(cliente.id);
+
+      if (timeIds.length === 0) {
+        setUsuariosCliente([]);
+        setTimesCliente({});
+        return;
+      }
+
+      // Buscar nomes dos times
+      const timesSnap = await getDocs(collection(db, 'times'));
+      const timesMap = {};
+      timesSnap.docs.forEach(d => {
+        const data = d.data();
+        timesMap[d.id] = data.name || data.nome || d.id;
+      });
+      setTimesCliente(timesMap);
+
+      const usuariosSnap = await getDocs(collection(db, 'usuarios_lookup'));
+      const usuarios = usuariosSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => {
+          // Verificar se o usuário pertence a algum dos times do cliente
+          if (u.team_id && timeIds.includes(u.team_id)) return true;
+          if (Array.isArray(u.team_ids) && u.team_ids.some(tid => timeIds.includes(tid))) return true;
+          return false;
+        });
+      setUsuariosCliente(usuarios);
+    } catch (err) {
+      console.error('Erro ao buscar usuários:', err);
+      setUsuariosCliente([]);
+      setTimesCliente({});
+    } finally {
+      setLoadingUsuarios(false);
+    }
+  };
+
+  // Categorias de templates ordenadas por saúde (pior → melhor)
+  const TEMPLATE_SAUDE_SECTIONS = [
+    { key: 'resgate', label: 'Resgate', color: '#ef4444', bgColor: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.3)' },
+    { key: 'alerta', label: 'Alerta', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.15)', borderColor: 'rgba(245, 158, 11, 0.3)' },
+    { key: 'estavel', label: 'Estável', color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.3)' },
+    { key: 'crescimento', label: 'Crescimento', color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.3)' },
+  ];
+
+  const toggleSection = (key) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Função para importar templates padrão (exclui existentes primeiro)
+  const handleImportTemplates = async () => {
+    const confirmMsg = templates.length > 0
+      ? `Isso vai EXCLUIR os ${templates.length} templates existentes e importar os padrões. Continuar?`
+      : 'Importar todos os templates padrão do Playbook de Ongoing?';
+    if (!window.confirm(confirmMsg)) return;
+    setImportingTemplates(true);
+    try {
+      // Excluir templates existentes
+      const { deleteDoc } = await import('firebase/firestore');
+      for (const t of templates) {
+        await deleteDoc(doc(db, 'templates_comunicacao', t.id));
+      }
+
+      // Importar novos
+      const now = new Date();
+      let count = 0;
+      for (const template of TEMPLATES_ONGOING) {
+        await setDoc(doc(db, 'templates_comunicacao', template.id), {
+          titulo: template.titulo,
+          tipo: template.tipo,
+          categoria: template.categoria,
+          assunto: template.assunto,
+          conteudo: template.conteudo,
+          tags: template.tags,
+          created_at: now,
+          created_by: user?.email || 'sistema',
+          updated_at: now,
+          updated_by: user?.email || 'sistema'
+        });
+        count++;
+      }
+      // Recarregar templates
+      const templatesSnap = await getDocs(collection(db, 'templates_comunicacao'));
+      setTemplates(templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      alert(`${count} templates importados com sucesso!`);
+    } catch (err) {
+      console.error('Erro ao importar templates:', err);
+      alert('Erro ao importar templates');
+    } finally {
+      setImportingTemplates(false);
+    }
+  };
 
   // Constantes de templates
   const TEMPLATE_TIPOS = [
@@ -71,11 +186,10 @@ export default function OnGoing() {
   ];
 
   const TEMPLATE_CATEGORIAS = [
-    { value: 'ongoing', label: 'Ongoing' },
-    { value: 'onboarding', label: 'Onboarding' },
-    { value: 'alerta', label: 'Alerta' },
     { value: 'resgate', label: 'Resgate' },
-    { value: 'geral', label: 'Geral' }
+    { value: 'alerta', label: 'Alerta' },
+    { value: 'estavel', label: 'Estável' },
+    { value: 'crescimento', label: 'Crescimento' }
   ];
 
 
@@ -100,10 +214,10 @@ export default function OnGoing() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [configSnap, clientesSnap, templatesSnap] = await Promise.all([
+        // Buscar config e clientes (essenciais)
+        const [configSnap, clientesSnap] = await Promise.all([
           getDoc(doc(db, 'config', 'ongoing')),
           getDocs(collection(db, 'clientes')),
-          getDocs(collection(db, 'templates_comunicacao')),
         ]);
 
         // Config
@@ -117,9 +231,15 @@ export default function OnGoing() {
           });
         }
 
-        // Templates
-        const templatesData = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setTemplates(templatesData);
+        // Templates (separado para não bloquear clientes se a coleção não existir)
+        try {
+          const templatesSnap = await getDocs(collection(db, 'templates_comunicacao'));
+          const templatesData = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setTemplates(templatesData);
+        } catch (templatesErr) {
+          console.log('Coleção templates_comunicacao não encontrada ou sem permissão');
+          setTemplates([]);
+        }
 
         // Clientes + ciclo ativo de cada
         const clientesData = clientesSnap.docs
@@ -214,7 +334,7 @@ export default function OnGoing() {
 
       setShowTemplateForm(false);
       setEditingTemplate(null);
-      setTemplateForm({ titulo: '', tipo: 'email', categoria: 'ongoing', assunto: '', conteudo: '', tags: [] });
+      setTemplateForm({ titulo: '', tipo: 'email', categoria: 'estavel', assunto: '', conteudo: '', tags: [] });
     } catch (err) {
       console.error('Erro ao salvar template:', err);
       alert('Erro ao salvar template');
@@ -247,17 +367,31 @@ export default function OnGoing() {
     }
   };
 
-  const handleCopyTemplate = (template) => {
-    const texto = template.tipo === 'email'
-      ? `Assunto: ${template.assunto}\n\n${template.conteudo}`
-      : template.conteudo;
+  const handleCopyTemplate = (template, onlyBody = false) => {
+    const texto = onlyBody
+      ? template.conteudo
+      : template.tipo === 'email'
+        ? `Assunto: ${template.assunto}\n\n${template.conteudo}`
+        : template.conteudo;
     navigator.clipboard.writeText(texto);
-    alert('Template copiado para a área de transferência!');
+    setCopiedTemplateId(template.id);
+    setTimeout(() => setCopiedTemplateId(null), 2000);
+  };
+
+  const toggleTemplateExpanded = (templateId) => {
+    setExpandedTemplates(prev => ({ ...prev, [templateId]: !prev[templateId] }));
+  };
+
+  // Contexto/momento para cada categoria
+  const TEMPLATE_CONTEXTO = {
+    resgate: { objetivo: 'Reverter situação crítica', momento: 'Cliente com risco iminente de churn', tom: 'Urgente mas acolhedor' },
+    alerta: { objetivo: 'Prevenir queda para resgate', momento: 'Sinais de desengajamento', tom: 'Proativo e atencioso' },
+    estavel: { objetivo: 'Manter relacionamento saudável', momento: 'Check-ins mensais', tom: 'Amigável e consultivo' },
+    crescimento: { objetivo: 'Expandir uso e valor', momento: 'Cliente engajado e satisfeito', tom: 'Entusiasmado e estratégico' }
   };
 
   const templatesFiltrados = templates
     .filter(t => {
-      if (templatesFiltro !== 'todos' && t.categoria !== templatesFiltro) return false;
       if (templateSearch) {
         const search = templateSearch.toLowerCase();
         return (t.titulo || '').toLowerCase().includes(search) ||
@@ -268,12 +402,16 @@ export default function OnGoing() {
     })
     .sort((a, b) => (a.titulo || '').localeCompare(b.titulo || ''));
 
+  // Agrupar templates por seção de saúde
+  const getTemplatesBySection = (sectionKey) => {
+    return templatesFiltrados.filter(t => t.categoria === sectionKey);
+  };
+
   // ============ MODAL HANDLERS ============
   const abrirModal = (cliente) => {
     const seg = getClienteSegmento(cliente) || 'ESTAVEL';
     setModalCliente(cliente);
     setModalSegmento(seg);
-    setModalCadencia('mensal');
     setModalDataInicio(new Date().toISOString().split('T')[0]);
     setModalAcoes(getAcoesNormalizadas(seg));
     setModalNovaAcao('');
@@ -286,7 +424,6 @@ export default function OnGoing() {
     try {
       const ciclo = await atribuirCiclo(modalCliente.id, {
         segmento: modalSegmento,
-        cadencia: modalCadencia,
         dataInicio: new Date(modalDataInicio),
         acoes: modalAcoes,
       });
@@ -714,7 +851,7 @@ export default function OnGoing() {
           {/* Header + Filtros */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flex: 1 }}>
-              <div style={{ position: 'relative', minWidth: '200px' }}>
+              <div style={{ position: 'relative', minWidth: '280px', flex: 1, maxWidth: '400px' }}>
                 <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#64748b' }} />
                 <input
                   type="text"
@@ -728,26 +865,26 @@ export default function OnGoing() {
                   }}
                 />
               </div>
-              <select
-                value={templatesFiltro}
-                onChange={(e) => setTemplatesFiltro(e.target.value)}
+              {/* Botão Copiar Destinatários */}
+              <button
+                onClick={() => setShowDestinatariosModal(true)}
                 style={{
-                  padding: '10px 14px', background: 'rgba(15, 10, 31, 0.6)',
-                  border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px',
-                  color: 'white', fontSize: '14px', outline: 'none'
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '10px 16px',
+                  background: 'rgba(6, 182, 212, 0.15)',
+                  border: '1px solid rgba(6, 182, 212, 0.3)',
+                  borderRadius: '10px', cursor: 'pointer'
                 }}
               >
-                <option value="todos">Todas categorias</option>
-                {TEMPLATE_CATEGORIAS.map(cat => (
-                  <option key={cat.value} value={cat.value}>{cat.label}</option>
-                ))}
-              </select>
+                <Users style={{ width: '16px', height: '16px', color: '#06b6d4' }} />
+                <span style={{ color: '#06b6d4', fontSize: '13px', fontWeight: '600' }}>Destinatários</span>
+              </button>
             </div>
             {isAdmin && (
               <button
                 onClick={() => {
                   setEditingTemplate(null);
-                  setTemplateForm({ titulo: '', tipo: 'email', categoria: 'ongoing', assunto: '', conteudo: '', tags: [] });
+                  setTemplateForm({ titulo: '', tipo: 'email', categoria: 'estavel', assunto: '', conteudo: '', tags: [] });
                   setShowTemplateForm(true);
                 }}
                 style={{
@@ -763,99 +900,693 @@ export default function OnGoing() {
             )}
           </div>
 
-          {/* Lista de Templates */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '16px' }}>
-            {templatesFiltrados.map(template => {
-              const TipoIcon = TEMPLATE_TIPOS.find(t => t.value === template.tipo)?.icon || FileText;
-              const catLabel = TEMPLATE_CATEGORIAS.find(c => c.value === template.categoria)?.label || template.categoria;
+          {/* Templates por Seção com Cards Expansíveis */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {TEMPLATE_SAUDE_SECTIONS.map(section => {
+              const sectionTemplates = getTemplatesBySection(section.key);
+              const isExpanded = expandedSections[section.key];
+              const contexto = TEMPLATE_CONTEXTO[section.key];
+
+              if (sectionTemplates.length === 0 && templateSearch) return null;
+
               return (
-                <div key={template.id} style={{
-                  background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)',
-                  borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px'
-                }}>
-                  {/* Header do card */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                      <div style={{
-                        width: '36px', height: '36px', borderRadius: '10px',
-                        background: template.tipo === 'email' ? 'rgba(59, 130, 246, 0.2)' : template.tipo === 'whatsapp' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(139, 92, 246, 0.2)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}>
-                        <TipoIcon style={{ width: '18px', height: '18px', color: template.tipo === 'email' ? '#3b82f6' : template.tipo === 'whatsapp' ? '#10b981' : '#8b5cf6' }} />
-                      </div>
-                      <div>
-                        <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>{template.titulo}</h3>
-                        <span style={{ color: '#64748b', fontSize: '11px' }}>{catLabel}</span>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button onClick={() => handleCopyTemplate(template)} title="Copiar" style={{
-                        width: '32px', height: '32px', background: 'rgba(100, 116, 139, 0.2)',
-                        border: 'none', borderRadius: '8px', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}>
-                        <Copy style={{ width: '14px', height: '14px', color: '#94a3b8' }} />
-                      </button>
-                      {isAdmin && (
-                        <>
-                          <button onClick={() => handleEditTemplate(template)} title="Editar" style={{
-                            width: '32px', height: '32px', background: 'rgba(139, 92, 246, 0.2)',
-                            border: 'none', borderRadius: '8px', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                          }}>
-                            <Edit3 style={{ width: '14px', height: '14px', color: '#8b5cf6' }} />
-                          </button>
-                          <button onClick={() => handleDeleteTemplate(template.id)} title="Excluir" style={{
-                            width: '32px', height: '32px', background: 'rgba(239, 68, 68, 0.2)',
-                            border: 'none', borderRadius: '8px', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                          }}>
-                            <Trash2 style={{ width: '14px', height: '14px', color: '#ef4444' }} />
-                          </button>
-                        </>
+                <div key={section.key}>
+                  {/* Header da seção */}
+                  <button
+                    onClick={() => toggleSection(section.key)}
+                    style={{
+                      width: '100%', padding: '16px 20px',
+                      background: `linear-gradient(135deg, ${section.bgColor} 0%, rgba(15, 10, 31, 0.8) 100%)`,
+                      border: `1px solid ${section.borderColor}`,
+                      borderRadius: isExpanded ? '16px 16px 0 0' : '16px',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '16px'
+                    }}
+                  >
+                    <div style={{
+                      width: '40px', height: '40px', borderRadius: '12px',
+                      background: `${section.color}20`, border: `1px solid ${section.color}40`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      {isExpanded ? (
+                        <ChevronDown style={{ width: '20px', height: '20px', color: section.color }} />
+                      ) : (
+                        <ChevronRight style={{ width: '20px', height: '20px', color: section.color }} />
                       )}
                     </div>
-                  </div>
+                    <div style={{ flex: 1, textAlign: 'left' }}>
+                      <h3 style={{ color: section.color, fontSize: '16px', fontWeight: '700', margin: 0 }}>
+                        {section.label}
+                      </h3>
+                      <p style={{ color: '#94a3b8', fontSize: '12px', margin: '4px 0 0 0' }}>
+                        {contexto?.objetivo}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{
+                        padding: '6px 14px', background: `${section.color}25`,
+                        borderRadius: '20px', fontSize: '13px', color: section.color, fontWeight: '600'
+                      }}>
+                        {sectionTemplates.length} {sectionTemplates.length === 1 ? 'template' : 'templates'}
+                      </span>
+                    </div>
+                  </button>
 
-                  {/* Assunto (se email) */}
-                  {template.tipo === 'email' && template.assunto && (
-                    <div style={{ padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '8px' }}>
-                      <span style={{ color: '#64748b', fontSize: '11px' }}>Assunto:</span>
-                      <p style={{ color: '#e2e8f0', fontSize: '13px', margin: '2px 0 0' }}>{template.assunto}</p>
+                  {/* Lista de templates expandida */}
+                  {isExpanded && (
+                    <div style={{
+                      background: 'rgba(15, 10, 31, 0.4)',
+                      border: `1px solid ${section.borderColor}`,
+                      borderTop: 'none',
+                      borderRadius: '0 0 16px 16px',
+                      padding: '16px'
+                    }}>
+                      {/* Contexto da categoria */}
+                      <div style={{
+                        display: 'flex', gap: '16px', marginBottom: '16px', padding: '12px 16px',
+                        background: 'rgba(30, 27, 75, 0.5)', borderRadius: '10px',
+                        border: '1px solid rgba(139, 92, 246, 0.1)'
+                      }}>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Momento</span>
+                          <p style={{ color: '#e2e8f0', fontSize: '13px', margin: '4px 0 0 0' }}>{contexto?.momento}</p>
+                        </div>
+                        <div style={{ width: '1px', background: 'rgba(139, 92, 246, 0.2)' }} />
+                        <div style={{ flex: 1 }}>
+                          <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Tom</span>
+                          <p style={{ color: '#e2e8f0', fontSize: '13px', margin: '4px 0 0 0' }}>{contexto?.tom}</p>
+                        </div>
+                      </div>
+
+                      {sectionTemplates.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {sectionTemplates.map((template) => {
+                            const TipoIcon = TEMPLATE_TIPOS.find(t => t.value === template.tipo)?.icon || FileText;
+                            const isTemplateExpanded = expandedTemplates[template.id];
+                            const isCopied = copiedTemplateId === template.id;
+
+                            return (
+                              <div key={template.id} style={{
+                                background: 'rgba(30, 27, 75, 0.6)',
+                                border: `1px solid ${isTemplateExpanded ? section.borderColor : 'rgba(139, 92, 246, 0.1)'}`,
+                                borderRadius: '12px',
+                                overflow: 'hidden',
+                                transition: 'border-color 0.2s'
+                              }}>
+                                {/* Header do template */}
+                                <button
+                                  onClick={() => toggleTemplateExpanded(template.id)}
+                                  style={{
+                                    width: '100%', padding: '14px 16px',
+                                    background: isTemplateExpanded ? 'rgba(139, 92, 246, 0.08)' : 'transparent',
+                                    border: 'none', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: '12px'
+                                  }}
+                                >
+                                  {/* Ícone tipo */}
+                                  <div style={{
+                                    width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
+                                    background: template.tipo === 'email' ? 'rgba(59, 130, 246, 0.15)' : template.tipo === 'whatsapp' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(139, 92, 246, 0.15)',
+                                    border: `1px solid ${template.tipo === 'email' ? 'rgba(59, 130, 246, 0.3)' : template.tipo === 'whatsapp' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                  }}>
+                                    <TipoIcon style={{ width: '18px', height: '18px', color: template.tipo === 'email' ? '#3b82f6' : template.tipo === 'whatsapp' ? '#10b981' : '#8b5cf6' }} />
+                                  </div>
+
+                                  {/* Info */}
+                                  <div style={{ flex: 1, textAlign: 'left' }}>
+                                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0 }}>
+                                      {template.titulo}
+                                    </p>
+                                    {template.assunto && (
+                                      <p style={{ color: '#64748b', fontSize: '12px', margin: '4px 0 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {template.assunto}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {/* Tipo badge */}
+                                  <span style={{
+                                    padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600',
+                                    background: template.tipo === 'email' ? 'rgba(59, 130, 246, 0.2)' : template.tipo === 'whatsapp' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(139, 92, 246, 0.2)',
+                                    color: template.tipo === 'email' ? '#3b82f6' : template.tipo === 'whatsapp' ? '#10b981' : '#8b5cf6'
+                                  }}>
+                                    {template.tipo === 'email' ? 'E-mail' : template.tipo === 'whatsapp' ? 'WhatsApp' : 'Doc'}
+                                  </span>
+
+                                  {/* Chevron */}
+                                  {isTemplateExpanded ? (
+                                    <ChevronDown style={{ width: '18px', height: '18px', color: '#64748b' }} />
+                                  ) : (
+                                    <ChevronRight style={{ width: '18px', height: '18px', color: '#64748b' }} />
+                                  )}
+                                </button>
+
+                                {/* Conteúdo expandido */}
+                                {isTemplateExpanded && (
+                                  <div style={{ padding: '0 16px 16px 16px' }}>
+                                    {/* Preview do email */}
+                                    <div style={{
+                                      background: '#0f0a1f',
+                                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                                      borderRadius: '10px',
+                                      overflow: 'hidden',
+                                      marginBottom: '12px'
+                                    }}>
+                                      {/* Header do preview */}
+                                      {template.tipo === 'email' && template.assunto && (
+                                        <div style={{
+                                          padding: '12px 16px',
+                                          background: 'rgba(139, 92, 246, 0.08)',
+                                          borderBottom: '1px solid rgba(139, 92, 246, 0.15)'
+                                        }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                            <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600' }}>ASSUNTO:</span>
+                                          </div>
+                                          <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>
+                                            {template.assunto}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {/* Corpo */}
+                                      <div style={{ padding: '16px' }}>
+                                        <pre style={{
+                                          color: '#e2e8f0', fontSize: '13px', lineHeight: '1.6',
+                                          margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                          fontFamily: 'inherit', maxHeight: '300px', overflowY: 'auto'
+                                        }}>
+                                          {template.conteudo}
+                                        </pre>
+                                      </div>
+                                    </div>
+
+                                    {/* Ações */}
+                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                      {isAdmin && (
+                                        <>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template.id); }}
+                                            style={{
+                                              display: 'flex', alignItems: 'center', gap: '6px',
+                                              padding: '8px 14px', background: 'rgba(239, 68, 68, 0.15)',
+                                              border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px',
+                                              color: '#ef4444', fontSize: '12px', fontWeight: '600', cursor: 'pointer'
+                                            }}
+                                          >
+                                            <Trash2 style={{ width: '14px', height: '14px' }} />
+                                            Excluir
+                                          </button>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); handleEditTemplate(template); }}
+                                            style={{
+                                              display: 'flex', alignItems: 'center', gap: '6px',
+                                              padding: '8px 14px', background: 'rgba(139, 92, 246, 0.15)',
+                                              border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px',
+                                              color: '#8b5cf6', fontSize: '12px', fontWeight: '600', cursor: 'pointer'
+                                            }}
+                                          >
+                                            <Edit3 style={{ width: '14px', height: '14px' }} />
+                                            Editar
+                                          </button>
+                                        </>
+                                      )}
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleCopyTemplate(template); }}
+                                        style={{
+                                          display: 'flex', alignItems: 'center', gap: '6px',
+                                          padding: '8px 16px',
+                                          background: isCopied ? 'rgba(16, 185, 129, 0.2)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+                                          border: isCopied ? '1px solid rgba(16, 185, 129, 0.4)' : 'none',
+                                          borderRadius: '8px',
+                                          color: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                                          transition: 'all 0.2s'
+                                        }}
+                                      >
+                                        {isCopied ? (
+                                          <>
+                                            <CheckCircle style={{ width: '14px', height: '14px' }} />
+                                            Copiado!
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Copy style={{ width: '14px', height: '14px' }} />
+                                            Copiar Template
+                                          </>
+                                        )}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '30px' }}>
+                          <FileText style={{ width: '32px', height: '32px', color: '#475569', marginBottom: '12px' }} />
+                          <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
+                            Nenhum template nesta categoria
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
-
-                  {/* Preview do conteúdo */}
-                  <div style={{ padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '8px', flex: 1 }}>
-                    <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0, lineHeight: '1.5', whiteSpace: 'pre-wrap', maxHeight: '80px', overflow: 'hidden' }}>
-                      {template.conteudo?.substring(0, 200)}{template.conteudo?.length > 200 ? '...' : ''}
-                    </p>
-                  </div>
                 </div>
               );
             })}
           </div>
 
-          {templatesFiltrados.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-              <FileText style={{ width: '48px', height: '48px', color: '#475569', marginBottom: '16px' }} />
-              <p style={{ color: '#64748b', fontSize: '15px', margin: 0 }}>
-                {templates.length === 0 ? 'Nenhum template cadastrado' : 'Nenhum template encontrado'}
-              </p>
-              {isAdmin && templates.length === 0 && (
-                <button
-                  onClick={() => setShowTemplateForm(true)}
-                  style={{
-                    marginTop: '16px', padding: '10px 20px',
-                    background: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.3)',
-                    borderRadius: '10px', color: '#8b5cf6', fontSize: '14px', fontWeight: '500', cursor: 'pointer'
-                  }}
-                >
-                  Criar primeiro template
-                </button>
-              )}
+          {/* Tabela de referência rápida */}
+          {templatesFiltrados.length > 0 && !templateSearch && (
+            <div style={{ marginTop: '32px' }}>
+              <h3 style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Referência Rápida
+              </h3>
+              <div style={{
+                background: 'rgba(30, 27, 75, 0.4)',
+                border: '1px solid rgba(139, 92, 246, 0.15)',
+                borderRadius: '12px',
+                overflow: 'hidden'
+              }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(139, 92, 246, 0.08)' }}>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', borderBottom: '1px solid rgba(139, 92, 246, 0.15)' }}>Template</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', borderBottom: '1px solid rgba(139, 92, 246, 0.15)', width: '100px' }}>Tipo</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', borderBottom: '1px solid rgba(139, 92, 246, 0.15)', width: '120px' }}>Categoria</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', borderBottom: '1px solid rgba(139, 92, 246, 0.15)', width: '80px' }}>Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {templatesFiltrados.slice(0, 10).map((template, idx) => {
+                      const section = TEMPLATE_SAUDE_SECTIONS.find(s => s.key === template.categoria);
+                      return (
+                        <tr key={template.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(15, 10, 31, 0.3)' }}>
+                          <td style={{ padding: '10px 16px', color: '#e2e8f0', fontSize: '13px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                            {template.titulo}
+                          </td>
+                          <td style={{ padding: '10px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                            <span style={{
+                              padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '500',
+                              background: template.tipo === 'email' ? 'rgba(59, 130, 246, 0.15)' : template.tipo === 'whatsapp' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(139, 92, 246, 0.15)',
+                              color: template.tipo === 'email' ? '#3b82f6' : template.tipo === 'whatsapp' ? '#10b981' : '#8b5cf6'
+                            }}>
+                              {template.tipo === 'email' ? 'E-mail' : template.tipo === 'whatsapp' ? 'WhatsApp' : 'Doc'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 16px', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                            <span style={{
+                              padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '500',
+                              background: section?.bgColor || 'rgba(139, 92, 246, 0.15)',
+                              color: section?.color || '#8b5cf6'
+                            }}>
+                              {section?.label || template.categoria}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 16px', textAlign: 'center', borderBottom: '1px solid rgba(139, 92, 246, 0.05)' }}>
+                            <button
+                              onClick={() => handleCopyTemplate(template)}
+                              style={{
+                                padding: '6px 10px',
+                                background: copiedTemplateId === template.id ? 'rgba(16, 185, 129, 0.2)' : 'rgba(139, 92, 246, 0.15)',
+                                border: 'none', borderRadius: '6px', cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              {copiedTemplateId === template.id ? (
+                                <CheckCircle style={{ width: '12px', height: '12px', color: '#10b981' }} />
+                              ) : (
+                                <Copy style={{ width: '12px', height: '12px', color: '#8b5cf6' }} />
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ====== MODAL DESTINATÁRIOS ====== */}
+      {showDestinatariosModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => {
+          setShowDestinatariosModal(false);
+          setClienteSelecionado(null);
+          setClienteSearchDestinatarios('');
+          setEmailsSelecionados([]);
+          setUsuariosCliente([]);
+          setTimesCliente({});
+        }}>
+          <div style={{
+            background: '#1e1b4b', border: '1px solid rgba(6, 182, 212, 0.3)',
+            borderRadius: '20px', padding: '24px', width: '500px', maxHeight: '80vh',
+            overflowY: 'auto'
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Mail style={{ width: '20px', height: '20px', color: '#06b6d4' }} />
+                Copiar Destinatários
+              </h2>
+              <button
+                onClick={() => {
+                  setShowDestinatariosModal(false);
+                  setClienteSelecionado(null);
+                  setClienteSearchDestinatarios('');
+                  setEmailsSelecionados([]);
+                  setUsuariosCliente([]);
+                  setTimesCliente({});
+                }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+              >
+                <X style={{ width: '20px', height: '20px', color: '#64748b' }} />
+              </button>
+            </div>
+
+            {/* Busca de cliente */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                Selecione o cliente
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#64748b' }} />
+                <input
+                  type="text"
+                  placeholder="Buscar cliente..."
+                  value={clienteSearchDestinatarios}
+                  onChange={(e) => {
+                    setClienteSearchDestinatarios(e.target.value);
+                    if (!e.target.value) {
+                      setClienteSelecionado(null);
+                      setEmailsSelecionados([]);
+                      setUsuariosCliente([]);
+                      setTimesCliente({});
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '10px 12px 10px 38px', background: '#0f0a1f',
+                    border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '10px',
+                    color: 'white', fontSize: '14px', outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Lista de clientes filtrados */}
+              {clienteSearchDestinatarios && !clienteSelecionado && (
+                <div style={{
+                  marginTop: '4px', background: '#0f0a1f', border: '1px solid rgba(6, 182, 212, 0.2)',
+                  borderRadius: '10px', maxHeight: '180px', overflowY: 'auto'
+                }}>
+                  {clientes
+                    .filter(c => {
+                      const nome = (c.nome || c.name || '').toLowerCase();
+                      return nome.includes(clienteSearchDestinatarios.toLowerCase());
+                    })
+                    .slice(0, 10)
+                    .map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          setClienteSelecionado(c);
+                          setClienteSearchDestinatarios(c.nome || c.name);
+                          setEmailsSelecionados([]);
+                          fetchUsuariosCliente(c);
+                        }}
+                        style={{
+                          width: '100%', padding: '10px 14px', background: 'transparent',
+                          border: 'none', borderBottom: '1px solid rgba(6, 182, 212, 0.1)',
+                          color: '#e2e8f0', fontSize: '14px', textAlign: 'left', cursor: 'pointer'
+                        }}
+                        onMouseEnter={(e) => e.target.style.background = 'rgba(6, 182, 212, 0.1)'}
+                        onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                      >
+                        {c.nome || c.name}
+                      </button>
+                    ))
+                  }
+                  {clientes.filter(c => (c.nome || c.name || '').toLowerCase().includes(clienteSearchDestinatarios.toLowerCase())).length === 0 && (
+                    <p style={{ padding: '12px 14px', color: '#64748b', fontSize: '13px', margin: 0 }}>
+                      Nenhum cliente encontrado
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Lista de contatos do cliente selecionado */}
+            {clienteSelecionado && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600' }}>
+                    Contatos de {clienteSelecionado.nome || clienteSelecionado.name}
+                  </span>
+                  {emailsSelecionados.length > 0 && (
+                    <span style={{ color: '#06b6d4', fontSize: '12px', fontWeight: '600' }}>
+                      {emailsSelecionados.length} selecionado{emailsSelecionados.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+
+                {/* Selecionar Todos */}
+                {((clienteSelecionado.stakeholders || []).length > 0 || usuariosCliente.length > 0) && !loadingUsuarios && (
+                  <button
+                    onClick={() => {
+                      const todosEmails = [
+                        ...(clienteSelecionado.stakeholders || []).map(s => s.email).filter(Boolean),
+                        ...usuariosCliente.map(u => u.email).filter(Boolean)
+                      ];
+                      const todosJaSelecionados = todosEmails.every(e => emailsSelecionados.includes(e));
+                      if (todosJaSelecionados) {
+                        setEmailsSelecionados([]);
+                      } else {
+                        setEmailsSelecionados([...new Set(todosEmails)]);
+                      }
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '8px 12px', marginBottom: '10px',
+                      background: 'rgba(139, 92, 246, 0.15)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '8px', cursor: 'pointer', width: '100%'
+                    }}
+                  >
+                    <div style={{
+                      width: '16px', height: '16px', borderRadius: '4px',
+                      border: `2px solid #8b5cf6`,
+                      background: (() => {
+                        const todosEmails = [
+                          ...(clienteSelecionado.stakeholders || []).map(s => s.email).filter(Boolean),
+                          ...usuariosCliente.map(u => u.email).filter(Boolean)
+                        ];
+                        return todosEmails.length > 0 && todosEmails.every(e => emailsSelecionados.includes(e)) ? '#8b5cf6' : 'transparent';
+                      })(),
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      {(() => {
+                        const todosEmails = [
+                          ...(clienteSelecionado.stakeholders || []).map(s => s.email).filter(Boolean),
+                          ...usuariosCliente.map(u => u.email).filter(Boolean)
+                        ];
+                        return todosEmails.length > 0 && todosEmails.every(e => emailsSelecionados.includes(e)) && (
+                          <CheckCircle style={{ width: '10px', height: '10px', color: 'white' }} />
+                        );
+                      })()}
+                    </div>
+                    <span style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600' }}>
+                      Selecionar todos
+                    </span>
+                  </button>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {/* Stakeholders (com coroa) */}
+                  {(clienteSelecionado.stakeholders || []).map((s, idx) => {
+                    const isSelected = emailsSelecionados.includes(s.email);
+                    return (
+                      <button
+                        key={`stake-${idx}`}
+                        onClick={() => {
+                          if (isSelected) {
+                            setEmailsSelecionados(prev => prev.filter(e => e !== s.email));
+                          } else {
+                            setEmailsSelecionados(prev => [...prev, s.email]);
+                          }
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          padding: '10px 12px',
+                          background: isSelected ? 'rgba(6, 182, 212, 0.15)' : 'rgba(15, 10, 31, 0.6)',
+                          border: `1px solid ${isSelected ? '#06b6d4' : 'rgba(100, 116, 139, 0.2)'}`,
+                          borderRadius: '8px', cursor: 'pointer', textAlign: 'left'
+                        }}
+                      >
+                        <Star style={{ width: '14px', height: '14px', color: '#f59e0b', fill: '#f59e0b', flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ color: isSelected ? 'white' : '#e2e8f0', fontSize: '13px', fontWeight: '500', margin: 0 }}>
+                            {s.nome}
+                          </p>
+                          <p style={{ color: '#64748b', fontSize: '11px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {s.email}
+                          </p>
+                        </div>
+                        <span style={{ color: '#8b5cf6', fontSize: '10px', fontWeight: '600', padding: '2px 6px', background: 'rgba(139, 92, 246, 0.2)', borderRadius: '4px', flexShrink: 0 }}>
+                          Stakeholder
+                        </span>
+                        <div style={{
+                          width: '18px', height: '18px', borderRadius: '4px',
+                          border: `2px solid ${isSelected ? '#06b6d4' : '#475569'}`,
+                          background: isSelected ? '#06b6d4' : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          {isSelected && <CheckCircle style={{ width: '12px', height: '12px', color: 'white' }} />}
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {/* Usuários (com bolinha verde/cinza) */}
+                  {loadingUsuarios || loadingActivityStatus ? (
+                    <p style={{ color: '#64748b', fontSize: '12px', padding: '10px', textAlign: 'center' }}>
+                      Carregando usuários...
+                    </p>
+                  ) : (
+                    usuariosCliente.map((u, idx) => {
+                      const isSelected = emailsSelecionados.includes(u.email);
+                      const activityStatus = getUserActivityStatus(u.email);
+                      const isHeavyUser = activityStatus === 'heavy_user';
+                      const isActive = activityStatus === 'active' || isHeavyUser;
+                      // Priorizar team_name do usuário, depois buscar no mapa de times
+                      const rawTeamName = u.team_name || timesCliente[u.team_id] || '';
+                      // Só mostrar se for um nome real (não um ID)
+                      const teamName = rawTeamName && !rawTeamName.match(/^[a-f0-9]{20,}$/i) ? rawTeamName : '';
+                      return (
+                        <button
+                          key={`user-${idx}`}
+                          onClick={() => {
+                            if (isSelected) {
+                              setEmailsSelecionados(prev => prev.filter(e => e !== u.email));
+                            } else {
+                              setEmailsSelecionados(prev => [...prev, u.email]);
+                            }
+                          }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: '10px 12px',
+                            background: isSelected ? 'rgba(6, 182, 212, 0.15)' : 'rgba(15, 10, 31, 0.6)',
+                            border: `1px solid ${isSelected ? '#06b6d4' : 'rgba(100, 116, 139, 0.2)'}`,
+                            borderRadius: '8px', cursor: 'pointer', textAlign: 'left'
+                          }}
+                        >
+                          {isHeavyUser ? (
+                            <Crown style={{ width: '14px', height: '14px', flexShrink: 0, color: '#8b5cf6' }} />
+                          ) : (
+                            <Circle style={{
+                              width: '14px', height: '14px', flexShrink: 0,
+                              color: isActive ? '#10b981' : '#64748b',
+                              fill: isActive ? '#10b981' : '#64748b'
+                            }} />
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ color: isSelected ? 'white' : '#e2e8f0', fontSize: '13px', fontWeight: '500', margin: 0 }}>
+                              {u.name || u.email?.split('@')[0]}
+                            </p>
+                            <p style={{ color: '#64748b', fontSize: '11px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {u.email}
+                            </p>
+                          </div>
+                          {teamName && (
+                            <span style={{ color: '#64748b', fontSize: '10px', fontWeight: '500', padding: '2px 6px', background: 'rgba(100, 116, 139, 0.2)', borderRadius: '4px', flexShrink: 0, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {teamName}
+                            </span>
+                          )}
+                          <div style={{
+                            width: '18px', height: '18px', borderRadius: '4px',
+                            border: `2px solid ${isSelected ? '#06b6d4' : '#475569'}`,
+                            background: isSelected ? '#06b6d4' : 'transparent',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                          }}>
+                            {isSelected && <CheckCircle style={{ width: '12px', height: '12px', color: 'white' }} />}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+
+                  {/* Mensagem se não houver contatos */}
+                  {(clienteSelecionado.stakeholders || []).length === 0 && usuariosCliente.length === 0 && !loadingUsuarios && (
+                    <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '20px' }}>
+                      Nenhum contato encontrado para este cliente
+                    </p>
+                  )}
+                </div>
+
+                {/* Legenda */}
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', padding: '10px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '8px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Star style={{ width: '12px', height: '12px', color: '#f59e0b', fill: '#f59e0b' }} />
+                    <span style={{ color: '#94a3b8', fontSize: '11px' }}>Stakeholder</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Crown style={{ width: '12px', height: '12px', color: '#8b5cf6' }} />
+                    <span style={{ color: '#94a3b8', fontSize: '11px' }}>Heavy User</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Circle style={{ width: '12px', height: '12px', color: '#10b981', fill: '#10b981' }} />
+                    <span style={{ color: '#94a3b8', fontSize: '11px' }}>Ativo</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Circle style={{ width: '12px', height: '12px', color: '#64748b', fill: '#64748b' }} />
+                    <span style={{ color: '#94a3b8', fontSize: '11px' }}>Inativo</span>
+                  </div>
+                </div>
+
+                {/* Botão Copiar */}
+                <button
+                  onClick={() => {
+                    if (emailsSelecionados.length === 0) {
+                      alert('Selecione pelo menos um destinatário');
+                      return;
+                    }
+                    navigator.clipboard.writeText(emailsSelecionados.join(', '));
+                    alert(`${emailsSelecionados.length} e-mail(s) copiado(s)!`);
+                    setShowDestinatariosModal(false);
+                    setClienteSelecionado(null);
+                    setClienteSearchDestinatarios('');
+                    setEmailsSelecionados([]);
+                    setUsuariosCliente([]);
+                    setTimesCliente({});
+                  }}
+                  disabled={emailsSelecionados.length === 0}
+                  style={{
+                    width: '100%', padding: '12px',
+                    background: emailsSelecionados.length > 0 ? 'linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)' : 'rgba(100, 116, 139, 0.3)',
+                    border: 'none', borderRadius: '10px',
+                    color: 'white', fontSize: '14px', fontWeight: '600',
+                    cursor: emailsSelecionados.length > 0 ? 'pointer' : 'not-allowed',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                  }}
+                >
+                  <Copy style={{ width: '16px', height: '16px' }} />
+                  Copiar {emailsSelecionados.length > 0 ? `${emailsSelecionados.length} e-mail(s)` : 'e-mails'}
+                </button>
+              </div>
+            )}
+
+            {/* Mensagem inicial */}
+            {!clienteSelecionado && !clienteSearchDestinatarios && (
+              <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '20px' }}>
+                Busque um cliente para ver seus contatos
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -1037,28 +1768,6 @@ export default function OnGoing() {
                   <option key={s} value={s}>{SEGMENTOS_CS[s].label}</option>
                 ))}
               </select>
-            </div>
-
-            {/* Cadência */}
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>Cadência</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {CADENCIA_OPTIONS.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setModalCadencia(opt.value)}
-                    style={{
-                      flex: 1, padding: '10px', borderRadius: '10px', border: 'none',
-                      background: modalCadencia === opt.value ? 'rgba(139, 92, 246, 0.3)' : 'rgba(15, 10, 31, 0.6)',
-                      color: modalCadencia === opt.value ? '#8b5cf6' : '#64748b',
-                      fontSize: '14px', fontWeight: '600', cursor: 'pointer',
-                      outline: modalCadencia === opt.value ? '2px solid #8b5cf6' : 'none'
-                    }}
-                  >
-                    {opt.label} ({opt.dias} dias)
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* Data de início */}

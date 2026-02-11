@@ -126,7 +126,7 @@ export default function PlaybookFluxograma() {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ padding: '16px 32px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', textAlign: 'center' }}>
                 <Bug style={{ width: '20px', height: '20px', color: '#ef4444', marginBottom: '4px' }} />
-                <span style={{ color: '#ef4444', fontSize: '16px', fontWeight: '600', display: 'block' }}>QUANTOS BUGS ABERTOS?</span>
+                <span style={{ color: '#ef4444', fontSize: '16px', fontWeight: '600', display: 'block' }}>BUGS/RECLAMAÇÕES ABERTOS?</span>
               </div>
               <ArrowDown style={{ width: '24px', height: '24px', color: '#64748b', margin: '12px 0' }} />
             </div>
@@ -134,15 +134,15 @@ export default function PlaybookFluxograma() {
             {/* Opcoes de Bugs */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginBottom: '32px' }}>
               <div style={{ padding: '16px 20px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', textAlign: 'center', minWidth: '140px' }}>
-                <span style={{ color: '#ef4444', fontSize: '20px', fontWeight: '700' }}>2+ BUGS</span>
+                <span style={{ color: '#ef4444', fontSize: '18px', fontWeight: '700' }}>2+ BUGS/RECL.</span>
                 <p style={{ color: '#fca5a5', fontSize: '13px', margin: '8px 0 0' }}>RESGATE<br/>(imediato)</p>
               </div>
               <div style={{ padding: '16px 20px', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '12px', textAlign: 'center', minWidth: '140px' }}>
-                <span style={{ color: '#f59e0b', fontSize: '20px', fontWeight: '700' }}>1 BUG</span>
+                <span style={{ color: '#f59e0b', fontSize: '18px', fontWeight: '700' }}>1 BUG/RECL.</span>
                 <p style={{ color: '#fcd34d', fontSize: '13px', margin: '8px 0 0' }}>ALERTA<br/>(sobrepoe)</p>
               </div>
               <div style={{ padding: '16px 20px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '12px', textAlign: 'center', minWidth: '140px' }}>
-                <span style={{ color: '#10b981', fontSize: '20px', fontWeight: '700' }}>0 BUGS</span>
+                <span style={{ color: '#10b981', fontSize: '18px', fontWeight: '700' }}>0 BUGS/RECL.</span>
                 <p style={{ color: '#6ee7b7', fontSize: '13px', margin: '8px 0 0' }}>Classificar<br/>por metricas</p>
               </div>
             </div>
@@ -186,7 +186,7 @@ export default function PlaybookFluxograma() {
           <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '16px' }}>
             <p style={{ color: '#fca5a5', fontSize: '15px', fontWeight: '600', margin: 0 }}>
               <Bug style={{ width: '18px', height: '18px', display: 'inline', verticalAlign: 'middle', marginRight: '8px' }} />
-              Regra fundamental: Bugs sobrepoem TUDO. Nao importa quao ativo o cliente esteja — se tem 2+ bugs abertos, e Resgate.
+              Regra fundamental: Bugs/reclamações sobrepoem TUDO. Nao importa quao ativo o cliente esteja — se tem 2+ bugs/reclamações abertos, e Resgate.
             </p>
           </div>
         </div>
@@ -203,7 +203,7 @@ export default function PlaybookFluxograma() {
               <span style={{ padding: '4px 12px', background: 'rgba(16, 185, 129, 0.2)', borderRadius: '20px', fontSize: '12px', color: '#6ee7b7' }}>Mensal</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>{config.dias_ativos_crescimento}+ dias ativos, score {config.engajamento_crescimento}+, 0 bugs</p></div>
+              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>{config.dias_ativos_crescimento}+ dias ativos, score {config.engajamento_crescimento}+, 0 bugs/recl.</p></div>
               <div><span style={{ color: '#64748b', fontSize: '12px' }}>Objetivo:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>Celebrar, coletar cases e expandir</p></div>
             </div>
             <div>
@@ -225,7 +225,7 @@ export default function PlaybookFluxograma() {
               <span style={{ padding: '4px 12px', background: 'rgba(59, 130, 246, 0.2)', borderRadius: '20px', fontSize: '12px', color: '#93c5fd' }}>Mensal</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>{config.dias_ativos_estavel}-{config.dias_ativos_crescimento - 1} dias ativos, score {config.engajamento_estavel}-{config.engajamento_crescimento - 1}, 0 bugs</p></div>
+              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>{config.dias_ativos_estavel}-{config.dias_ativos_crescimento - 1} dias ativos, score {config.engajamento_estavel}-{config.engajamento_crescimento - 1}, 0 bugs/recl.</p></div>
               <div><span style={{ color: '#64748b', fontSize: '12px' }}>Objetivo:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>Nutrir relacionamento e mapear sazonalidade</p></div>
             </div>
             <div>
@@ -248,7 +248,7 @@ export default function PlaybookFluxograma() {
               <span style={{ padding: '4px 12px', background: 'rgba(245, 158, 11, 0.2)', borderRadius: '20px', fontSize: '12px', color: '#fcd34d' }}>21 dias</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>1 bug OU {config.dias_ativos_alerta}-{config.dias_ativos_estavel - 1} dias ativos, score {config.engajamento_alerta}-{config.engajamento_estavel - 1}</p></div>
+              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>1 bug/recl. OU {config.dias_ativos_alerta}-{config.dias_ativos_estavel - 1} dias ativos, score {config.engajamento_alerta}-{config.engajamento_estavel - 1}</p></div>
               <div><span style={{ color: '#64748b', fontSize: '12px' }}>Objetivo:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>Intervir antes de piorar para Resgate</p></div>
             </div>
             <div>
@@ -281,7 +281,7 @@ export default function PlaybookFluxograma() {
               <span style={{ padding: '4px 12px', background: 'rgba(239, 68, 68, 0.2)', borderRadius: '20px', fontSize: '12px', color: '#fca5a5' }}>15-30 dias</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>2+ bugs OU 0-{config.dias_ativos_alerta - 1} dias ativos, score 0-{config.engajamento_alerta - 1}</p></div>
+              <div><span style={{ color: '#64748b', fontSize: '12px' }}>Criterios:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>2+ bugs/recl. OU 0-{config.dias_ativos_alerta - 1} dias ativos, score 0-{config.engajamento_alerta - 1}</p></div>
               <div><span style={{ color: '#64748b', fontSize: '12px' }}>Objetivo:</span><p style={{ color: '#e2e8f0', fontSize: '14px', margin: '4px 0 0' }}>Recuperar antes do churn</p></div>
             </div>
             <div>
@@ -327,11 +327,11 @@ export default function PlaybookFluxograma() {
               </thead>
               <tbody>
                 {[
-                  { de: 'Crescimento', para: 'Alerta', urgencia: '7 dias carencia', acao: 'Comunicacao rapida dia 0-1. Bug pontual.' },
+                  { de: 'Crescimento', para: 'Alerta', urgencia: '7 dias carencia', acao: 'Comunicacao rapida dia 0-1. Bug/reclamacao pontual.' },
                   { de: 'Crescimento', para: 'Resgate', urgencia: 'IMEDIATO', acao: 'Transicao mais critica. Vendas no mesmo dia.', critico: true },
                   { de: 'Estavel', para: 'Alerta', urgencia: '7 dias carencia', acao: 'Comunicacao rapida dia 0-1. Fluxo normal de Alerta.' },
                   { de: 'Estavel', para: 'Resgate', urgencia: 'IMEDIATO', acao: 'Abandono gradual ou problema acumulado.', critico: true },
-                  { de: 'Alerta', para: 'Resgate', urgencia: 'IMEDIATO', acao: 'Problema nao resolvido ou segundo bug. Escalar.', critico: true },
+                  { de: 'Alerta', para: 'Resgate', urgencia: 'IMEDIATO', acao: 'Problema nao resolvido ou segundo bug/reclamacao. Escalar.', critico: true },
                 ].map((row, idx) => (
                   <tr key={idx}>
                     <td style={{ padding: '12px', borderBottom: '1px solid rgba(100, 116, 139, 0.1)', color: '#e2e8f0', fontSize: '13px' }}>
@@ -391,26 +391,26 @@ export default function PlaybookFluxograma() {
       {/* Tab: Regras Gerais */}
       {tabAtiva === 'regras' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Regra de Bugs */}
+          {/* Regra de Bugs/Reclamações */}
           <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '20px', padding: '24px' }}>
             <h3 style={{ color: '#ef4444', fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>
               <Bug style={{ width: '20px', height: '20px', display: 'inline', verticalAlign: 'middle', marginRight: '8px' }} />
-              Regra de Bugs
+              Regra de Bugs/Reclamações
             </h3>
             <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '16px' }}>
-              Bugs sobrepoem TODAS as outras metricas. Nao importa quao ativo o cliente esteja.
+              Bugs/reclamações sobrepoem TODAS as outras metricas. Nao importa quao ativo o cliente esteja.
             </p>
             <div style={{ display: 'flex', gap: '16px' }}>
               <div style={{ flex: 1, padding: '16px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '12px', textAlign: 'center' }}>
-                <span style={{ color: '#10b981', fontSize: '24px', fontWeight: '700' }}>0 bugs</span>
+                <span style={{ color: '#10b981', fontSize: '24px', fontWeight: '700' }}>0 bugs/recl.</span>
                 <p style={{ color: '#6ee7b7', fontSize: '13px', margin: '4px 0 0' }}>Classificar por regra normal</p>
               </div>
               <div style={{ flex: 1, padding: '16px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '12px', textAlign: 'center' }}>
-                <span style={{ color: '#f59e0b', fontSize: '24px', fontWeight: '700' }}>1 bug</span>
+                <span style={{ color: '#f59e0b', fontSize: '24px', fontWeight: '700' }}>1 bug/recl.</span>
                 <p style={{ color: '#fcd34d', fontSize: '13px', margin: '4px 0 0' }}>ALERTA (independente)</p>
               </div>
               <div style={{ flex: 1, padding: '16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '12px', textAlign: 'center' }}>
-                <span style={{ color: '#ef4444', fontSize: '24px', fontWeight: '700' }}>2+ bugs</span>
+                <span style={{ color: '#ef4444', fontSize: '24px', fontWeight: '700' }}>2+ bugs/recl.</span>
                 <p style={{ color: '#fca5a5', fontSize: '13px', margin: '4px 0 0' }}>RESGATE (independente)</p>
               </div>
             </div>

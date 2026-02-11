@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
-import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin, GraduationCap, Search, Loader2 } from 'lucide-react';
+import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin, GraduationCap, Search, Loader2, Copy } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { SEGMENTOS_CS, getSegmentoInfo, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge, SegmentoCard } from '../components/UI/SegmentoBadge';
@@ -153,7 +153,8 @@ export default function ClienteDetalhe() {
   const [threads, setThreads] = useState([]);
   const [selectedThread, setSelectedThread] = useState(null);
   const [mensagens, setMensagens] = useState([]);
-  const [usageData, setUsageData] = useState({ logins: 0, projetos_criados: 0, pecas_criadas: 0, downloads: 0, creditos_consumidos: 0, dias_ativos: 0, ultima_atividade: null });
+  const [usageData, setUsageData] = useState({ logins: 0, projetos_criados: 0, pecas_criadas: 0, downloads: 0, creditos_consumidos: 0, features_usadas: 0, dias_ativos: 0, ultima_atividade: null });
+  const [chartData, setChartData] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [showAllUsuarios, setShowAllUsuarios] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -257,7 +258,8 @@ export default function ClienteDetalhe() {
           // Salvar teamIds no state para uso pelo hook de atividade
           setTeamIds(computedTeamIds);
 
-          // Data limite para queries
+          // Data limite para queries (60 dias para gráficos, agregado dos últimos 30)
+          const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
           const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
           // OTIMIZAÇÃO: Executar TODAS as queries em PARALELO
@@ -273,7 +275,7 @@ export default function ClienteDetalhe() {
               for (let i = 0; i < computedTeamIds.length; i += chunkSize) {
                 const chunk = computedTeamIds.slice(i, i + chunkSize);
                 promises.push(
-                  getDocs(query(metricasRef, where('team_id', 'in', chunk), where('data', '>=', thirtyDaysAgo)))
+                  getDocs(query(metricasRef, where('team_id', 'in', chunk), where('data', '>=', sixtyDaysAgo)))
                 );
               }
               const results = await Promise.all(promises);
@@ -314,8 +316,22 @@ export default function ClienteDetalhe() {
           });
           setThreads(sortedThreads);
 
-          // Processar métricas de uso
-          const aggregated = metricasResult.reduce((acc, d) => {
+          // Processar métricas de uso (apenas últimos 30 dias para agregação)
+          const metricasUltimos30Dias = metricasResult.filter(d => {
+            const dataDate = d.data?.toDate?.() || (d.data ? new Date(d.data) : null);
+            return dataDate && dataDate >= thirtyDaysAgo;
+          });
+          // Coletar todas as features únicas usadas no período
+          const featuresUnicasSet = new Set();
+          metricasUltimos30Dias.forEach(d => {
+            if (d.features_usadas && typeof d.features_usadas === 'object') {
+              Object.keys(d.features_usadas).forEach(feature => {
+                if (d.features_usadas[feature] > 0) featuresUnicasSet.add(feature);
+              });
+            }
+          });
+
+          const aggregated = metricasUltimos30Dias.reduce((acc, d) => {
             const dataDate = d.data?.toDate?.() || (d.data ? new Date(d.data) : null);
             const temAtividade = (d.logins || 0) > 0 || (d.projetos_criados || 0) > 0 || (d.pecas_criadas || 0) > 0 || (d.downloads || 0) > 0 || (d.creditos_consumidos || d.uso_ai_total || 0) > 0;
             return {
@@ -324,11 +340,41 @@ export default function ClienteDetalhe() {
               pecas_criadas: acc.pecas_criadas + (d.pecas_criadas || 0),
               downloads: acc.downloads + (d.downloads || 0),
               creditos_consumidos: acc.creditos_consumidos + (d.creditos_consumidos || d.uso_ai_total || 0),
+              features_usadas: featuresUnicasSet.size, // Quantidade de features diferentes
               dias_ativos: acc.dias_ativos + (temAtividade ? 1 : 0),
               ultima_atividade: dataDate && (!acc.ultima_atividade || dataDate > acc.ultima_atividade) ? dataDate : acc.ultima_atividade
             };
-          }, { logins: 0, projetos_criados: 0, pecas_criadas: 0, downloads: 0, creditos_consumidos: 0, dias_ativos: 0, ultima_atividade: null });
+          }, { logins: 0, projetos_criados: 0, pecas_criadas: 0, downloads: 0, creditos_consumidos: 0, features_usadas: 0, dias_ativos: 0, ultima_atividade: null });
           setUsageData(aggregated);
+
+          // Processar dados para gráficos (60 dias agregados por dia)
+          const dailyMap = {};
+          const dailyFeaturesSet = {}; // Set de features por dia para contar únicas
+          metricasResult.forEach(d => {
+            const dataDate = d.data?.toDate?.() || (d.data ? new Date(d.data) : null);
+            if (!dataDate) return;
+            const dateKey = dataDate.toISOString().split('T')[0];
+            if (!dailyMap[dateKey]) {
+              dailyMap[dateKey] = { date: dateKey, logins: 0, projetos: 0, assets: 0, creditos_ia: 0, features_ia: 0 };
+              dailyFeaturesSet[dateKey] = new Set();
+            }
+            dailyMap[dateKey].logins += d.logins || 0;
+            dailyMap[dateKey].projetos += d.projetos_criados || 0;
+            dailyMap[dateKey].assets += d.pecas_criadas || 0;
+            dailyMap[dateKey].creditos_ia += d.creditos_consumidos || d.uso_ai_total || 0;
+            // Contar features de IA diferentes usadas no dia
+            if (d.features_usadas && typeof d.features_usadas === 'object') {
+              Object.keys(d.features_usadas).forEach(feature => {
+                if (d.features_usadas[feature] > 0) dailyFeaturesSet[dateKey].add(feature);
+              });
+            }
+          });
+          // Atualizar contagem de features únicas por dia
+          Object.keys(dailyMap).forEach(dateKey => {
+            dailyMap[dateKey].features_ia = dailyFeaturesSet[dateKey]?.size || 0;
+          });
+          const chartDataSorted = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+          setChartData(chartDataSorted);
 
           // Processar usuários
           const sortedUsers = usuariosResult.sort((a, b) => {
@@ -1387,9 +1433,10 @@ export default function ClienteDetalhe() {
       </div>
       )}
 
-      {/* Métricas de Uso - 4 em uma linha */}
+      {/* Métricas de Uso - Escala (3) + IA (2) */}
       {cliente.status !== 'inativo' && (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '16px' }}>
+        {/* ESCALA */}
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px', padding: '16px' }}>
           <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Logins (30d)</p>
           <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.logins.toLocaleString('pt-BR')}</p>
@@ -1402,9 +1449,112 @@ export default function ClienteDetalhe() {
           <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Assets (30d)</p>
           <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.pecas_criadas.toLocaleString('pt-BR')}</p>
         </div>
+        {/* IA */}
         <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '12px', padding: '16px' }}>
           <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Créditos IA (30d)</p>
           <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.creditos_consumidos.toLocaleString('pt-BR')}</p>
+        </div>
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(168, 85, 247, 0.2)', borderRadius: '12px', padding: '16px' }}>
+          <p style={{ color: '#94a3b8', fontSize: '11px', margin: '0 0 4px 0' }}>Features IA (30d)</p>
+          <p style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: 0 }}>{usageData.features_usadas.toLocaleString('pt-BR')}</p>
+        </div>
+      </div>
+      )}
+
+      {/* Gráficos de Métricas (60 dias) */}
+      {cliente.status !== 'inativo' && chartData.length > 0 && (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+        {/* Gráfico Escala: Logins + Projetos + Assets */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <Activity style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
+            <h3 style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0 }}>Escala (60 dias)</h3>
+          </div>
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#8b5cf6' }} />
+              <span style={{ color: '#94a3b8', fontSize: '11px' }}>Logins</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#06b6d4' }} />
+              <span style={{ color: '#94a3b8', fontSize: '11px' }}>Projetos</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981' }} />
+              <span style={{ color: '#94a3b8', fontSize: '11px' }}>Assets</span>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" />
+              <XAxis
+                dataKey="date"
+                tick={{ fill: '#64748b', fontSize: 10 }}
+                tickFormatter={(value) => {
+                  const d = new Date(value);
+                  return `${d.getDate()}/${d.getMonth() + 1}`;
+                }}
+                interval={Math.floor(chartData.length / 6)}
+              />
+              <YAxis tick={{ fill: '#64748b', fontSize: 10 }} />
+              <Tooltip
+                contentStyle={{ background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }}
+                labelStyle={{ color: '#94a3b8' }}
+                formatter={(value, name) => [value, name === 'logins' ? 'Logins' : name === 'projetos' ? 'Projetos' : 'Assets']}
+                labelFormatter={(label) => {
+                  const d = new Date(label);
+                  return d.toLocaleDateString('pt-BR');
+                }}
+              />
+              <Line type="monotone" dataKey="logins" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="projetos" stroke="#06b6d4" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="assets" stroke="#10b981" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Gráfico IA: Créditos + Features */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(249, 115, 22, 0.15)', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <Sparkles style={{ width: '16px', height: '16px', color: '#f97316' }} />
+            <h3 style={{ color: 'white', fontSize: '14px', fontWeight: '600', margin: 0 }}>IA (60 dias)</h3>
+          </div>
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f97316' }} />
+              <span style={{ color: '#94a3b8', fontSize: '11px' }}>Créditos</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#a855f7' }} />
+              <span style={{ color: '#94a3b8', fontSize: '11px' }}>Features usadas</span>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(249, 115, 22, 0.1)" />
+              <XAxis
+                dataKey="date"
+                tick={{ fill: '#64748b', fontSize: 10 }}
+                tickFormatter={(value) => {
+                  const d = new Date(value);
+                  return `${d.getDate()}/${d.getMonth() + 1}`;
+                }}
+                interval={Math.floor(chartData.length / 6)}
+              />
+              <YAxis tick={{ fill: '#64748b', fontSize: 10 }} />
+              <Tooltip
+                contentStyle={{ background: '#1e1b4b', border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '8px' }}
+                labelStyle={{ color: '#94a3b8' }}
+                formatter={(value, name) => [value, name === 'creditos_ia' ? 'Créditos' : 'Features']}
+                labelFormatter={(label) => {
+                  const d = new Date(label);
+                  return d.toLocaleDateString('pt-BR');
+                }}
+              />
+              <Line type="monotone" dataKey="creditos_ia" stroke="#f97316" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="features_ia" stroke="#a855f7" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </div>
       )}
@@ -2667,6 +2817,24 @@ export default function ClienteDetalhe() {
             <span style={{ padding: '4px 10px', background: 'rgba(249, 115, 22, 0.1)', color: '#f97316', borderRadius: '8px', fontSize: '11px' }}>
               Contatos de vendas/contratos
             </span>
+            {cliente?.stakeholders?.length > 0 && (
+              <button
+                onClick={() => {
+                  const emails = cliente.stakeholders.map(s => s.email).filter(Boolean).join(', ');
+                  navigator.clipboard.writeText(emails);
+                  alert(`${cliente.stakeholders.filter(s => s.email).length} e-mail(s) copiado(s)!`);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '6px 14px', background: 'rgba(139, 92, 246, 0.15)',
+                  border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px',
+                  color: '#a78bfa', fontSize: '13px', fontWeight: '500', cursor: 'pointer'
+                }}
+              >
+                <Copy style={{ width: '14px', height: '14px' }} />
+                Copiar e-mails
+              </button>
+            )}
             <button
               onClick={() => setShowStakeholderForm(!showStakeholderForm)}
               style={{
@@ -2800,9 +2968,20 @@ export default function ClienteDetalhe() {
                     <p style={{ color: '#f97316', fontSize: '12px', margin: '0 0 6px 0' }}>{stakeholder.cargo}</p>
                   )}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <a href={`mailto:${stakeholder.email}`} style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Mail style={{ width: '12px', height: '12px' }} />{stakeholder.email}
-                    </a>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <a href={`mailto:${stakeholder.email}`} style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Mail style={{ width: '12px', height: '12px' }} />{stakeholder.email}
+                      </a>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(stakeholder.email); }}
+                        title="Copiar e-mail"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#64748b', display: 'flex', alignItems: 'center' }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#8b5cf6'}
+                        onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+                      >
+                        <Copy style={{ width: '12px', height: '12px' }} />
+                      </button>
+                    </div>
                     {stakeholder.telefone && (
                       <a href={`tel:${stakeholder.telefone}`} style={{ color: '#94a3b8', fontSize: '12px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Phone style={{ width: '12px', height: '12px' }} />{stakeholder.telefone}

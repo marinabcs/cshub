@@ -198,6 +198,12 @@ service cloud.firestore {
       allow write: if isGestorOrHigher();
     }
 
+    // Templates de Comunicação - leitura para todos, escrita para CS+
+    match /templates_comunicacao/{templateId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
     // Logs de Auditoria - imutáveis
     match /audit_logs/{logId} {
       allow read: if isTraktoUser();

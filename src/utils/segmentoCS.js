@@ -70,7 +70,7 @@ export const SEGMENTOS_CS = {
     criterios: [
       '20+ dias ativos',
       'Score 100+',
-      '0 bugs'
+      '0 bugs/reclamações'
     ],
     acoes: [
       { nome: 'Reconhecimento + pedido de case', dias: 7 },
@@ -92,7 +92,7 @@ export const SEGMENTOS_CS = {
     criterios: [
       '8-19 dias ativos',
       'Score 30-99',
-      '0 bugs'
+      '0 bugs/reclamações'
     ],
     acoes: [
       { nome: 'Check-in mensal', dias: 7 },
@@ -112,7 +112,7 @@ export const SEGMENTOS_CS = {
     priority: 3,
     ciclo: '21 dias',
     criterios: [
-      '1 bug OU 3-7 dias ativos',
+      '1 bug/reclamação OU 3-7 dias ativos',
       'Score 5-29'
     ],
     acoes: [
@@ -135,7 +135,7 @@ export const SEGMENTOS_CS = {
     priority: 4,
     ciclo: '15-30 dias',
     criterios: [
-      '2+ bugs OU 0-2 dias ativos',
+      '2+ bugs/reclamações OU 0-2 dias ativos',
       'Score 0-4'
     ],
     acoes: [
