@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { collection } from 'firebase/firestore';
+import { collection, doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
 import { useNavigate } from 'react-router-dom';
-import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, ChevronRight, Circle, Bell, Frown, Briefcase } from 'lucide-react';
+import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, ChevronRight, Circle, Bell, Frown, Briefcase, Mail, RefreshCw } from 'lucide-react';
 import { STATUS_OPTIONS } from '../utils/clienteStatus';
 import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
 import { useAlertasCount } from '../hooks/useAlertas';
@@ -19,28 +19,52 @@ const ALERTA_ICONS = {
 export default function Dashboard() {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncEmails, setSyncEmails] = useState(null);
   const navigate = useNavigate();
 
   // Alertas
   const { counts: alertaCounts } = useAlertasCount();
 
   useEffect(() => {
-    const fetchClientes = async () => {
+    const fetchData = async () => {
       try {
-        const docs = await cachedGetDocs('clientes', collection(db, 'clientes'), 300000);
-        const clientesData = docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        // Buscar clientes e sync info em paralelo
+        const [clientesDocs, syncSnap] = await Promise.all([
+          cachedGetDocs('clientes', collection(db, 'clientes'), 300000),
+          getDoc(doc(db, 'config', 'sync_emails'))
+        ]);
+
+        const clientesData = clientesDocs.map(d => ({ id: d.id, ...d.data() }));
         setClientes(clientesData);
+
+        if (syncSnap.exists()) {
+          setSyncEmails(syncSnap.data());
+        }
       } catch (error) {
-        console.error('Erro ao buscar clientes:', error);
+        console.error('Erro ao buscar dados:', error);
       } finally {
         setLoading(false);
       }
     };
-    fetchClientes();
+    fetchData();
   }, []);
+
+  // Formatar data relativa para sync
+  const formatSyncTime = (timestamp) => {
+    if (!timestamp) return null;
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diffMinutes = Math.floor((now - date) / (1000 * 60));
+
+    if (diffMinutes < 1) return 'agora';
+    if (diffMinutes < 60) return `há ${diffMinutes}min`;
+
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `há ${diffHours}h`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    return `há ${diffDays}d`;
+  };
 
   // Filtrar apenas clientes ativos (excluir inativos e cancelados; onboarding = ativo)
   const clientesAtivos = clientes.filter(c => {
@@ -116,9 +140,23 @@ export default function Dashboard() {
           <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: '0 0 8px 0' }}>
             Dashboard
           </h1>
-          <p style={{ color: '#94a3b8', margin: 0 }}>
-            Visão geral • {stats.total} clientes ativos
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <p style={{ color: '#94a3b8', margin: 0 }}>
+              Visão geral • {stats.total} clientes ativos
+            </p>
+            {syncEmails?.ultima_sincronizacao && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '4px 10px', background: 'rgba(16, 185, 129, 0.1)',
+                border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '6px'
+              }}>
+                <Mail style={{ width: '12px', height: '12px', color: '#10b981' }} />
+                <span style={{ color: '#6ee7b7', fontSize: '11px', fontWeight: '500' }}>
+                  Emails: {formatSyncTime(syncEmails.ultima_sincronizacao)}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
           <button
