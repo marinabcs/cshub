@@ -55,7 +55,7 @@ function normalizarSegmento(segmento) {
   return LEGACY_SEGMENT_MAP[segmento] || segmento;
 }
 
-// Constantes dos segmentos
+// Constantes dos segmentos (Playbook V1 - Fev 2026)
 export const SEGMENTOS_CS = {
   CRESCIMENTO: {
     value: 'CRESCIMENTO',
@@ -66,16 +66,17 @@ export const SEGMENTOS_CS = {
     borderColor: 'rgba(16, 185, 129, 0.3)',
     icon: 'TrendingUp',
     priority: 1,
+    ciclo: 'mensal',
     criterios: [
-      'Uso frequente',
-      'Alto engajamento',
-      'Sem reclamacoes em aberto'
+      '20+ dias ativos',
+      'Score 100+',
+      '0 bugs'
     ],
     acoes: [
-      'Propor upsell de licencas',
-      'Oferecer recursos premium',
-      'Agendar QBR estrategico',
-      'Solicitar case de sucesso'
+      'Reconhecimento + pedido de case',
+      'Compartilhar case de sucesso do segmento',
+      'Expansao estrategica (creditos, modulos, pico)',
+      'Sinalizar oportunidades para Vendas'
     ]
   },
   ESTAVEL: {
@@ -87,15 +88,16 @@ export const SEGMENTOS_CS = {
     borderColor: 'rgba(59, 130, 246, 0.3)',
     icon: 'Heart',
     priority: 2,
+    ciclo: 'mensal',
     criterios: [
-      'Uso regular',
-      'Sem reclamacoes em aberto',
-      'Relacionamento saudavel'
+      '8-19 dias ativos',
+      'Score 30-99',
+      '0 bugs'
     ],
     acoes: [
       'Check-in mensal',
-      'Compartilhar novidades',
-      'Oferecer treinamentos',
+      'Compartilhar novidade Trakto/IA ou data do mercado',
+      'Mapear sazonalidade e calendario de campanhas',
       'Monitorar renovacao'
     ]
   },
@@ -108,16 +110,18 @@ export const SEGMENTOS_CS = {
     borderColor: 'rgba(245, 158, 11, 0.3)',
     icon: 'Eye',
     priority: 3,
+    ciclo: '21 dias',
     criterios: [
-      'Reclamacoes em aberto',
-      'Poucos dias ativos',
-      'Uso irregular'
+      '1 bug OU 3-7 dias ativos',
+      'Score 5-29'
     ],
     acoes: [
-      'Agendar call de discovery',
-      'Identificar pain points',
-      'Verificar se champion saiu',
-      'Propor plano de acao'
+      'D0-1: Comunicacao rapida ("estamos atentos")',
+      'D7: Verificar se resolveu',
+      'D7-8: E-mail aprofundado (se nao resolveu)',
+      'D8-14: Call de diagnostico (se necessario)',
+      'D14-21: Verificar metricas',
+      'D21+: Escalar para Resgate (se nao melhorou)'
     ]
   },
   RESGATE: {
@@ -129,17 +133,19 @@ export const SEGMENTOS_CS = {
     borderColor: 'rgba(239, 68, 68, 0.3)',
     icon: 'AlertTriangle',
     priority: 4,
+    ciclo: '15-30 dias',
     criterios: [
-      '3+ reclamacoes em aberto',
-      'Sem dias ativos no mes',
-      'Em aviso previo'
+      '2+ bugs OU 0-2 dias ativos',
+      'Score 0-4'
     ],
     acoes: [
-      'Ligar urgente para stakeholder',
-      'Escalar para lideranca',
-      'Oferecer condicoes especiais',
-      'Entender motivo',
-      'Aplicar playbook de resgate'
+      'D0: Alerta imediato (sem carencia)',
+      'D0-1: Revisar perfil + identificar causa',
+      'D1-2: E-mail de diagnostico',
+      'D2-3: Acionar Vendas (sem resposta)',
+      'D3-5: Call de diagnostico (30min)',
+      'D5-7: Criar roadmap de recuperacao',
+      'D7+: Acompanhamento semanal'
     ]
   }
 };
