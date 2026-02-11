@@ -1,6 +1,6 @@
 # CLAUDE.md - Diretrizes do CS Hub
 
-## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 10/02/2026)
+## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 11/02/2026)
 
 ### Status: Pronto para Lançamento ✅
 
@@ -13,7 +13,7 @@
 - ✅ Página Analytics com 5 abas (Uso, Conversas, Usuários, Vendas, Churn)
 - ✅ Otimizações de performance (Promise.all, queries paralelas)
 - ✅ Firebase configurado com índices + Firestore rules com RBAC
-- ✅ 11 Cloud Functions deployadas (segurança completa)
+- ✅ 13 Cloud Functions deployadas (segurança completa)
 - ✅ Transcrição de reuniões (texto manual + resumo IA)
 - ✅ Classificação automática de threads via Cloud Function (não mais no n8n)
 - ✅ Sistema Ongoing completo (ações recorrentes por saúde)
@@ -22,6 +22,8 @@
 - ✅ 347 testes automatizados passando (Vitest)
 - ✅ Status "onboarding" removido (tratado como "ativo")
 - ✅ Label "Segmento" renomeado para "Saúde" em toda a UI
+- ✅ Status de threads classificado por IA (resolvido, aguardando_cliente, aguardando_equipe)
+- ✅ Ações do Ongoing atualizadas conforme Playbook V1 (com timelines D0, D7, etc.)
 
 **Índices criados no Firebase:**
 - `threads`: team_id + updated_at
@@ -236,16 +238,23 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
     - **UI:** Card colorido quando ativa, botão para adicionar quando inativa, formulário com tipos selecionáveis
     - **Ações:** Criar, Editar, Remover oportunidade
     - **Constante:** `TIPOS_OPORTUNIDADE` no OngoingSection.jsx
-32. **Status de Thread Classificado por IA** (10/02/2026). IA agora determina o status da conversa:
+32. **Status de Thread Classificado por IA** (11/02/2026). IA agora determina o status da conversa:
     - **Problema anterior:** n8n usava regra simples (última msg do cliente → aguardando_equipe), ignorando contexto
-    - **Solução:** IA analisa conteúdo da conversa para determinar status correto
+    - **Solução:** IA analisa conteúdo e ÚLTIMA MENSAGEM para determinar status correto
     - **Valores possíveis:** `resolvido`, `aguardando_cliente`, `aguardando_equipe`
-    - **Critérios IA:**
-      - `resolvido` → problema solucionado, cliente agradeceu, confirmou que funcionou
-      - `aguardando_cliente` → equipe fez pergunta ou aguarda ação do cliente
-      - `aguardando_equipe` → cliente fez pergunta ou aguarda resposta da equipe
-    - **Arquivos:** `functions/index.js` (CLASSIFY_PROMPT, classifyThread, classifyPendingThreads), `useClassificarThread.js`
-    - **Benefício:** Threads com "Obrigado, resolvido!" agora são marcadas corretamente como `resolvido`
+    - **Critérios IA (baseados na última mensagem):**
+      - `resolvido` → cliente disse "obrigado", "valeu", "perfeito", confirmou que funcionou
+      - `aguardando_cliente` → última msg é da EQUIPE (respondeu, enviou material, "fico à disposição")
+      - `aguardando_equipe` → última msg é do CLIENTE (pergunta não respondida)
+    - **Arquivos:** `functions/index.js` (CLASSIFY_PROMPT), `src/validation/thread.js` (schema Zod), `src/hooks/useClassificarThread.js`, `src/pages/ClienteDetalhe.jsx`
+    - **Benefício:** Threads com "Obrigado!" → resolvido; Equipe respondeu → aguardando_cliente
+33. **Ações Padrão do Ongoing - Playbook V1** (11/02/2026). Ações atualizadas conforme documento oficial:
+    - **CRESCIMENTO (Mensal):** Reconhecimento + case, Compartilhar case do segmento, Expansão estratégica, Sinalizar para Vendas
+    - **ESTÁVEL (Mensal):** Check-in, Novidade Trakto/IA ou data do mercado, Mapear sazonalidade/calendário, Monitorar renovação
+    - **ALERTA (21 dias):** D0-1 comunicação rápida, D7 verificar, D7-8 e-mail aprofundado, D8-14 call diagnóstico, D14-21 métricas, D21+ escalar
+    - **RESGATE (15-30 dias):** D0 alerta imediato, D0-1 revisar perfil, D1-2 e-mail diagnóstico, D2-3 acionar Vendas, D3-5 call 30min, D5-7 roadmap, D7+ acompanhamento semanal
+    - **Critérios atualizados:** CRESCIMENTO (20+ dias, score 100+), ESTÁVEL (8-19 dias, score 30-99), ALERTA (1 bug OU 3-7 dias, score 5-29), RESGATE (2+ bugs OU 0-2 dias, score 0-4)
+    - **Arquivo:** `src/utils/segmentoCS.js` (SEGMENTOS_CS)
 
 ---
 
