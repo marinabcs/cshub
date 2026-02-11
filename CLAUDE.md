@@ -24,6 +24,10 @@
 - ✅ Label "Segmento" renomeado para "Saúde" em toda a UI
 - ✅ Status de threads classificado por IA (resolvido, aguardando_cliente, aguardando_equipe)
 - ✅ Ações do Ongoing atualizadas conforme Playbook V1 (com timelines D0, D7, etc.)
+- ✅ Templates redesenhados com cards expansíveis, preview de email e feedback visual
+- ✅ Gráficos de métricas (Escala e IA) nos últimos 60 dias em ClienteDetalhe
+- ✅ Modal "Copiar Destinatários" corrigido (busca usuários pelos times do cliente)
+- ✅ Terminologia "bug/reclamação" no Playbook Fluxograma
 
 **Índices criados no Firebase:**
 - `threads`: team_id + updated_at
@@ -58,6 +62,50 @@
 - Calculadora de Onboarding (refinamentos)
 - Analytics PDF (números grandes cortam na parte inferior)
 - Bugs com peso por severidade (ver decisão 27)
+
+---
+
+## 📝 NOTAS DA SESSÃO (11/02/2026)
+
+### Concluído nesta sessão:
+
+1. **Templates (OnGoing.jsx)** - Redesign completo:
+   - Cards expansíveis por template (clique para ver preview)
+   - Preview de email estilizado com assunto destacado
+   - Box de contexto por categoria (Momento + Tom)
+   - Botão "Copiar Template" com feedback visual "Copiado!" (2s)
+   - Tabela de referência rápida no final
+   - Botão "Destinatários" movido para linha da busca
+
+2. **Modal "Copiar Destinatários"** - Correções:
+   - Busca usuários pelos `times` do cliente (não mais pelo ID principal)
+   - Integração com hook `useUserActivityStatus` para classificação real (heavy_user/active/inactive)
+   - Ícones: Estrela = Stakeholder, Coroa = Heavy User, Círculo verde = Ativo, Círculo cinza = Inativo
+   - Botão "Selecionar todos" adicionado
+   - Exibe nome do time (team_name) em vez do ID
+
+3. **Gráficos de Métricas (ClienteDetalhe.jsx)**:
+   - Dois gráficos LineChart (Recharts) nos últimos 60 dias
+   - Gráfico ESCALA: Logins, Projetos, Assets
+   - Gráfico IA: Créditos consumidos, Features únicas
+   - Features conta quantidade de features diferentes (não soma de créditos)
+
+4. **Terminologia "bug/reclamação"**:
+   - PlaybookFluxograma.jsx: "BUGS" → "BUGS/RECLAMAÇÕES"
+   - segmentoCS.js: critérios atualizados com "bug/reclamação"
+
+### Pendências para próxima sessão:
+
+1. **n8n - Sync Usuarios Lookup**: Usuários não estão crescendo na exportação
+   - Workflow: `[CS Hub] Sync Usuarios Lookup`
+   - Usa `user_id` como chave de upsert (pode haver duplicatas por email com user_ids diferentes)
+   - Verificar se n8n está rodando corretamente às 5h
+   - Possível causa: filtro `WHERE team_name NOT IN ('Hostgator')` pode estar excluindo demais
+
+2. **Validar em produção**:
+   - Testar modal de destinatários com cliente real (ex: Anima)
+   - Verificar se gráficos de métricas aparecem corretamente
+   - Testar botão "Copiar Template" em diferentes navegadores
 
 ### Arquivos de documentação:
 - `/docs/TECHNICAL.md` - Documentação técnica completa (arquitetura, APIs, etc)
