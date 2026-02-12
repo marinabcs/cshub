@@ -28,6 +28,7 @@
 - ✅ Gráficos de métricas (Escala e IA) nos últimos 60 dias em ClienteDetalhe
 - ✅ Modal "Copiar Destinatários" corrigido (busca usuários pelos times do cliente)
 - ✅ Terminologia "bug/reclamação" no Playbook Fluxograma
+- ✅ Página "Oportunidades de Vendas" substituiu Resumo Executivo (clientes em CRESCIMENTO, dias, vezes, case obtido)
 
 **Índices criados no Firebase:**
 - `threads`: team_id + updated_at
@@ -303,6 +304,17 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
     - **RESGATE (15-30 dias):** D0 alerta imediato, D0-1 revisar perfil, D1-2 e-mail diagnóstico, D2-3 acionar Vendas, D3-5 call 30min, D5-7 roadmap, D7+ acompanhamento semanal
     - **Critérios atualizados:** CRESCIMENTO (20+ dias, score 100+), ESTÁVEL (8-19 dias, score 30-99), ALERTA (1 bug OU 3-7 dias, score 5-29), RESGATE (2+ bugs OU 0-2 dias, score 0-4)
     - **Arquivo:** `src/utils/segmentoCS.js` (SEGMENTOS_CS)
+34. **Página Oportunidades de Vendas** (12/02/2026). Substituiu o Resumo Executivo:
+    - **Objetivo:** Lista de clientes em CRESCIMENTO prontos para expansão/vendas
+    - **Dados exibidos:** Nome, quantidade de usuários, dias em crescimento, vezes em crescimento, stakeholders, case obtido
+    - **Níveis de crescimento:** 60+ dias (verde), 30+ dias (roxo), Recente (ciano)
+    - **Campo adicionado:** `case_obtido` (boolean) no cliente - checkbox na tabela
+    - **Cálculo dias:** Usa collection `interacoes` com `tipo: 'transicao_nivel'` para encontrar última transição para CRESCIMENTO
+    - **Cálculo vezes:** Conta quantas vezes o cliente já atingiu CRESCIMENTO no histórico
+    - **Filtros:** Por nível de crescimento, por case (obtido/pendente), busca por nome
+    - **Ordenação:** Por dias, usuários, vezes ou nome (clicável nos headers)
+    - **Arquivo:** `src/pages/ResumoExecutivo.jsx`
+    - **Menu:** Renomeado de "Resumo Executivo" para "Oportunidades"
 
 ---
 
