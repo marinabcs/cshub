@@ -1945,7 +1945,9 @@ export default function ClienteDetalhe() {
         // Montar timeline unificada: threads (email) + interações manuais + observações + alertas
         const timelineItems = [
           ...threads.map(t => {
-            const d = t.updated_at?.toDate ? t.updated_at.toDate() : (t.updated_at ? new Date(t.updated_at) : new Date(0));
+            // Usar data original do email (prioridade: data_ultima_mensagem > ultima_msg_cliente > ultima_msg_equipe > data_inicio > updated_at)
+            const dataOriginal = t.data_ultima_mensagem || t.ultima_msg_cliente || t.ultima_msg_equipe || t.data_inicio || t.updated_at;
+            const d = dataOriginal?.toDate ? dataOriginal.toDate() : (dataOriginal ? new Date(dataOriginal) : new Date(0));
             return { _source: 'thread', _date: d, _tipo: 'email', ...t };
           }),
           ...interacoes.map(i => {
