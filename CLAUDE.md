@@ -537,6 +537,9 @@ firebase deploy --only firestore:rules --project cs-hub-8c032
 firebase functions:log --project cs-hub-8c032
 ```
 
+**⛔ NUNCA usar `firebase deploy --only hosting`!**
+O frontend NÃO usa Firebase Hosting. O deploy do frontend é feito externamente (não pelo Claude).
+
 ### Console de secrets:
 https://console.cloud.google.com/security/secret-manager?project=cs-hub-8c032
 
