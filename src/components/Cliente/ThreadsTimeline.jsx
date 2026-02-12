@@ -10,6 +10,7 @@ const THREAD_STATUS = {
   aguardando_cliente: { value: 'aguardando_cliente', label: 'Aguardando Cliente', color: '#f59e0b' },
   aguardando_equipe: { value: 'aguardando_equipe', label: 'Aguardando Equipe', color: '#06b6d4' },
   resolvido: { value: 'resolvido', label: 'Resolvido', color: '#10b981' },
+  informativo: { value: 'informativo', label: 'Informativo', color: '#64748b' },
   inativo: { value: 'inativo', label: 'Inativo', color: '#64748b' }
 };
 
@@ -42,6 +43,24 @@ function formatarDataRelativa(timestamp) {
   if (diff === 0) return 'Hoje';
   if (diff === 1) return 'Ontem';
   return `há ${diff} dias`;
+}
+
+// Função para obter a data mais recente da thread (data original do email)
+function getDataMaisRecente(thread) {
+  const datas = [
+    thread.data_ultima_mensagem,
+    thread.ultima_msg_cliente,
+    thread.ultima_msg_equipe,
+    thread.data_inicio
+  ].filter(Boolean);
+
+  if (datas.length === 0) return thread.updated_at;
+
+  return datas.reduce((maisRecente, data) => {
+    const d1 = maisRecente?.toDate ? maisRecente.toDate() : new Date(maisRecente);
+    const d2 = data?.toDate ? data.toDate() : new Date(data);
+    return d2 > d1 ? data : maisRecente;
+  });
 }
 
 // Função para highlight de texto
@@ -111,16 +130,18 @@ export default function ThreadsTimeline({
       // Filtro por status
       if (filtroStatus !== 'todos' && thread.status !== filtroStatus) return false;
 
-      // Filtro por período
+      // Filtro por período (usa data original do email)
       if (dataInicio) {
-        const threadDate = thread.updated_at?.toDate ? thread.updated_at.toDate() : new Date(thread.updated_at);
+        const dataOriginal = getDataMaisRecente(thread);
+        const threadDate = dataOriginal?.toDate ? dataOriginal.toDate() : new Date(dataOriginal);
         const inicio = new Date(dataInicio);
         inicio.setHours(0, 0, 0, 0);
         if (threadDate < inicio) return false;
       }
 
       if (dataFim) {
-        const threadDate = thread.updated_at?.toDate ? thread.updated_at.toDate() : new Date(thread.updated_at);
+        const dataOriginal = getDataMaisRecente(thread);
+        const threadDate = dataOriginal?.toDate ? dataOriginal.toDate() : new Date(dataOriginal);
         const fim = new Date(dataFim);
         fim.setHours(23, 59, 59, 999);
         if (threadDate > fim) return false;
@@ -141,13 +162,17 @@ export default function ThreadsTimeline({
     result.sort((a, b) => {
       switch (ordenacao) {
         case 'recentes': {
-          const dateA = a.updated_at?.toDate?.() || new Date(0);
-          const dateB = b.updated_at?.toDate?.() || new Date(0);
+          const dataA = getDataMaisRecente(a);
+          const dataB = getDataMaisRecente(b);
+          const dateA = dataA?.toDate ? dataA.toDate() : new Date(dataA || 0);
+          const dateB = dataB?.toDate ? dataB.toDate() : new Date(dataB || 0);
           return dateB - dateA;
         }
         case 'antigas': {
-          const dateA = a.updated_at?.toDate?.() || new Date(0);
-          const dateB = b.updated_at?.toDate?.() || new Date(0);
+          const dataA = getDataMaisRecente(a);
+          const dataB = getDataMaisRecente(b);
+          const dateA = dataA?.toDate ? dataA.toDate() : new Date(dataA || 0);
+          const dateB = dataB?.toDate ? dataB.toDate() : new Date(dataB || 0);
           return dateA - dateB;
         }
         case 'urgentes': {
@@ -719,7 +744,7 @@ export default function ThreadsTimeline({
                       </span>
                       <span style={{ color: '#64748b', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Clock style={{ width: '12px', height: '12px' }} />
-                        {formatarDataRelativa(thread.updated_at)}
+                        {formatarDataRelativa(getDataMaisRecente(thread))}
                       </span>
                     </div>
                   </div>
