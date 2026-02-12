@@ -3302,6 +3302,31 @@ export default function ClienteDetalhe() {
                   <ArrowLeft style={{ width: '14px', height: '14px', transform: 'rotate(180deg)' }} />
                   Mover Cliente
                 </button>
+                <button
+                  onClick={() => {
+                    handleMarcarIrrelevante(selectedThread);
+                    setSelectedThread(prev => prev ? { ...prev, filtrado_manual: !prev.filtrado_manual } : null);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    background: selectedThread?.filtrado_manual ? 'rgba(16, 185, 129, 0.1)' : 'rgba(100, 116, 139, 0.1)',
+                    border: `1px solid ${selectedThread?.filtrado_manual ? 'rgba(16, 185, 129, 0.3)' : 'rgba(100, 116, 139, 0.3)'}`,
+                    borderRadius: '8px',
+                    color: selectedThread?.filtrado_manual ? '#10b981' : '#94a3b8',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {selectedThread?.filtrado_manual ? (
+                    <><Eye style={{ width: '14px', height: '14px' }} /> Marcar Relevante</>
+                  ) : (
+                    <><EyeOff style={{ width: '14px', height: '14px' }} /> Irrelevante</>
+                  )}
+                </button>
               </div>
 
               {erroClassificacao && (
