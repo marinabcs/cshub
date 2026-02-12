@@ -78,6 +78,8 @@ export default function Clientes() {
   });
 
   const [filterProblemas, setFilterProblemas] = useState(false);
+  const [filterComEmails, setFilterComEmails] = useState(false);
+  const [threadsCount, setThreadsCount] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 30;
   const [batchCalendario, setBatchCalendario] = useState({
@@ -137,9 +139,10 @@ export default function Clientes() {
   const fetchData = async () => {
     try {
       // OTIMIZAÇÃO: Executar queries em PARALELO (com cache para clientes)
-      const [clientesDocs, timesSnapshot] = await Promise.all([
+      const [clientesDocs, timesSnapshot, threadsSnapshot] = await Promise.all([
         cachedGetDocs('clientes', collection(db, 'clientes'), 300000),
-        getDocs(collection(db, 'times'))
+        getDocs(collection(db, 'times')),
+        getDocs(collection(db, 'threads'))
       ]);
 
       const clientesData = clientesDocs.map(doc => ({
@@ -153,6 +156,17 @@ export default function Clientes() {
         ...doc.data()
       }));
       setTimes(timesData);
+
+      // Contar threads por team_id
+      const threadsCounts = {};
+      threadsSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const teamId = data.team_id;
+        if (teamId) {
+          threadsCounts[teamId] = (threadsCounts[teamId] || 0) + 1;
+        }
+      });
+      setThreadsCount(threadsCounts);
 
       // Buscar contagem de usuários (agora otimizado com Promise.all interno)
       const teamIds = timesData.map(t => t.id);
@@ -438,7 +452,11 @@ export default function Clientes() {
       const matchesSegmento = filterSegmento.length === 0 || filterSegmento.includes(getClienteSegmento(cliente));
       const matchesArea = filterAreaAtuacao.length === 0 || filterAreaAtuacao.includes(cliente.area_atuacao);
       const matchesProblemas = !filterProblemas || (cliente.tags_problema || []).length > 0;
-      return matchesSearch && matchesClienteStatus && matchesType && matchesSegmento && matchesArea && matchesProblemas;
+      // Filtro de clientes com emails (threads)
+      const clienteTeamIds = cliente.times || [cliente.team_id || cliente.id];
+      const clienteThreadsCount = clienteTeamIds.reduce((sum, tid) => sum + (threadsCount[tid] || 0), 0);
+      const matchesComEmails = !filterComEmails || clienteThreadsCount > 0;
+      return matchesSearch && matchesClienteStatus && matchesType && matchesSegmento && matchesArea && matchesProblemas && matchesComEmails;
     })
     .sort((a, b) => {
       // Ordem de prioridade dos segmentos: RESGATE > ALERTA > ESTAVEL > CRESCIMENTO
@@ -462,7 +480,7 @@ export default function Clientes() {
   const clientesPaginados = filteredClientes.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   // Resetar página ao mudar filtros
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, filterClienteStatus, filterType, filterSegmento, filterAreaAtuacao, filterProblemas, sortOption]);
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, filterClienteStatus, filterType, filterSegmento, filterAreaAtuacao, filterProblemas, filterComEmails, sortOption]);
 
   const exportToCSV = () => {
     const headers = ['Nome', 'Responsáveis', 'Emails Responsáveis', 'Escopos', 'Team Type', 'Tags', 'Status', 'Saúde CS', 'Área de Atuação', 'Qtd Times'];
@@ -1401,8 +1419,28 @@ export default function Clientes() {
           Problemas
         </button>
 
+        {/* Filtro: Com emails (temporário) */}
+        <button
+          onClick={() => setFilterComEmails(!filterComEmails)}
+          style={{
+            padding: '10px 14px',
+            background: filterComEmails ? 'rgba(6, 182, 212, 0.2)' : 'rgba(30, 27, 75, 0.6)',
+            border: `1px solid ${filterComEmails ? '#06b6d4' : 'rgba(139, 92, 246, 0.2)'}`,
+            borderRadius: '10px',
+            color: filterComEmails ? '#06b6d4' : '#94a3b8',
+            fontSize: '13px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          📧 Com Emails
+        </button>
+
         {/* Botão limpar todos os filtros */}
-        {(searchTerm || filterSegmento.length > 0 || filterType.length > 0 || filterProblemas || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
+        {(searchTerm || filterSegmento.length > 0 || filterType.length > 0 || filterProblemas || filterComEmails || JSON.stringify([...filterClienteStatus].sort()) !== JSON.stringify([...DEFAULT_VISIBLE_STATUS].sort())) && (
           <button
             onClick={() => {
               setSearchTerm('');
@@ -1410,6 +1448,7 @@ export default function Clientes() {
               setFilterType([]);
               setFilterClienteStatus(DEFAULT_VISIBLE_STATUS);
               setFilterProblemas(false);
+              setFilterComEmails(false);
               localStorage.removeItem(FILTERS_STORAGE_KEY);
             }}
             style={{
