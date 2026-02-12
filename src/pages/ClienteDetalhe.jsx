@@ -532,11 +532,17 @@ export default function ClienteDetalhe() {
     setCliente(prev => ({ ...prev, ...updateData }));
   };
 
+  const [loadingMensagens, setLoadingMensagens] = useState(false);
+
   const fetchMensagens = async (thread) => {
+    setLoadingMensagens(true);
+    setMensagens([]);
     try {
       // Usar nova função que busca da collection raiz 'mensagens'
       const threadId = thread.thread_id || thread.id;
+      console.log('[fetchMensagens] Buscando mensagens para thread_id:', threadId);
       const mensagensData = await getMensagensByThread(threadId);
+      console.log('[fetchMensagens] Mensagens encontradas:', mensagensData.length);
       setMensagens(mensagensData.sort((a, b) => {
         const dateA = a.data?.toDate?.() || (a.data ? new Date(a.data) : new Date(0));
         const dateB = b.data?.toDate?.() || (b.data ? new Date(b.data) : new Date(0));
@@ -545,6 +551,8 @@ export default function ClienteDetalhe() {
     } catch (error) {
       console.error('Erro ao buscar mensagens:', error);
       setMensagens([]);
+    } finally {
+      setLoadingMensagens(false);
     }
   };
 
@@ -3318,9 +3326,18 @@ export default function ClienteDetalhe() {
                     </div>
                   ))}
                 </div>
+              ) : loadingMensagens ? (
+                <div style={{ padding: '32px', textAlign: 'center' }}>
+                  <Loader2 style={{ width: '24px', height: '24px', color: '#8b5cf6', margin: '0 auto 12px', animation: 'spin 1s linear infinite' }} />
+                  <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Carregando mensagens...</p>
+                </div>
               ) : (
                 <div style={{ padding: '32px', textAlign: 'center' }}>
-                  <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Carregando mensagens...</p>
+                  <Mail style={{ width: '32px', height: '32px', color: '#64748b', margin: '0 auto 12px' }} />
+                  <p style={{ color: '#64748b', fontSize: '14px', margin: '0 0 8px 0' }}>Nenhuma mensagem encontrada</p>
+                  <p style={{ color: '#475569', fontSize: '12px', margin: 0 }}>
+                    thread_id: {selectedThread?.thread_id || selectedThread?.id || 'N/A'}
+                  </p>
                 </div>
               )}
             </div>
