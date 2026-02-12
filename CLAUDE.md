@@ -66,47 +66,61 @@
 
 ---
 
-## 📝 NOTAS DA SESSÃO (11/02/2026)
+## 📝 NOTAS DA SESSÃO (12/02/2026)
 
 ### Concluído nesta sessão:
 
-1. **Templates (OnGoing.jsx)** - Redesign completo:
-   - Cards expansíveis por template (clique para ver preview)
-   - Preview de email estilizado com assunto destacado
-   - Box de contexto por categoria (Momento + Tom)
-   - Botão "Copiar Template" com feedback visual "Copiado!" (2s)
-   - Tabela de referência rápida no final
-   - Botão "Destinatários" movido para linha da busca
+1. **Botão "Mover Cliente"** - Reclassificar threads entre clientes:
+   - Modal com campo de busca para encontrar cliente
+   - Lista scrollável de clientes ativos
+   - Move thread E todas as mensagens para o novo cliente
+   - Útil quando agências (ex: Omnicom) atendem múltiplos clientes
 
-2. **Modal "Copiar Destinatários"** - Correções:
-   - Busca usuários pelos `times` do cliente (não mais pelo ID principal)
-   - Integração com hook `useUserActivityStatus` para classificação real (heavy_user/active/inactive)
-   - Ícones: Estrela = Stakeholder, Coroa = Heavy User, Círculo verde = Ativo, Círculo cinza = Inativo
-   - Botão "Selecionar todos" adicionado
-   - Exibe nome do time (team_name) em vez do ID
+2. **Botão "Irrelevante"** na modal de thread:
+   - Marca/desmarca thread como irrelevante
+   - Útil para filtrar emails de vendedores externos (Wellhub, etc.)
 
-3. **Gráficos de Métricas (ClienteDetalhe.jsx)**:
-   - Dois gráficos LineChart (Recharts) nos últimos 60 dias
-   - Gráfico ESCALA: Logins, Projetos, Assets
-   - Gráfico IA: Créditos consumidos, Features únicas
-   - Features conta quantidade de features diferentes (não soma de créditos)
+3. **Classificação IA melhorada** (Cloud Function deployada):
+   - Confirmação de reunião ("nos vemos amanhã") → status `resolvido`
+   - Convites/RSVPs de calendário → categoria e status `informativo`
+   - Nova categoria `informativo` para notificações automáticas
 
-4. **Terminologia "bug/reclamação"**:
-   - PlaybookFluxograma.jsx: "BUGS" → "BUGS/RECLAMAÇÕES"
-   - segmentoCS.js: critérios atualizados com "bug/reclamação"
+4. **Gráficos 60 dias completos**:
+   - Sempre mostra todos os 60 dias no eixo X
+   - Dias sem atividade aparecem como zero (não mais comprimido)
+
+5. **Limpeza de Configurações**:
+   - Removidos botões de manutenção temporários (migração, unificação)
+
+6. **Filtros de calendário no Firebase**:
+   - Adicionados: `aceito:`, `convite:`, `recusado:`, `talvez:`, `invitation:`, etc.
+   - Configurar via: Configurações → Filtros de Email
+
+### Problema identificado - Threads com cliente errado:
+
+**Causa:** Agências (ex: Omnicom - `@omc.com`) atendem múltiplos clientes. O domínio da agência estava mapeado para um cliente específico, causando threads da Nissan aparecerem em Bodega Aurrera.
+
+**Solução implementada:**
+1. Botão "Mover Cliente" para reclassificar manualmente
+2. n8n atualizado para usar domínio mais frequente (não primeiro)
+3. Recomendação: NÃO mapear domínios de agências compartilhadas nos teams
 
 ### Pendências para próxima sessão:
 
-1. **n8n - Sync Usuarios Lookup**: Usuários não estão crescendo na exportação
-   - Workflow: `[CS Hub] Sync Usuarios Lookup`
-   - Usa `user_id` como chave de upsert (pode haver duplicatas por email com user_ids diferentes)
-   - Verificar se n8n está rodando corretamente às 5h
-   - Possível causa: filtro `WHERE team_name NOT IN ('Hostgator')` pode estar excluindo demais
+1. **n8n - Verificar filtros funcionando**:
+   - Filtros de calendário foram adicionados ao Firebase
+   - Testar se novos emails de "Convite:" e "Aceito:" são bloqueados
+   - Emails já importados precisam ser marcados como irrelevantes manualmente
 
-2. **Validar em produção**:
-   - Testar modal de destinatários com cliente real (ex: Anima)
-   - Verificar se gráficos de métricas aparecem corretamente
-   - Testar botão "Copiar Template" em diferentes navegadores
+2. **Emails de vendedores externos** (Wellhub, etc.):
+   - Ficam na timeline para histórico completo
+   - CS usa botão "Irrelevante" para filtrar
+   - Considerar criar categoria `promocional_terceiro` na IA (opcional)
+
+3. **Regra de fechamento automático**:
+   - Threads `aguardando_cliente` + `resposta_resolutiva: true` → fecham após 3 dias
+   - Cloud Function `fecharThreadsResolutivas` roda às 8h seg-sex
+   - Verificar se `resposta_resolutiva` está sendo setado corretamente
 
 ### Arquivos de documentação:
 - `/docs/TECHNICAL.md` - Documentação técnica completa (arquitetura, APIs, etc)
