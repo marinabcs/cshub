@@ -4,7 +4,7 @@ import { db } from '../services/firebase';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp, Users, Award, Star, Check, Search,
-  ChevronDown, ChevronUp, ExternalLink, Filter
+  ChevronDown, ChevronUp, ExternalLink, Filter, Download
 } from 'lucide-react';
 
 // Níveis de tempo em crescimento
@@ -203,6 +203,61 @@ export default function ResumoExecutivo() {
     }
   };
 
+  // Exportar Excel
+  const exportarExcel = async () => {
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Oportunidades de Vendas');
+
+      // Definir colunas
+      worksheet.columns = [
+        { header: 'Cliente', key: 'cliente', width: 30 },
+        { header: 'Usuários', key: 'usuarios', width: 12 },
+        { header: 'Dias em Crescimento', key: 'dias', width: 20 },
+        { header: 'Vezes em Crescimento', key: 'vezes', width: 20 },
+        { header: 'Stakeholders', key: 'stakeholders', width: 15 },
+        { header: 'Case Obtido', key: 'case', width: 12 },
+        { header: 'Contatos (emails)', key: 'emails', width: 40 },
+      ];
+
+      // Estilo do header
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF8B5CF6' }
+      };
+      worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+      // Adicionar dados
+      clientesOrdenados.forEach(cliente => {
+        const emails = cliente.stakeholders.map(s => s.email).filter(Boolean).join(', ');
+        worksheet.addRow({
+          cliente: cliente.nome || cliente.team_name,
+          usuarios: cliente.totalUsuarios,
+          dias: cliente.diasEmCrescimento,
+          vezes: cliente.vezesEmCrescimento,
+          stakeholders: cliente.stakeholders.length,
+          case: cliente.case_obtido ? 'Sim' : 'Não',
+          emails: emails
+        });
+      });
+
+      // Gerar arquivo
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `oportunidades-vendas-${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Erro ao exportar Excel:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: '#0f0a1f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -215,27 +270,49 @@ export default function ResumoExecutivo() {
     <div style={{ padding: '32px', background: '#0f0a1f', minHeight: '100vh' }}>
       {/* Header */}
       <div style={{ marginBottom: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{
-            width: '56px',
-            height: '56px',
-            background: 'linear-gradient(135deg, #10b981 0%, #8b5cf6 100%)',
-            borderRadius: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 8px 24px rgba(16, 185, 129, 0.3)'
-          }}>
-            <TrendingUp style={{ width: '28px', height: '28px', color: 'white' }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              background: 'linear-gradient(135deg, #10b981 0%, #8b5cf6 100%)',
+              borderRadius: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 24px rgba(16, 185, 129, 0.3)'
+            }}>
+              <TrendingUp style={{ width: '28px', height: '28px', color: 'white' }} />
+            </div>
+            <div>
+              <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: 0 }}>
+                Oportunidades de Vendas
+              </h1>
+              <p style={{ color: '#94a3b8', fontSize: '14px', margin: '4px 0 0 0' }}>
+                Clientes em crescimento prontos para expansão
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', margin: 0 }}>
-              Oportunidades de Vendas
-            </h1>
-            <p style={{ color: '#94a3b8', fontSize: '14px', margin: '4px 0 0 0' }}>
-              Clientes em crescimento prontos para expansão
-            </p>
-          </div>
+          <button
+            onClick={exportarExcel}
+            disabled={clientesOrdenados.length === 0}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              background: clientesOrdenados.length === 0 ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              color: 'white',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: clientesOrdenados.length === 0 ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <Download style={{ width: '18px', height: '18px' }} />
+            Exportar Excel
+          </button>
         </div>
       </div>
 
