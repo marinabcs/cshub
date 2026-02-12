@@ -2475,3 +2475,282 @@ export const backupFirestore = onSchedule(
     };
   }
 );
+
+// ============================================
+// MIGRAÇÃO: CORRIGIR DATAS DAS THREADS
+// ============================================
+
+/**
+ * Função para corrigir as datas das threads existentes.
+ * Busca as mensagens de cada thread e atualiza data_inicio e data_ultima_mensagem.
+ *
+ * Pode ser chamada uma vez pelo admin para migrar dados retroativos.
+ */
+// Padrões de assuntos informativos (compartilhamentos, etc)
+const ASSUNTOS_INFORMATIVOS_PADRAO = [
+  'compartilhou a pasta', 'compartilhou o documento', 'compartilhou o arquivo',
+  'compartilhou com você', 'compartilhou um', 'has shared',
+  'shared a folder', 'shared a document', 'shared a file', 'shared with you',
+  'compartió la carpeta', 'compartió el documento', 'compartió contigo',
+  'foi compartilhado', 'foi compartilhada',
+  'added you to', 'adicionou você a', 'te agregó a',
+  'gave you access', 'concedeu acesso', 'te dio acceso',
+  'you now have access', 'você agora tem acesso',
+  'comentou em', 'commented on', 'comentó en',
+  'mencionou você', 'mentioned you', 'te mencionó',
+  'res: compartilhou', 're: compartilhou', 'fwd: compartilhou',
+  'res: shared', 're: shared', 'fwd: shared'
+];
+
+/**
+ * Verifica se um assunto é informativo (compartilhamento, etc)
+ */
+function isAssuntoInformativo(assunto, filtrosCustom = []) {
+  if (!assunto) return false;
+  const assuntoLower = assunto.toLowerCase();
+  const todosPatterns = [...ASSUNTOS_INFORMATIVOS_PADRAO, ...filtrosCustom];
+  return todosPatterns.some(pattern => assuntoLower.includes(pattern.toLowerCase()));
+}
+
+/**
+ * Migração para corrigir status de threads informativas (compartilhamentos).
+ * Threads de compartilhamento devem ter status 'informativo', não 'aguardando_equipe'.
+ */
+export const migrarStatusInformativos = onCall(
+  {
+    region: 'southamerica-east1',
+    timeoutSeconds: 540,
+    memory: '512MiB'
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    const userDoc = await db.collection('usuarios_sistema').doc(request.auth.uid).get();
+    const userData = userDoc.data();
+    if (!userData || !['admin', 'super_admin'].includes(userData.role)) {
+      throw new HttpsError('permission-denied', 'Apenas admins podem executar esta migração');
+    }
+
+    console.log('[Migração Status] Iniciando correção de status informativos...');
+
+    try {
+      // Buscar filtros customizados se existirem
+      let filtrosCustom = [];
+      try {
+        const configDoc = await db.collection('config').doc('email_filters').get();
+        if (configDoc.exists) {
+          filtrosCustom = configDoc.data().assuntos_informativos || [];
+        }
+      } catch (e) {
+        console.log('[Migração Status] Filtros custom não encontrados, usando padrão');
+      }
+
+      // Buscar threads que NÃO estão como informativo
+      const threadsSnap = await db.collection('threads')
+        .where('status', '!=', 'informativo')
+        .get();
+
+      console.log(`[Migração Status] Threads para verificar: ${threadsSnap.size}`);
+
+      let atualizadas = 0;
+      let ignoradas = 0;
+      const BATCH_SIZE = 500;
+      let batch = db.batch();
+      let batchCount = 0;
+
+      for (const threadDoc of threadsSnap.docs) {
+        const data = threadDoc.data();
+        const assunto = data.assunto || '';
+
+        if (isAssuntoInformativo(assunto, filtrosCustom)) {
+          batch.update(threadDoc.ref, {
+            status: 'informativo',
+            requer_acao: false
+          });
+          batchCount++;
+          atualizadas++;
+
+          if (batchCount >= BATCH_SIZE) {
+            await batch.commit();
+            console.log(`[Migração Status] Batch commitado: ${atualizadas} threads atualizadas`);
+            batch = db.batch();
+            batchCount = 0;
+          }
+        } else {
+          ignoradas++;
+        }
+      }
+
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+
+      console.log(`[Migração Status] Concluído! Atualizadas: ${atualizadas}, Ignoradas: ${ignoradas}`);
+
+      // Registrar na auditoria
+      await db.collection('auditoria').add({
+        acao: 'migracao_status_informativos',
+        entidade: 'system',
+        usuario_id: request.auth.uid,
+        usuario_email: userData.email,
+        usuario_nome: userData.nome || userData.email,
+        dados_novos: {
+          threads_atualizadas: atualizadas,
+          threads_ignoradas: ignoradas,
+          total_verificadas: threadsSnap.size
+        },
+        created_at: Timestamp.now()
+      });
+
+      return {
+        success: true,
+        atualizadas,
+        ignoradas,
+        total: threadsSnap.size
+      };
+    } catch (error) {
+      console.error('[Migração Status] Erro:', error.message);
+      throw new HttpsError('internal', 'Erro na migração: ' + error.message);
+    }
+  }
+);
+
+export const migrarDatasThreads = onCall(
+  {
+    region: 'southamerica-east1',
+    timeoutSeconds: 540, // 9 minutos para processar muitas threads
+    memory: '512MiB'
+  },
+  async (request) => {
+    // Verificar autenticação
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    // Verificar se é admin
+    const userDoc = await db.collection('usuarios_sistema').doc(request.auth.uid).get();
+    const userData = userDoc.data();
+    if (!userData || !['admin', 'super_admin'].includes(userData.role)) {
+      throw new HttpsError('permission-denied', 'Apenas admins podem executar esta migração');
+    }
+
+    console.log('[Migração Datas] Iniciando migração de datas das threads...');
+
+    try {
+      // Buscar todas as threads
+      const threadsSnap = await db.collection('threads').get();
+      console.log(`[Migração Datas] Total de threads: ${threadsSnap.size}`);
+
+      let atualizadas = 0;
+      let semMensagens = 0;
+      let erros = 0;
+
+      // Processar em batches de 500
+      const BATCH_SIZE = 500;
+      let batch = db.batch();
+      let batchCount = 0;
+
+      for (const threadDoc of threadsSnap.docs) {
+        try {
+          const threadId = threadDoc.id;
+          const threadData = threadDoc.data();
+
+          // Buscar mensagens desta thread
+          const mensagensSnap = await db.collection('mensagens')
+            .where('thread_id', '==', threadId)
+            .orderBy('data', 'asc')
+            .get();
+
+          if (mensagensSnap.empty) {
+            // Tentar usar ultima_msg_cliente ou ultima_msg_equipe se existirem
+            if (threadData.ultima_msg_cliente || threadData.ultima_msg_equipe) {
+              const datas = [threadData.ultima_msg_cliente, threadData.ultima_msg_equipe].filter(Boolean);
+              const dataInicio = datas.reduce((min, d) => {
+                const date = d?.toDate ? d.toDate() : new Date(d);
+                const minDate = min?.toDate ? min.toDate() : new Date(min);
+                return date < minDate ? d : min;
+              }, datas[0]);
+              const dataUltima = datas.reduce((max, d) => {
+                const date = d?.toDate ? d.toDate() : new Date(d);
+                const maxDate = max?.toDate ? max.toDate() : new Date(max);
+                return date > maxDate ? d : max;
+              }, datas[0]);
+
+              batch.update(threadDoc.ref, {
+                data_inicio: dataInicio,
+                data_ultima_mensagem: dataUltima
+              });
+              batchCount++;
+              atualizadas++;
+            } else {
+              semMensagens++;
+            }
+            continue;
+          }
+
+          // Primeira e última mensagem
+          const primeiraMensagem = mensagensSnap.docs[0].data();
+          const ultimaMensagem = mensagensSnap.docs[mensagensSnap.docs.length - 1].data();
+
+          const dataInicio = primeiraMensagem.data;
+          const dataUltimaMensagem = ultimaMensagem.data;
+
+          // Atualizar thread
+          batch.update(threadDoc.ref, {
+            data_inicio: dataInicio,
+            data_ultima_mensagem: dataUltimaMensagem
+          });
+          batchCount++;
+          atualizadas++;
+
+          // Commit batch a cada BATCH_SIZE
+          if (batchCount >= BATCH_SIZE) {
+            await batch.commit();
+            console.log(`[Migração Datas] Batch commitado: ${atualizadas} threads atualizadas`);
+            batch = db.batch();
+            batchCount = 0;
+          }
+        } catch (err) {
+          console.error(`[Migração Datas] Erro na thread ${threadDoc.id}:`, err.message);
+          erros++;
+        }
+      }
+
+      // Commit do batch final
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+
+      console.log(`[Migração Datas] Concluído! Atualizadas: ${atualizadas}, Sem mensagens: ${semMensagens}, Erros: ${erros}`);
+
+      // Registrar na auditoria
+      await db.collection('auditoria').add({
+        acao: 'migracao_datas_threads',
+        entidade: 'system',
+        usuario_id: request.auth.uid,
+        usuario_email: userData.email,
+        usuario_nome: userData.nome || userData.email,
+        dados_novos: {
+          threads_atualizadas: atualizadas,
+          threads_sem_mensagens: semMensagens,
+          erros: erros,
+          total_threads: threadsSnap.size
+        },
+        created_at: Timestamp.now()
+      });
+
+      return {
+        success: true,
+        atualizadas,
+        semMensagens,
+        erros,
+        total: threadsSnap.size
+      };
+    } catch (error) {
+      console.error('[Migração Datas] Erro geral:', error.message);
+      throw new HttpsError('internal', 'Erro na migração: ' + error.message);
+    }
+  }
+);
