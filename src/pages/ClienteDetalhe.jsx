@@ -3333,6 +3333,18 @@ export default function ClienteDetalhe() {
                   <Loader2 style={{ width: '24px', height: '24px', color: '#8b5cf6', margin: '0 auto 12px', animation: 'spin 1s linear infinite' }} />
                   <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Carregando mensagens...</p>
                 </div>
+              ) : (selectedThread?.conversa_para_resumo || selectedThread?.snippet) ? (
+                <div style={{ padding: '16px' }}>
+                  <p style={{ color: '#f59e0b', fontSize: '12px', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertTriangle style={{ width: '14px', height: '14px' }} />
+                    Mensagens detalhadas não disponíveis - exibindo resumo da conversa
+                  </p>
+                  <div style={{ background: 'rgba(15, 10, 31, 0.6)', border: '1px solid rgba(139, 92, 246, 0.1)', borderRadius: '12px', padding: '16px' }}>
+                    <p style={{ color: '#e2e8f0', fontSize: '14px', margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                      {selectedThread.conversa_para_resumo || selectedThread.snippet}
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <div style={{ padding: '32px', textAlign: 'center' }}>
                   <Mail style={{ width: '32px', height: '32px', color: '#64748b', margin: '0 auto 12px' }} />
