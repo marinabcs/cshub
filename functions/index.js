@@ -466,9 +466,10 @@ CONVERSA:
 {contexto}
 Retorne APENAS um JSON válido (sem markdown, sem explicações) com:
 {
-  "categoria": "erro_bug" | "reclamacao" | "problema_tecnico" | "feedback" | "duvida_pergunta" | "solicitacao" | "outro",
+  "categoria": "erro_bug" | "reclamacao" | "problema_tecnico" | "feedback" | "duvida_pergunta" | "solicitacao" | "informativo" | "outro",
   "sentimento": "positivo" | "neutro" | "negativo" | "urgente",
-  "status": "resolvido" | "aguardando_cliente" | "aguardando_equipe",
+  "status": "resolvido" | "aguardando_cliente" | "aguardando_equipe" | "informativo",
+  "resposta_resolutiva": true | false,
   "resumo": "Resumo em 1-2 frases do que foi discutido"
 }
 
@@ -479,6 +480,7 @@ Critérios para CATEGORIA (escolha a mais adequada):
 - feedback = sugestão, elogio ou crítica construtiva sobre o produto
 - duvida_pergunta = pergunta sobre como usar uma funcionalidade
 - solicitacao = pedido de feature, recurso ou ajuda específica
+- informativo = convite de reunião, RSVP (aceito/recusado), notificação de calendário, compartilhamento de arquivo, ou notificação automática sem necessidade de ação
 - outro = não se encaixa nas anteriores
 
 Critérios para SENTIMENTO:
@@ -487,13 +489,27 @@ Critérios para SENTIMENTO:
 - negativo = cliente insatisfeito, frustrado ou reclamando
 - urgente = problema crítico que impede o uso ou precisa atenção imediata
 
-Critérios para STATUS (baseado na ÚLTIMA MENSAGEM da conversa):
-- resolvido = cliente confirmou que o problema foi resolvido, agradeceu explicitamente ("obrigado", "valeu", "perfeito"), ou disse que funcionou
-- aguardando_cliente = a ÚLTIMA MENSAGEM é da EQUIPE (respondeu dúvida, enviou material, disse "fico à disposição", aguarda retorno do cliente)
-- aguardando_equipe = a ÚLTIMA MENSAGEM é do CLIENTE (fez pergunta, reportou problema, pediu algo que ainda não foi respondido)
+Critérios para STATUS (baseado na ÚLTIMA MENSAGEM e CONTEXTO da conversa):
+- resolvido = qualquer um dos casos abaixo:
+  * Cliente confirmou que o problema foi resolvido, agradeceu ("obrigado", "valeu", "perfeito"), ou disse que funcionou
+  * Equipe CONFIRMOU participação em reunião/call ("nos vemos amanhã", "estaremos lá", "confirmado", "vamos participar", "adicionei participantes")
+  * Equipe AGENDOU ou MARCOU reunião ("marquei reunião", "mandei invite", "agendei uma call") - próximo passo é a reunião, não email
+  * Conversa foi encerrada com despedida mútua
+- aguardando_cliente = a última mensagem é da EQUIPE e NÃO é confirmação de reunião (ex: respondeu dúvida, enviou material, pediu informação, disse "fico à disposição")
+- aguardando_equipe = a última mensagem é do CLIENTE e contém pergunta, pedido ou problema não respondido
+- informativo = convite de calendário, RSVP (aceito/recusado/talvez), notificação automática, compartilhamento de arquivo - não requer ação
 
-IMPORTANTE: Se a equipe respondeu por último (mesmo que seja "fico à disposição"), o status é "aguardando_cliente".
-Se o cliente respondeu "obrigado" ou similar, o status é "resolvido".`;
+Critérios para RESPOSTA_RESOLUTIVA:
+- true = equipe deu resposta que resolve ou encaminha: enviou material, link, explicação, agendou reunião, confirmou participação
+- true = próximo passo é reunião/call (não há mais o que esperar via email)
+- false = equipe apenas pediu mais informações ou disse que vai verificar
+
+REGRAS IMPORTANTES:
+1. Se o assunto começa com "Convite:", "Aceito:", "Recusado:", "Talvez:" → categoria=informativo, status=informativo
+2. Se equipe CONFIRMA participação em reunião (ex: "nos vemos amanhã", "estaremos lá") → status=resolvido
+3. Se equipe AGENDA reunião (ex: "marquei call", "mandei invite") → status=resolvido
+4. Se é compartilhamento de arquivo do Google Drive → categoria=informativo, status=informativo
+5. Apenas use aguardando_cliente se a equipe fez pergunta ou está esperando retorno que NÃO seja uma reunião já agendada`;
 
 export const classifyThread = onCall({
   region: 'southamerica-east1',
@@ -564,6 +580,7 @@ export const classifyThread = onCall({
         categoria: 'outro',
         sentimento: 'neutro',
         status: 'aguardando_equipe',
+        resposta_resolutiva: false,
         resumo: 'Não foi possível classificar esta conversa.'
       };
     }
@@ -572,6 +589,7 @@ export const classifyThread = onCall({
       categoria: parsed.categoria || 'outro',
       sentimento: parsed.sentimento || 'neutro',
       status: parsed.status || 'aguardando_equipe',
+      resposta_resolutiva: parsed.resposta_resolutiva === true,
       resumo: parsed.resumo || 'Sem resumo'
     };
   } catch (error) {
@@ -2140,21 +2158,22 @@ export const classifyPendingThreads = onSchedule({
           classificacao = JSON.parse(jsonStr);
         } catch {
           console.warn(`[ClassifyThreads] JSON inválido para thread ${thread.id}`);
-          classificacao = { categoria: 'outro', sentimento: 'neutro', status: 'aguardando_equipe', resumo: 'Não foi possível classificar' };
+          classificacao = { categoria: 'outro', sentimento: 'neutro', status: 'aguardando_equipe', resposta_resolutiva: false, resumo: 'Não foi possível classificar' };
         }
 
-        // Atualizar thread no Firestore (incluindo status da IA)
+        // Atualizar thread no Firestore (incluindo status da IA e resposta_resolutiva)
         await thread.ref.update({
           categoria: classificacao.categoria || 'outro',
           sentimento: classificacao.sentimento || 'neutro',
           status: classificacao.status || 'aguardando_equipe',
+          resposta_resolutiva: classificacao.resposta_resolutiva === true,
           resumo_ia: classificacao.resumo || null,
           classificado_por: 'ia_automatico',
           classificado_em: Timestamp.now(),
           updated_at: Timestamp.now()
         });
 
-        return { threadId: thread.id, success: true, categoria: classificacao.categoria, status: classificacao.status };
+        return { threadId: thread.id, success: true, categoria: classificacao.categoria, status: classificacao.status, resposta_resolutiva: classificacao.resposta_resolutiva };
 
       } catch (error) {
         console.error(`[ClassifyThreads] Erro na thread ${thread.id}:`, error.message);
@@ -2751,6 +2770,558 @@ export const migrarDatasThreads = onCall(
     } catch (error) {
       console.error('[Migração Datas] Erro geral:', error.message);
       throw new HttpsError('internal', 'Erro na migração: ' + error.message);
+    }
+  }
+);
+
+// ============================================
+// FECHAR THREADS RESOLUTIVAS AUTOMATICAMENTE
+// ============================================
+
+/**
+ * Fecha automaticamente threads onde:
+ * - status = 'aguardando_cliente'
+ * - resposta_resolutiva = true
+ * - última mensagem da equipe há mais de X dias (configurável, default 3)
+ *
+ * Roda diariamente às 8h (após a classificação das 7:30)
+ */
+export const fecharThreadsResolutivas = onSchedule(
+  {
+    schedule: '0 8 * * 1-5', // 8h, seg-sex
+    timeZone: 'America/Sao_Paulo',
+    region: 'southamerica-east1',
+    timeoutSeconds: 300,
+    memory: '512MiB'
+  },
+  async () => {
+    console.log('[FecharThreads] Iniciando verificação de threads resolutivas...');
+
+    const now = new Date();
+
+    // Buscar configuração de dias para fechamento (default: 3 dias)
+    let diasParaFechamento = 3;
+    try {
+      const configDoc = await db.collection('config').doc('threads_config').get();
+      if (configDoc.exists) {
+        diasParaFechamento = configDoc.data().dias_fechamento_automatico || 3;
+      }
+    } catch (e) {
+      console.log('[FecharThreads] Config não encontrada, usando default de 3 dias');
+    }
+
+    // Calcular data limite
+    const dataLimite = new Date();
+    dataLimite.setDate(dataLimite.getDate() - diasParaFechamento);
+
+    console.log(`[FecharThreads] Buscando threads aguardando_cliente com resposta_resolutiva há mais de ${diasParaFechamento} dias`);
+
+    // Buscar threads candidatas
+    const threadsSnap = await db.collection('threads')
+      .where('status', '==', 'aguardando_cliente')
+      .where('resposta_resolutiva', '==', true)
+      .get();
+
+    if (threadsSnap.empty) {
+      console.log('[FecharThreads] Nenhuma thread candidata encontrada');
+      return;
+    }
+
+    console.log(`[FecharThreads] ${threadsSnap.size} threads candidatas encontradas`);
+
+    let fechadas = 0;
+    let ignoradas = 0;
+    const BATCH_SIZE = 500;
+    let batch = db.batch();
+    let batchCount = 0;
+
+    for (const threadDoc of threadsSnap.docs) {
+      const data = threadDoc.data();
+
+      // Verificar data da última mensagem da equipe
+      const dataUltimaEquipe = data.ultima_msg_equipe?.toDate
+        ? data.ultima_msg_equipe.toDate()
+        : (data.ultima_msg_equipe ? new Date(data.ultima_msg_equipe) : null);
+
+      // Se não tem data da equipe, usar data_ultima_mensagem
+      const dataReferencia = dataUltimaEquipe || (
+        data.data_ultima_mensagem?.toDate
+          ? data.data_ultima_mensagem.toDate()
+          : (data.data_ultima_mensagem ? new Date(data.data_ultima_mensagem) : null)
+      );
+
+      if (!dataReferencia) {
+        ignoradas++;
+        continue;
+      }
+
+      // Verificar se passou tempo suficiente
+      if (dataReferencia > dataLimite) {
+        ignoradas++;
+        continue;
+      }
+
+      // Fechar a thread
+      batch.update(threadDoc.ref, {
+        status: 'resolvido',
+        fechado_automaticamente: true,
+        fechado_em: Timestamp.now(),
+        motivo_fechamento: `Fechado automaticamente após ${diasParaFechamento} dias sem resposta do cliente (resposta resolutiva)`,
+        updated_at: Timestamp.now()
+      });
+
+      batchCount++;
+      fechadas++;
+
+      if (batchCount >= BATCH_SIZE) {
+        await batch.commit();
+        console.log(`[FecharThreads] Batch commitado: ${fechadas} threads fechadas`);
+        batch = db.batch();
+        batchCount = 0;
+      }
+    }
+
+    // Commit final
+    if (batchCount > 0) {
+      await batch.commit();
+    }
+
+    // Registrar na auditoria
+    try {
+      await db.collection('audit_logs').add({
+        acao: 'fechamento_automatico_threads',
+        entidade_tipo: 'system',
+        entidade_id: 'threads',
+        usuario_email: 'sistema@cshub.local',
+        usuario_nome: 'Sistema',
+        dados_novos: {
+          threads_fechadas: fechadas,
+          threads_ignoradas: ignoradas,
+          dias_configurados: diasParaFechamento
+        },
+        created_at: Timestamp.now()
+      });
+    } catch (e) {
+      console.error('[FecharThreads] Erro ao registrar auditoria:', e.message);
+    }
+
+    console.log(`[FecharThreads] Concluído! Fechadas: ${fechadas}, Ignoradas: ${ignoradas}`);
+  }
+);
+
+// ============================================
+// MIGRAÇÃO: UNIFICAR THREADS DUPLICADAS
+// ============================================
+
+/**
+ * Funções auxiliares para normalização de threads
+ */
+function limparAssuntoParaThread(assunto) {
+  if (!assunto) return '';
+  return assunto
+    .replace(/^(re:|res:|fwd:|enc:|fw:|encaminhado:|resposta:)\s*/gi, '')
+    .replace(/^(re:|res:|fwd:|enc:|fw:|encaminhado:|resposta:)\s*/gi, '')
+    .replace(/^(re:|res:|fwd:|enc:|fw:|encaminhado:|resposta:)\s*/gi, '')
+    .trim()
+    .toLowerCase()
+    .substring(0, 100);
+}
+
+function gerarHashSimples(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16);
+}
+
+function extrairDominioDeThread(thread) {
+  // Tentar extrair domínio do team_id ou team_name
+  const teamId = thread.team_id || '';
+  const teamName = (thread.team_name || '').toLowerCase();
+
+  // Se team_id contém domínio
+  if (teamId.includes('.')) {
+    return teamId.toLowerCase();
+  }
+
+  // Mapear nomes conhecidos para domínios (adicionar conforme necessário)
+  const dominiosConhecidos = {
+    'banco inter': 'inter.co',
+    'inter': 'inter.co',
+    'atacadao': 'atacadao.com.br',
+    'anima': 'animaeducacao.com.br'
+  };
+
+  for (const [nome, dominio] of Object.entries(dominiosConhecidos)) {
+    if (teamName.includes(nome)) {
+      return dominio;
+    }
+  }
+
+  // Fallback: usar team_id como identificador
+  return teamId || 'unknown';
+}
+
+/**
+ * Migração para unificar threads duplicadas.
+ * Agrupa threads pelo assunto limpo + domínio do cliente.
+ * Mantém a thread mais antiga e move mensagens das duplicadas.
+ */
+export const unificarThreadsDuplicadas = onCall(
+  {
+    region: 'southamerica-east1',
+    timeoutSeconds: 540,
+    memory: '1GiB'
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    const userDoc = await db.collection('usuarios_sistema').doc(request.auth.uid).get();
+    const userData = userDoc.data();
+    if (!userData || !['admin', 'super_admin'].includes(userData.role)) {
+      throw new HttpsError('permission-denied', 'Apenas admins podem executar esta migração');
+    }
+
+    console.log('[Unificar Threads] Iniciando unificação de threads duplicadas...');
+
+    try {
+      // Buscar todas as threads
+      const threadsSnap = await db.collection('threads').get();
+      console.log(`[Unificar Threads] Total de threads: ${threadsSnap.size}`);
+
+      // Agrupar threads por chave normalizada (assunto limpo + domínio)
+      const gruposThreads = {};
+
+      for (const threadDoc of threadsSnap.docs) {
+        const thread = { id: threadDoc.id, ref: threadDoc.ref, ...threadDoc.data() };
+
+        const assuntoLimpo = limparAssuntoParaThread(thread.assunto);
+        const dominio = extrairDominioDeThread(thread);
+        const chave = `${assuntoLimpo}_${dominio}`;
+
+        if (!gruposThreads[chave]) {
+          gruposThreads[chave] = [];
+        }
+        gruposThreads[chave].push(thread);
+      }
+
+      // Processar grupos com mais de uma thread (duplicadas)
+      let gruposDuplicados = 0;
+      let threadsUnificadas = 0;
+      let mensagensMovidas = 0;
+      let threadsRemovidas = 0;
+
+      for (const [chave, threads] of Object.entries(gruposThreads)) {
+        if (threads.length <= 1) continue;
+
+        gruposDuplicados++;
+        console.log(`[Unificar Threads] Grupo duplicado: "${chave}" (${threads.length} threads)`);
+
+        // Ordenar por data_inicio (mais antiga primeiro)
+        threads.sort((a, b) => {
+          const dataA = a.data_inicio?.toDate ? a.data_inicio.toDate() : new Date(a.data_inicio || 0);
+          const dataB = b.data_inicio?.toDate ? b.data_inicio.toDate() : new Date(b.data_inicio || 0);
+          return dataA - dataB;
+        });
+
+        // A thread principal é a mais antiga
+        const threadPrincipal = threads[0];
+        const threadsDuplicadas = threads.slice(1);
+
+        // Gerar novo thread_id normalizado
+        const novoThreadId = `thread_${gerarHashSimples(chave)}`;
+
+        // Atualizar thread principal com novo ID normalizado
+        await threadPrincipal.ref.update({
+          thread_id_normalizado: novoThreadId,
+          threads_unificadas: threadsDuplicadas.map(t => t.id),
+          updated_at: Timestamp.now()
+        });
+
+        // Processar cada thread duplicada
+        for (const threadDuplicada of threadsDuplicadas) {
+          // Mover mensagens da thread duplicada para a principal
+          const mensagensSnap = await db.collection('mensagens')
+            .where('thread_id', '==', threadDuplicada.thread_id || threadDuplicada.id)
+            .get();
+
+          for (const msgDoc of mensagensSnap.docs) {
+            await msgDoc.ref.update({
+              thread_id: threadPrincipal.thread_id || threadPrincipal.id,
+              thread_id_original: threadDuplicada.thread_id || threadDuplicada.id,
+              migrado_em: Timestamp.now()
+            });
+            mensagensMovidas++;
+          }
+
+          // Marcar thread duplicada como unificada (não deletar para histórico)
+          await threadDuplicada.ref.update({
+            status: 'unificada',
+            unificada_em: threadPrincipal.id,
+            updated_at: Timestamp.now()
+          });
+          threadsRemovidas++;
+        }
+
+        threadsUnificadas++;
+      }
+
+      // Atualizar datas da thread principal após unificação
+      // (recalcular com base em todas as mensagens)
+      for (const [chave, threads] of Object.entries(gruposThreads)) {
+        if (threads.length <= 1) continue;
+
+        const threadPrincipal = threads.sort((a, b) => {
+          const dataA = a.data_inicio?.toDate ? a.data_inicio.toDate() : new Date(a.data_inicio || 0);
+          const dataB = b.data_inicio?.toDate ? b.data_inicio.toDate() : new Date(b.data_inicio || 0);
+          return dataA - dataB;
+        })[0];
+
+        // Buscar todas as mensagens da thread unificada
+        const todasMensagens = await db.collection('mensagens')
+          .where('thread_id', '==', threadPrincipal.thread_id || threadPrincipal.id)
+          .orderBy('data', 'asc')
+          .get();
+
+        if (!todasMensagens.empty) {
+          const msgs = todasMensagens.docs.map(d => d.data());
+          const primeiraMensagem = msgs[0];
+          const ultimaMensagem = msgs[msgs.length - 1];
+
+          const msgsCliente = msgs.filter(m => m.tipo_remetente === 'cliente');
+          const msgsEquipe = msgs.filter(m => m.tipo_remetente === 'equipe');
+
+          await threadPrincipal.ref.update({
+            data_inicio: primeiraMensagem.data,
+            data_ultima_mensagem: ultimaMensagem.data,
+            ultima_msg_cliente: msgsCliente.length > 0 ? msgsCliente[msgsCliente.length - 1].data : null,
+            ultima_msg_equipe: msgsEquipe.length > 0 ? msgsEquipe[msgsEquipe.length - 1].data : null,
+            total_mensagens: msgs.length,
+            total_msgs_cliente: msgsCliente.length,
+            total_msgs_equipe: msgsEquipe.length,
+            updated_at: Timestamp.now()
+          });
+        }
+      }
+
+      console.log(`[Unificar Threads] Concluído! Grupos: ${gruposDuplicados}, Unificadas: ${threadsUnificadas}, Mensagens: ${mensagensMovidas}, Removidas: ${threadsRemovidas}`);
+
+      // Registrar na auditoria
+      await db.collection('auditoria').add({
+        acao: 'unificar_threads_duplicadas',
+        entidade: 'system',
+        usuario_id: request.auth.uid,
+        usuario_email: userData.email,
+        usuario_nome: userData.nome || userData.email,
+        dados_novos: {
+          grupos_duplicados: gruposDuplicados,
+          threads_unificadas: threadsUnificadas,
+          mensagens_movidas: mensagensMovidas,
+          threads_marcadas_unificadas: threadsRemovidas
+        },
+        created_at: Timestamp.now()
+      });
+
+      return {
+        success: true,
+        grupos_duplicados: gruposDuplicados,
+        threads_unificadas: threadsUnificadas,
+        mensagens_movidas: mensagensMovidas,
+        threads_marcadas_unificadas: threadsRemovidas
+      };
+    } catch (error) {
+      console.error('[Unificar Threads] Erro:', error.message);
+      throw new HttpsError('internal', 'Erro na unificação: ' + error.message);
+    }
+  }
+);
+
+// ============================================
+// CORRIGIR TEAM_ID DE THREADS ANTIGAS
+// ============================================
+/**
+ * Recalcula o team_id de threads baseado nos domínios das mensagens.
+ * Usado para corrigir threads que foram associadas ao cliente errado.
+ *
+ * Lógica:
+ * 1. Busca todas as mensagens da thread
+ * 2. Extrai domínios de todos os remetentes não-trakto
+ * 3. Conta frequência de cada domínio
+ * 4. Usa o domínio mais frequente para determinar o team_id correto
+ * 5. Atualiza a thread se o team_id estiver errado
+ */
+export const corrigirTeamIdThreads = onCall(
+  {
+    region: 'southamerica-east1',
+    timeoutSeconds: 540, // 9 minutos para processar muitas threads
+    memory: '1GiB'
+  },
+  async (request) => {
+    // Verificar autenticação
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Login necessário');
+    }
+
+    // Verificar se é admin
+    const userDoc = await db.collection('usuarios_sistema').doc(request.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new HttpsError('permission-denied', 'Usuário não encontrado');
+    }
+    const userData = userDoc.data();
+    if (!['admin', 'super_admin'].includes(userData.role)) {
+      throw new HttpsError('permission-denied', 'Apenas admins podem executar esta ação');
+    }
+
+    try {
+      console.log('[Corrigir TeamId] Iniciando migração...');
+
+      // 1. Buscar mapa de domínios
+      const usuariosLookup = await db.collection('usuarios_lookup').get();
+      const dominioMap = {};
+
+      for (const doc of usuariosLookup.docs) {
+        const user = doc.data();
+        const dominio = user.dominio?.toLowerCase();
+        if (!dominio || dominioMap[dominio]) continue;
+
+        dominioMap[dominio] = {
+          team_id: user.team_id,
+          team_name: user.team_name,
+          team_type: user.team_type
+        };
+      }
+
+      console.log(`[Corrigir TeamId] Mapa de domínios carregado: ${Object.keys(dominioMap).length} domínios`);
+
+      // 2. Buscar todas as threads (exceto unificadas)
+      const threadsSnapshot = await db.collection('threads')
+        .where('status', '!=', 'unificada')
+        .get();
+
+      console.log(`[Corrigir TeamId] Processando ${threadsSnapshot.size} threads...`);
+
+      let threadsCorrigidas = 0;
+      let threadsAnalisadas = 0;
+      let threadsSemMensagens = 0;
+      let threadsSemDominio = 0;
+      const erros = [];
+
+      // 3. Para cada thread, verificar e corrigir team_id
+      for (const threadDoc of threadsSnapshot.docs) {
+        threadsAnalisadas++;
+        const thread = threadDoc.data();
+        const threadId = thread.thread_id || threadDoc.id;
+
+        try {
+          // Buscar mensagens da thread
+          const mensagensSnapshot = await db.collection('mensagens')
+            .where('thread_id', '==', threadId)
+            .get();
+
+          if (mensagensSnapshot.empty) {
+            threadsSemMensagens++;
+            continue;
+          }
+
+          // Extrair domínios de todas as mensagens (remetentes não-trakto)
+          const dominiosContagem = {};
+
+          for (const msgDoc of mensagensSnapshot.docs) {
+            const msg = msgDoc.data();
+            const email = msg.remetente_email?.toLowerCase() || '';
+
+            // Ignorar emails da Trakto
+            if (email.includes('@trakto.io')) continue;
+
+            const dominio = email.split('@')[1];
+            if (dominio && dominioMap[dominio]) {
+              dominiosContagem[dominio] = (dominiosContagem[dominio] || 0) + 1;
+            }
+          }
+
+          // Se não encontrou nenhum domínio válido, pular
+          if (Object.keys(dominiosContagem).length === 0) {
+            threadsSemDominio++;
+            continue;
+          }
+
+          // Encontrar domínio mais frequente
+          const dominioMaisFrequente = Object.entries(dominiosContagem)
+            .sort((a, b) => b[1] - a[1])[0][0];
+
+          const teamIdCorreto = dominioMap[dominioMaisFrequente].team_id;
+          const teamNameCorreto = dominioMap[dominioMaisFrequente].team_name;
+          const teamTypeCorreto = dominioMap[dominioMaisFrequente].team_type;
+
+          // Verificar se precisa corrigir
+          if (thread.team_id !== teamIdCorreto) {
+            console.log(`[Corrigir TeamId] Thread ${threadId}: ${thread.team_name} → ${teamNameCorreto}`);
+
+            // Atualizar thread
+            await threadDoc.ref.update({
+              team_id: teamIdCorreto,
+              team_name: teamNameCorreto,
+              team_type: teamTypeCorreto,
+              cliente_id: teamIdCorreto,
+              team_id_anterior: thread.team_id,
+              team_name_anterior: thread.team_name,
+              corrigido_em: Timestamp.now()
+            });
+
+            // Atualizar mensagens também
+            for (const msgDoc of mensagensSnapshot.docs) {
+              await msgDoc.ref.update({
+                team_id: teamIdCorreto
+              });
+            }
+
+            threadsCorrigidas++;
+          }
+        } catch (err) {
+          erros.push({ threadId, erro: err.message });
+        }
+
+        // Log de progresso a cada 100 threads
+        if (threadsAnalisadas % 100 === 0) {
+          console.log(`[Corrigir TeamId] Progresso: ${threadsAnalisadas}/${threadsSnapshot.size}`);
+        }
+      }
+
+      console.log(`[Corrigir TeamId] Concluído! Analisadas: ${threadsAnalisadas}, Corrigidas: ${threadsCorrigidas}, Sem mensagens: ${threadsSemMensagens}, Sem domínio: ${threadsSemDominio}`);
+
+      // Registrar na auditoria
+      await db.collection('auditoria').add({
+        acao: 'corrigir_team_id_threads',
+        entidade: 'system',
+        usuario_id: request.auth.uid,
+        usuario_email: userData.email,
+        usuario_nome: userData.nome || userData.email,
+        dados_novos: {
+          threads_analisadas: threadsAnalisadas,
+          threads_corrigidas: threadsCorrigidas,
+          threads_sem_mensagens: threadsSemMensagens,
+          threads_sem_dominio: threadsSemDominio,
+          erros: erros.length
+        },
+        created_at: Timestamp.now()
+      });
+
+      return {
+        success: true,
+        threads_analisadas: threadsAnalisadas,
+        threads_corrigidas: threadsCorrigidas,
+        threads_sem_mensagens: threadsSemMensagens,
+        threads_sem_dominio: threadsSemDominio,
+        erros: erros.slice(0, 10) // Retorna só os 10 primeiros erros
+      };
+    } catch (error) {
+      console.error('[Corrigir TeamId] Erro:', error.message);
+      throw new HttpsError('internal', 'Erro na correção: ' + error.message);
     }
   }
 );

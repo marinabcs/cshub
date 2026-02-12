@@ -19,7 +19,8 @@ export default function FiltrosEmail() {
   const [novoItemFiltro, setNovoItemFiltro] = useState({
     dominios_bloqueados: '',
     dominios_completos_bloqueados: '',
-    palavras_chave_assunto: ''
+    palavras_chave_assunto: '',
+    assuntos_informativos: ''
   });
 
   // Verificar se usuário é admin
@@ -177,108 +178,117 @@ export default function FiltrosEmail() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-        {/* Coluna 1: Toggles */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-            <Mail style={{ width: '20px', height: '20px', color: '#f97316' }} />
-            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Configurações Gerais</h2>
+      {/* Configurações Gerais */}
+      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <Mail style={{ width: '20px', height: '20px', color: '#f97316' }} />
+          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Configurações Gerais</h2>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+          {/* Filtro ativo */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
+            <div>
+              <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Filtro ativo</p>
+              <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Ocultar emails irrelevantes</p>
+            </div>
+            <button
+              onClick={() => isAdmin && setEmailFilterConfig(prev => ({ ...prev, filtro_ativo: !prev.filtro_ativo }))}
+              disabled={!isAdmin}
+              style={{
+                width: '48px', height: '28px', borderRadius: '14px',
+                background: emailFilterConfig.filtro_ativo ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
+                border: 'none', cursor: isAdmin ? 'pointer' : 'not-allowed',
+                position: 'relative', transition: 'all 0.2s ease', opacity: isAdmin ? 1 : 0.6
+              }}
+            >
+              <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: emailFilterConfig.filtro_ativo ? '23px' : '3px', transition: 'all 0.2s ease' }}></div>
+            </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {/* Filtro ativo */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-              <div>
-                <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Filtro de email ativo</p>
-                <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Ocultar automaticamente emails irrelevantes</p>
-              </div>
-              <button
-                onClick={() => isAdmin && setEmailFilterConfig(prev => ({ ...prev, filtro_ativo: !prev.filtro_ativo }))}
-                disabled={!isAdmin}
-                style={{
-                  width: '48px', height: '28px', borderRadius: '14px',
-                  background: emailFilterConfig.filtro_ativo ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
-                  border: 'none', cursor: isAdmin ? 'pointer' : 'not-allowed',
-                  position: 'relative', transition: 'all 0.2s ease', opacity: isAdmin ? 1 : 0.6
-                }}
-              >
-                <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: emailFilterConfig.filtro_ativo ? '23px' : '3px', transition: 'all 0.2s ease' }}></div>
-              </button>
+          {/* Detectar auto-reply */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
+            <div>
+              <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Detectar auto-reply</p>
+              <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Filtrar "out of office"</p>
             </div>
-
-            {/* Detectar auto-reply */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-              <div>
-                <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Detectar auto-reply</p>
-                <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Filtrar respostas automáticas e "out of office"</p>
-              </div>
-              <button
-                onClick={() => isAdmin && setEmailFilterConfig(prev => ({ ...prev, detectar_auto_reply: !prev.detectar_auto_reply }))}
-                disabled={!isAdmin}
-                style={{
-                  width: '48px', height: '28px', borderRadius: '14px',
-                  background: emailFilterConfig.detectar_auto_reply ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
-                  border: 'none', cursor: isAdmin ? 'pointer' : 'not-allowed',
-                  position: 'relative', transition: 'all 0.2s ease', opacity: isAdmin ? 1 : 0.6
-                }}
-              >
-                <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: emailFilterConfig.detectar_auto_reply ? '23px' : '3px', transition: 'all 0.2s ease' }}></div>
-              </button>
-            </div>
-
-            {/* Detectar bulk email */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
-              <div>
-                <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Detectar email em massa</p>
-                <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>Filtrar emails de remetentes tipo noreply com 1 mensagem</p>
-              </div>
-              <button
-                onClick={() => isAdmin && setEmailFilterConfig(prev => ({ ...prev, detectar_bulk_email: !prev.detectar_bulk_email }))}
-                disabled={!isAdmin}
-                style={{
-                  width: '48px', height: '28px', borderRadius: '14px',
-                  background: emailFilterConfig.detectar_bulk_email ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
-                  border: 'none', cursor: isAdmin ? 'pointer' : 'not-allowed',
-                  position: 'relative', transition: 'all 0.2s ease', opacity: isAdmin ? 1 : 0.6
-                }}
-              >
-                <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: emailFilterConfig.detectar_bulk_email ? '23px' : '3px', transition: 'all 0.2s ease' }}></div>
-              </button>
-            </div>
+            <button
+              onClick={() => isAdmin && setEmailFilterConfig(prev => ({ ...prev, detectar_auto_reply: !prev.detectar_auto_reply }))}
+              disabled={!isAdmin}
+              style={{
+                width: '48px', height: '28px', borderRadius: '14px',
+                background: emailFilterConfig.detectar_auto_reply ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
+                border: 'none', cursor: isAdmin ? 'pointer' : 'not-allowed',
+                position: 'relative', transition: 'all 0.2s ease', opacity: isAdmin ? 1 : 0.6
+              }}
+            >
+              <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: emailFilterConfig.detectar_auto_reply ? '23px' : '3px', transition: 'all 0.2s ease' }}></div>
+            </button>
           </div>
 
-          {/* Info */}
-          <div style={{ marginTop: '20px', padding: '12px 16px', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '10px' }}>
-            <p style={{ color: '#06b6d4', fontSize: '12px', margin: 0, lineHeight: 1.5 }}>
-              Estes filtros são aplicados na timeline de conversas do cliente e na geração automática de alertas.
-            </p>
+          {/* Detectar bulk email */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.1)' }}>
+            <div>
+              <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: '0 0 2px 0' }}>Detectar email em massa</p>
+              <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>Noreply com 1 mensagem</p>
+            </div>
+            <button
+              onClick={() => isAdmin && setEmailFilterConfig(prev => ({ ...prev, detectar_bulk_email: !prev.detectar_bulk_email }))}
+              disabled={!isAdmin}
+              style={{
+                width: '48px', height: '28px', borderRadius: '14px',
+                background: emailFilterConfig.detectar_bulk_email ? '#8b5cf6' : 'rgba(100, 116, 139, 0.3)',
+                border: 'none', cursor: isAdmin ? 'pointer' : 'not-allowed',
+                position: 'relative', transition: 'all 0.2s ease', opacity: isAdmin ? 1 : 0.6
+              }}
+            >
+              <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: emailFilterConfig.detectar_bulk_email ? '23px' : '3px', transition: 'all 0.2s ease' }}></div>
+            </button>
           </div>
         </div>
 
-        {/* Coluna 2: Listas */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '20px', padding: '24px' }}>
-          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 20px 0' }}>Listas de Bloqueio</h2>
+        {/* Info */}
+        <div style={{ marginTop: '16px', padding: '12px 16px', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '10px' }}>
+          <p style={{ color: '#06b6d4', fontSize: '12px', margin: 0, lineHeight: 1.5 }}>
+            <strong>Como funciona:</strong> O n8n busca estes filtros do Firebase antes de processar emails. Emails que correspondem são ignorados ou marcados como informativos.
+          </p>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+        {/* Coluna 1: Listas de Bloqueio (emails ignorados completamente) */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '20px', padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+            <X style={{ width: '20px', height: '20px', color: '#ef4444' }} />
+            <div>
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Bloqueio Total</h2>
+              <p style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 0 0' }}>Emails ignorados completamente (não são salvos)</p>
+            </div>
+          </div>
 
           {[
-            { campo: 'dominios_bloqueados', label: 'Prefixos de email bloqueados', placeholder: 'Ex: noreply@', desc: 'Bloqueia emails que começam com estes prefixos' },
-            { campo: 'dominios_completos_bloqueados', label: 'Domínios bloqueados', placeholder: 'Ex: mailchimp.com', desc: 'Bloqueia todos os emails destes domínios' },
-            { campo: 'palavras_chave_assunto', label: 'Palavras-chave no assunto', placeholder: 'Ex: newsletter', desc: 'Filtra emails com estas palavras no assunto' }
-          ].map(({ campo, label, placeholder, desc }) => (
+            { campo: 'dominios_bloqueados', label: 'Prefixos de remetente', placeholder: 'Ex: noreply, newsletter@', desc: 'Bloqueia remetentes que contêm estes padrões', color: '#ef4444' },
+            { campo: 'dominios_completos_bloqueados', label: 'Domínios bloqueados', placeholder: 'Ex: mailchimp.com', desc: 'Bloqueia todos os emails destes domínios', color: '#ef4444' },
+            { campo: 'palavras_chave_assunto', label: 'Palavras-chave no assunto', placeholder: 'Ex: newsletter, out of office', desc: 'Ignora emails com estas palavras no assunto', color: '#ef4444' }
+          ].map(({ campo, label, placeholder, desc, color }) => (
             <div key={campo} style={{ marginBottom: '20px' }}>
-              <p style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', margin: '0 0 4px 0', textTransform: 'uppercase' }}>{label}</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <p style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', margin: 0, textTransform: 'uppercase' }}>{label}</p>
+                <span style={{ color: '#64748b', fontSize: '11px' }}>{(emailFilterConfig[campo] || []).length} itens</span>
+              </div>
               <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 10px 0' }}>{desc}</p>
 
               {/* Chips */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px', maxHeight: '120px', overflowY: 'auto' }}>
                 {(emailFilterConfig[campo] || []).map((item, idx) => (
                   <span key={idx} style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '4px 10px',
-                    background: 'rgba(249, 115, 22, 0.1)',
-                    border: '1px solid rgba(249, 115, 22, 0.2)',
+                    background: `${color}15`,
+                    border: `1px solid ${color}30`,
                     borderRadius: '8px',
-                    color: '#f97316',
-                    fontSize: '12px'
+                    color: color,
+                    fontSize: '11px'
                   }}>
                     {item}
                     {isAdmin && (
@@ -286,7 +296,7 @@ export default function FiltrosEmail() {
                         onClick={() => removerItemFiltro(campo, idx)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center' }}
                       >
-                        <X style={{ width: '12px', height: '12px', color: '#f97316' }} />
+                        <X style={{ width: '12px', height: '12px', color: color }} />
                       </button>
                     )}
                   </span>
@@ -307,7 +317,7 @@ export default function FiltrosEmail() {
                     onKeyDown={(e) => e.key === 'Enter' && adicionarItemFiltro(campo)}
                     style={{
                       flex: 1, padding: '10px 12px',
-                      background: '#0f0a1f', border: '1px solid rgba(139, 92, 246, 0.2)',
+                      background: '#0f0a1f', border: '1px solid rgba(239, 68, 68, 0.2)',
                       borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none'
                     }}
                   />
@@ -315,20 +325,104 @@ export default function FiltrosEmail() {
                     onClick={() => adicionarItemFiltro(campo)}
                     style={{
                       padding: '10px 14px',
-                      background: 'rgba(249, 115, 22, 0.15)',
-                      border: '1px solid rgba(249, 115, 22, 0.3)',
-                      borderRadius: '8px', color: '#f97316',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: '8px', color: '#ef4444',
                       fontSize: '13px', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px'
                     }}
                   >
                     <Plus style={{ width: '14px', height: '14px' }} />
-                    Adicionar
                   </button>
                 </div>
               )}
             </div>
           ))}
+        </div>
+
+        {/* Coluna 2: Assuntos Informativos (salvos mas sem ação) */}
+        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(6, 182, 212, 0.15)', borderRadius: '20px', padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+            <Mail style={{ width: '20px', height: '20px', color: '#06b6d4' }} />
+            <div>
+              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Informativos</h2>
+              <p style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 0 0' }}>Salvos mas com requer_acao: false</p>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <p style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', margin: 0, textTransform: 'uppercase' }}>Assuntos Informativos</p>
+              <span style={{ color: '#64748b', fontSize: '11px' }}>{(emailFilterConfig.assuntos_informativos || []).length} itens</span>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 10px 0' }}>Compartilhamentos, comentários, acessos - registrados mas sem alerta</p>
+
+            {/* Chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+              {(emailFilterConfig.assuntos_informativos || []).map((item, idx) => (
+                <span key={idx} style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '4px 10px',
+                  background: 'rgba(6, 182, 212, 0.1)',
+                  border: '1px solid rgba(6, 182, 212, 0.2)',
+                  borderRadius: '8px',
+                  color: '#06b6d4',
+                  fontSize: '11px'
+                }}>
+                  {item}
+                  {isAdmin && (
+                    <button
+                      onClick={() => removerItemFiltro('assuntos_informativos', idx)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center' }}
+                    >
+                      <X style={{ width: '12px', height: '12px', color: '#06b6d4' }} />
+                    </button>
+                  )}
+                </span>
+              ))}
+              {(emailFilterConfig.assuntos_informativos || []).length === 0 && (
+                <span style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>Nenhum item configurado</span>
+              )}
+            </div>
+
+            {/* Input para adicionar */}
+            {isAdmin && (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Ex: compartilhou, shared with you"
+                  value={novoItemFiltro.assuntos_informativos || ''}
+                  onChange={(e) => setNovoItemFiltro(prev => ({ ...prev, assuntos_informativos: e.target.value }))}
+                  onKeyDown={(e) => e.key === 'Enter' && adicionarItemFiltro('assuntos_informativos')}
+                  style={{
+                    flex: 1, padding: '10px 12px',
+                    background: '#0f0a1f', border: '1px solid rgba(6, 182, 212, 0.2)',
+                    borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none'
+                  }}
+                />
+                <button
+                  onClick={() => adicionarItemFiltro('assuntos_informativos')}
+                  style={{
+                    padding: '10px 14px',
+                    background: 'rgba(6, 182, 212, 0.15)',
+                    border: '1px solid rgba(6, 182, 212, 0.3)',
+                    borderRadius: '8px', color: '#06b6d4',
+                    fontSize: '13px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '4px'
+                  }}
+                >
+                  <Plus style={{ width: '14px', height: '14px' }} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Explicação */}
+          <div style={{ padding: '12px 16px', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '10px' }}>
+            <p style={{ color: '#06b6d4', fontSize: '12px', margin: 0, lineHeight: 1.5 }}>
+              <strong>Diferença:</strong> Emails informativos são salvos na timeline mas não geram alertas nem aparecem como "aguardando resposta". Útil para compartilhamentos de Google Drive, comentários em docs, etc.
+            </p>
+          </div>
         </div>
       </div>
     </div>

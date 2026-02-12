@@ -2,13 +2,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../services/firebase';
+import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import {
   CheckCircle, Activity,
   Zap, RefreshCw, XCircle, CloudDownload, Lock,
-  Mail, ChevronRight, Wrench, Database
+  Mail, ChevronRight
 } from 'lucide-react';
 import { SEGMENTOS_CS } from '../utils/segmentoCS';
 import { isClickUpConfigured } from '../services/clickup';
@@ -38,13 +37,6 @@ export default function Configuracoes() {
   // Estado para status de sync n8n
   const [syncStatus, setSyncStatus] = useState(null);
 
-  // Estado para migração de datas das threads
-  const [migrandoDatas, setMigrandoDatas] = useState(false);
-  const [migracaoResult, setMigracaoResult] = useState(null);
-
-  // Estado para migração de status informativos
-  const [migrandoStatus, setMigrandoStatus] = useState(false);
-  const [migracaoStatusResult, setMigracaoStatusResult] = useState(null);
 
 
   // Parâmetros de Segmentação CS (todos editáveis)
@@ -231,47 +223,6 @@ export default function Configuracoes() {
   };
 
   // Migração de datas das threads (retroativo)
-  const runMigracaoDatas = async () => {
-    if (!window.confirm('Isso vai atualizar as datas de todas as threads existentes com base nas mensagens. Deseja continuar?')) {
-      return;
-    }
-
-    setMigrandoDatas(true);
-    setMigracaoResult(null);
-
-    try {
-      const migrarDatasThreads = httpsCallable(functions, 'migrarDatasThreads');
-      const result = await migrarDatasThreads();
-      setMigracaoResult(result.data);
-    } catch (error) {
-      console.error('Erro na migração:', error);
-      setMigracaoResult({ erro: error.message });
-    } finally {
-      setMigrandoDatas(false);
-    }
-  };
-
-  // Migração de status informativos (compartilhamentos → informativo)
-  const runMigracaoStatus = async () => {
-    if (!window.confirm('Isso vai atualizar threads de compartilhamento para status "Informativo". Deseja continuar?')) {
-      return;
-    }
-
-    setMigrandoStatus(true);
-    setMigracaoStatusResult(null);
-
-    try {
-      const migrarStatusInformativos = httpsCallable(functions, 'migrarStatusInformativos');
-      const result = await migrarStatusInformativos();
-      setMigracaoStatusResult(result.data);
-    } catch (error) {
-      console.error('Erro na migração de status:', error);
-      setMigracaoStatusResult({ erro: error.message });
-    } finally {
-      setMigrandoStatus(false);
-    }
-  };
-
   // Formatar data de sync com indicador de freshness
   const formatSyncInfo = (timestamp) => {
     if (!timestamp) return { text: 'Nunca sincronizado', color: '#64748b', fresh: false };
@@ -828,147 +779,6 @@ export default function Configuracoes() {
         </div>
       </div>
 
-      {/* Seção Manutenção (somente admins) */}
-      {isAdmin && (
-        <div style={{
-          background: 'rgba(30, 27, 75, 0.4)',
-          border: '1px solid rgba(139, 92, 246, 0.15)',
-          borderRadius: '16px',
-          padding: '20px',
-          marginTop: '20px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <Wrench style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
-            <h2 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Manutenção</h2>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {/* Migração de Datas das Threads */}
-            <div style={{
-              padding: '16px',
-              background: 'rgba(15, 10, 31, 0.6)',
-              borderRadius: '12px',
-              border: '1px solid rgba(139, 92, 246, 0.1)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <Database style={{ width: '16px', height: '16px', color: '#8b5cf6' }} />
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>Corrigir Datas das Threads</p>
-                  </div>
-                  <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
-                    Atualiza data_inicio e data_ultima_mensagem com base nas mensagens existentes
-                  </p>
-                </div>
-                <button
-                  onClick={runMigracaoDatas}
-                  disabled={migrandoDatas}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '10px 16px',
-                    background: migrandoDatas ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)',
-                    border: '1px solid rgba(139, 92, 246, 0.3)',
-                    borderRadius: '10px',
-                    color: '#a78bfa',
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    cursor: migrandoDatas ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  <RefreshCw style={{ width: '14px', height: '14px', animation: migrandoDatas ? 'spin 1s linear infinite' : 'none' }} />
-                  {migrandoDatas ? 'Migrando...' : 'Executar'}
-                </button>
-              </div>
-
-              {/* Resultado da migração */}
-              {migracaoResult && (
-                <div style={{
-                  marginTop: '12px',
-                  padding: '12px',
-                  background: migracaoResult.erro ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                  border: `1px solid ${migracaoResult.erro ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
-                  borderRadius: '8px'
-                }}>
-                  {migracaoResult.erro ? (
-                    <p style={{ color: '#ef4444', fontSize: '13px', margin: 0 }}>
-                      Erro: {migracaoResult.erro}
-                    </p>
-                  ) : (
-                    <div style={{ color: '#10b981', fontSize: '13px' }}>
-                      <p style={{ margin: '0 0 4px 0', fontWeight: '600' }}>Migração concluída!</p>
-                      <p style={{ margin: 0, color: '#94a3b8' }}>
-                        {migracaoResult.atualizadas} threads atualizadas | {migracaoResult.semMensagens} sem mensagens | {migracaoResult.erros} erros
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Migração de Status Informativos */}
-            <div style={{
-              padding: '16px',
-              background: 'rgba(15, 10, 31, 0.6)',
-              borderRadius: '12px',
-              border: '1px solid rgba(139, 92, 246, 0.1)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <Mail style={{ width: '16px', height: '16px', color: '#06b6d4' }} />
-                    <p style={{ color: 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>Corrigir Status Informativos</p>
-                  </div>
-                  <p style={{ color: '#64748b', fontSize: '12px', margin: 0 }}>
-                    Marca threads de compartilhamento como "Informativo" (não requer ação)
-                  </p>
-                </div>
-                <button
-                  onClick={runMigracaoStatus}
-                  disabled={migrandoStatus}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '10px 16px',
-                    background: migrandoStatus ? 'rgba(6, 182, 212, 0.2)' : 'rgba(6, 182, 212, 0.1)',
-                    border: '1px solid rgba(6, 182, 212, 0.3)',
-                    borderRadius: '10px',
-                    color: '#06b6d4',
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    cursor: migrandoStatus ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  <RefreshCw style={{ width: '14px', height: '14px', animation: migrandoStatus ? 'spin 1s linear infinite' : 'none' }} />
-                  {migrandoStatus ? 'Migrando...' : 'Executar'}
-                </button>
-              </div>
-
-              {/* Resultado da migração de status */}
-              {migracaoStatusResult && (
-                <div style={{
-                  marginTop: '12px',
-                  padding: '12px',
-                  background: migracaoStatusResult.erro ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                  border: `1px solid ${migracaoStatusResult.erro ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
-                  borderRadius: '8px'
-                }}>
-                  {migracaoStatusResult.erro ? (
-                    <p style={{ color: '#ef4444', fontSize: '13px', margin: 0 }}>
-                      Erro: {migracaoStatusResult.erro}
-                    </p>
-                  ) : (
-                    <div style={{ color: '#10b981', fontSize: '13px' }}>
-                      <p style={{ margin: '0 0 4px 0', fontWeight: '600' }}>Migração concluída!</p>
-                      <p style={{ margin: 0, color: '#94a3b8' }}>
-                        {migracaoStatusResult.atualizadas} threads atualizadas para "Informativo" | {migracaoStatusResult.ignoradas} mantidas
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

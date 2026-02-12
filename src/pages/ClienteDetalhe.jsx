@@ -237,6 +237,14 @@ export default function ClienteDetalhe() {
   const [stakeholderForm, setStakeholderForm] = useState({ nome: '', email: '', cargo: '', telefone: '', linkedin_url: '', tipo_contato: 'outro' });
   const [savingStakeholder, setSavingStakeholder] = useState(false);
 
+  // Mover Thread para outro cliente
+  const [showMoveThread, setShowMoveThread] = useState(false);
+  const [allTeams, setAllTeams] = useState([]);
+  const [selectedNewTeam, setSelectedNewTeam] = useState('');
+  const [movingThread, setMovingThread] = useState(false);
+  const [loadingTeams, setLoadingTeams] = useState(false);
+  const [searchTeam, setSearchTeam] = useState('');
+
   useEffect(() => {
     const fetchCliente = async () => {
       try {
@@ -347,17 +355,25 @@ export default function ClienteDetalhe() {
           }, { logins: 0, projetos_criados: 0, pecas_criadas: 0, downloads: 0, creditos_consumidos: 0, features_usadas: 0, dias_ativos: 0, ultima_atividade: null });
           setUsageData(aggregated);
 
-          // Processar dados para gráficos (60 dias agregados por dia)
+          // Processar dados para gráficos (60 dias completos, com zeros para dias sem dados)
           const dailyMap = {};
           const dailyFeaturesSet = {}; // Set de features por dia para contar únicas
+
+          // Primeiro, criar todos os 60 dias com valores zerados
+          for (let i = 59; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            const dateKey = date.toISOString().split('T')[0];
+            dailyMap[dateKey] = { date: dateKey, logins: 0, projetos: 0, assets: 0, creditos_ia: 0, features_ia: 0 };
+            dailyFeaturesSet[dateKey] = new Set();
+          }
+
+          // Depois, preencher com dados reais onde existir
           metricasResult.forEach(d => {
             const dataDate = d.data?.toDate?.() || (d.data ? new Date(d.data) : null);
             if (!dataDate) return;
             const dateKey = dataDate.toISOString().split('T')[0];
-            if (!dailyMap[dateKey]) {
-              dailyMap[dateKey] = { date: dateKey, logins: 0, projetos: 0, assets: 0, creditos_ia: 0, features_ia: 0 };
-              dailyFeaturesSet[dateKey] = new Set();
-            }
+            if (!dailyMap[dateKey]) return; // Ignorar dados fora do período de 60 dias
             dailyMap[dateKey].logins += d.logins || 0;
             dailyMap[dateKey].projetos += d.projetos_criados || 0;
             dailyMap[dateKey].assets += d.pecas_criadas || 0;
@@ -1184,6 +1200,79 @@ export default function ClienteDetalhe() {
       setManualSentimento('');
       setManualResumo('');
     }
+  };
+
+  // Buscar todos os clientes para mover thread
+  const fetchAllTeams = async () => {
+    if (allTeams.length > 0) return; // Já carregado
+    setLoadingTeams(true);
+    try {
+      const teamsRef = collection(db, 'clientes');
+      const q = query(teamsRef, where('status', 'in', ['ativo', 'aviso_previo']));
+      const snap = await getDocs(q);
+      const teams = snap.docs.map(doc => ({
+        id: doc.id,
+        team_name: doc.data().team_name || doc.data().nome || 'Sem nome',
+        team_type: doc.data().team_type || '',
+        times: doc.data().times || [doc.id]
+      })).sort((a, b) => a.team_name.localeCompare(b.team_name));
+      setAllTeams(teams);
+    } catch (error) {
+      console.error('Erro ao buscar clientes:', error);
+    }
+    setLoadingTeams(false);
+  };
+
+  // Mover thread para outro cliente
+  const handleMoveThread = async () => {
+    if (!selectedThread || !selectedNewTeam) return;
+
+    const newTeam = allTeams.find(t => t.id === selectedNewTeam);
+    if (!newTeam) return;
+
+    setMovingThread(true);
+    try {
+      const threadId = selectedThread.thread_id || selectedThread.id;
+      const threadDocId = selectedThread.id;
+      const newTeamId = newTeam.times?.[0] || newTeam.id;
+
+      // 1. Atualizar a thread
+      const threadRef = doc(db, 'threads', threadDocId);
+      await updateDoc(threadRef, {
+        team_id: newTeamId,
+        cliente_id: newTeam.id,
+        team_name: newTeam.team_name,
+        team_type: newTeam.team_type,
+        updated_at: Timestamp.now()
+      });
+
+      // 2. Atualizar todas as mensagens dessa thread
+      const mensagensRef = collection(db, 'mensagens');
+      const mensagensQuery = query(mensagensRef, where('thread_id', '==', threadId));
+      const mensagensSnap = await getDocs(mensagensQuery);
+
+      const updatePromises = mensagensSnap.docs.map(msgDoc =>
+        updateDoc(doc(db, 'mensagens', msgDoc.id), {
+          team_id: newTeamId,
+          updated_at: Timestamp.now()
+        })
+      );
+      await Promise.all(updatePromises);
+
+      // 3. Remover thread da lista local
+      setThreads(prev => prev.filter(t => t.id !== threadDocId));
+
+      // 4. Fechar modais
+      setShowMoveThread(false);
+      setSelectedThread(null);
+      setSelectedNewTeam('');
+
+      alert(`Thread movida para "${newTeam.team_name}" com sucesso!`);
+    } catch (error) {
+      console.error('Erro ao mover thread:', error);
+      alert('Erro ao mover thread. Tente novamente.');
+    }
+    setMovingThread(false);
   };
 
   const getStatusColor = (status) => {
@@ -3191,6 +3280,28 @@ export default function ClienteDetalhe() {
                   <Pencil style={{ width: '14px', height: '14px' }} />
                   {showManualClassification ? 'Cancelar' : 'Classificar Manualmente'}
                 </button>
+                <button
+                  onClick={() => {
+                    setShowMoveThread(true);
+                    fetchAllTeams();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    background: 'rgba(249, 115, 22, 0.1)',
+                    border: '1px solid rgba(249, 115, 22, 0.3)',
+                    borderRadius: '8px',
+                    color: '#f97316',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <ArrowLeft style={{ width: '14px', height: '14px', transform: 'rotate(180deg)' }} />
+                  Mover Cliente
+                </button>
               </div>
 
               {erroClassificacao && (
@@ -3498,6 +3609,123 @@ export default function ClienteDetalhe() {
                 style={{ padding: '10px 20px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#a78bfa', fontSize: '14px', fontWeight: '500', cursor: 'pointer' }}
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Mover Thread para outro Cliente */}
+      {showMoveThread && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.8)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: '32px' }}>
+          <div style={{ background: '#1a1033', border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '16px', width: '100%', maxWidth: '480px', padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', background: 'rgba(249, 115, 22, 0.15)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ArrowLeft style={{ width: '18px', height: '18px', color: '#f97316', transform: 'rotate(180deg)' }} />
+                </div>
+                <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Mover para outro Cliente</h3>
+              </div>
+              <button onClick={() => { setShowMoveThread(false); setSelectedNewTeam(''); setSearchTeam(''); }} style={{ width: '32px', height: '32px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X style={{ width: '16px', height: '16px', color: '#ef4444' }} />
+              </button>
+            </div>
+
+            <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
+              Thread: <strong style={{ color: 'white' }}>{selectedThread?.assunto || 'Sem assunto'}</strong>
+            </p>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '12px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Buscar cliente</label>
+              {loadingTeams ? (
+                <div style={{ padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', textAlign: 'center' }}>
+                  <Loader2 style={{ width: '20px', height: '20px', color: '#8b5cf6', animation: 'spin 1s linear infinite', margin: '0 auto' }} />
+                  <p style={{ color: '#64748b', fontSize: '12px', margin: '8px 0 0 0' }}>Carregando clientes...</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ position: 'relative', marginBottom: '12px' }}>
+                    <Search style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', width: '16px', height: '16px', color: '#64748b' }} />
+                    <input
+                      type="text"
+                      value={searchTeam}
+                      onChange={(e) => setSearchTeam(e.target.value)}
+                      placeholder="Digite o nome do cliente..."
+                      style={{ width: '100%', padding: '12px 14px 12px 40px', background: '#0f0a1f', border: '1px solid rgba(249, 115, 22, 0.3)', borderRadius: '10px', color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div style={{ maxHeight: '200px', overflowY: 'auto', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
+                    {allTeams
+                      .filter(t => t.id !== cliente?.id)
+                      .filter(t => !searchTeam || t.team_name.toLowerCase().includes(searchTeam.toLowerCase()))
+                      .map(team => (
+                        <div
+                          key={team.id}
+                          onClick={() => setSelectedNewTeam(team.id)}
+                          style={{
+                            padding: '12px 14px',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid rgba(139, 92, 246, 0.1)',
+                            background: selectedNewTeam === team.id ? 'rgba(249, 115, 22, 0.15)' : 'transparent',
+                            transition: 'background 0.15s ease'
+                          }}
+                        >
+                          <p style={{ color: selectedNewTeam === team.id ? '#f97316' : 'white', fontSize: '14px', fontWeight: '500', margin: 0 }}>
+                            {team.team_name}
+                          </p>
+                          {team.team_type && (
+                            <p style={{ color: '#64748b', fontSize: '11px', margin: '2px 0 0 0' }}>{team.team_type}</p>
+                          )}
+                        </div>
+                      ))
+                    }
+                    {allTeams.filter(t => t.id !== cliente?.id).filter(t => !searchTeam || t.team_name.toLowerCase().includes(searchTeam.toLowerCase())).length === 0 && (
+                      <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '20px' }}>
+                        {searchTeam ? 'Nenhum cliente encontrado' : 'Nenhum cliente disponível'}
+                      </p>
+                    )}
+                  </div>
+                  {selectedNewTeam && (
+                    <p style={{ color: '#10b981', fontSize: '12px', marginTop: '8px' }}>
+                      Selecionado: <strong>{allTeams.find(t => t.id === selectedNewTeam)?.team_name}</strong>
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { setShowMoveThread(false); setSelectedNewTeam(''); setSearchTeam(''); }}
+                style={{ padding: '10px 18px', background: 'transparent', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '10px', color: '#94a3b8', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleMoveThread}
+                disabled={!selectedNewTeam || movingThread}
+                style={{
+                  padding: '10px 18px',
+                  background: !selectedNewTeam ? 'rgba(249, 115, 22, 0.3)' : 'linear-gradient(135deg, #f97316 0%, #f59e0b 100%)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: 'white',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  cursor: !selectedNewTeam ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {movingThread ? (
+                  <>
+                    <Loader2 style={{ width: '14px', height: '14px', animation: 'spin 1s linear infinite' }} />
+                    Movendo...
+                  </>
+                ) : (
+                  'Mover Thread'
+                )}
               </button>
             </div>
           </div>
