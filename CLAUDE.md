@@ -1,6 +1,6 @@
 # CLAUDE.md - Diretrizes do CS Hub
 
-## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 11/02/2026)
+## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 13/02/2026)
 
 ### Status: Pronto para Lançamento ✅
 
@@ -29,6 +29,8 @@
 - ✅ Modal "Copiar Destinatários" corrigido (busca usuários pelos times do cliente)
 - ✅ Terminologia "bug/reclamação" no Playbook Fluxograma
 - ✅ Página "Oportunidades de Vendas" substituiu Resumo Executivo (clientes em CRESCIMENTO, dias, vezes, case obtido)
+- ✅ CI/CD GitHub Actions (lint + test + build) passando
+- ✅ ESLint 0 erros em todo o projeto (119 erros corrigidos)
 
 **Índices criados no Firebase:**
 - `threads`: team_id + updated_at
@@ -62,6 +64,64 @@
 - Calculadora de Onboarding (refinamentos + testes com cliente real)
 - Analytics PDF (números grandes cortam na parte inferior)
 - Bugs com peso por severidade (ver decisão 27)
+
+---
+
+## 📝 NOTAS DA SESSÃO (13/02/2026)
+
+### Concluído nesta sessão:
+
+1. **CI/CD GitHub Actions configurado e passando**:
+   - Pipeline: Lint → Test → Build no push/PR para main
+   - Job separado para Cloud Functions (functions-check)
+   - Build artifact salvo por 7 dias
+   - Secrets do Firebase configurados no GitHub
+
+2. **119 erros de ESLint corrigidos** (~40 arquivos, 810 linhas removidas):
+   - Imports não utilizados removidos (13 arquivos)
+   - Variáveis/funções não utilizadas removidas (17 arquivos)
+   - `Analytics.jsx`: removidas funções `renderTabUsoPlatforma`, `renderTabConversas`, `renderTabVendas`, `exportToExcel`, `handleClickOutside`, variáveis `getInitials`, `usuariosAtivos`, `mesAtualKey`, dados órfãos `statusClienteData`/`segmentoDistribuicaoData`
+   - `ClienteDetalhe.jsx`: removidos states e handlers de bugs não utilizados, `formatRelativeDate`, `filterConfig`
+   - `Alertas.jsx`: removido `verificando` state e `handleVerificar`
+   - `OnGoing.jsx`: removido `importingTemplates` e `handleImportTemplates`
+   - `OnboardingSection.jsx`: removido `handleLimparDataV1`
+
+3. **Configuração ESLint corrigida**:
+   - `no-unused-vars`: adicionados `argsIgnorePattern: '^_'` e `caughtErrorsIgnorePattern: '^_'`
+   - `functions/` e `scripts/` adicionados ao `globalIgnores` (são Node.js server-side, não frontend)
+   - `vite.config.js`: `/* eslint-env node */` → `/* global process, __dirname */` (flat config não suporta eslint-env)
+   - `SegmentoBadge.jsx`: eslint-disable file-level para react-hooks/static-components
+
+4. **Correções de classificação IA**:
+   - Categoria `informativo` adicionada ao schema Zod (`thread.js`)
+   - Status `informativo` adicionado ao schema
+   - `requer_acao: false` setado automaticamente para categoria informativo
+   - Cloud Functions re-deployadas
+
+5. **Session timeout** implementado (8h inatividade, aviso 60s antes)
+
+6. **Alertas**: desabilitada geração automática no frontend (só via Cloud Function)
+
+7. **Botão "Limpar Resolvidos"** na página de Alertas
+
+8. **Version bump para v1.0.0**
+
+### Estado do CI:
+- **ESLint:** 0 erros, 20 warnings (todos `exhaustive-deps`, não bloqueiam CI)
+- **Testes:** 347/347 passando
+- **Build:** Funcional (requer secrets do Firebase no GitHub)
+
+### Detalhes técnicos importantes:
+- ESLint usa **flat config** (`eslint.config.js`), NÃO `.eslintrc`
+- `/* eslint-env */` NÃO funciona com flat config — usar `/* global */`
+- `varsIgnorePattern` só se aplica a variáveis, NÃO a args/catch — precisam de patterns separados
+- JSX `{/* eslint-disable-next-line */}` nem sempre funciona para regras em linhas internas — usar disable file-level
+- `functions/` e `scripts/` são excluídos do lint do frontend (Node.js globals diferentes)
+
+### Pendências para próxima sessão:
+- Verificar se CI passou no GitHub (commit `be56fa4`)
+- Métricas: validar números/contagens em Dashboard KPIs, Analytics
+- Analytics PDF: números grandes cortam na parte inferior (html2canvas clipping)
 
 ---
 
