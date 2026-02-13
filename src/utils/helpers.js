@@ -65,6 +65,7 @@ export function getCategoriaLabel(categoria) {
     feedback: 'Feedback',
     duvida_pergunta: 'Dúvida',
     solicitacao: 'Solicitação',
+    informativo: 'Informativo',
     outro: 'Outro'
   }
   return labels[categoria] || categoria

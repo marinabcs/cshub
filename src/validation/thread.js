@@ -7,6 +7,7 @@ export const CATEGORIAS_VALIDAS = [
   'duvida_pergunta',
   'solicitacao',
   'reclamacao',
+  'informativo',
   'outro'
 ];
 
@@ -20,7 +21,8 @@ export const SENTIMENTOS_VALIDOS = [
 export const STATUS_VALIDOS = [
   'resolvido',
   'aguardando_cliente',
-  'aguardando_equipe'
+  'aguardando_equipe',
+  'informativo'
 ];
 
 export const classificacaoManualSchema = z.object({

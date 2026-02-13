@@ -54,13 +54,12 @@
 - ✅ Auditoria — OK (filtros por entidade/ação/usuário/data, paginação 50/página, export CSV, entidades auth+system adicionadas)
 
 **Validações manuais pós-lançamento:**
-- Validar segmentação com 5 contas reais
-- Testar Calculadora de Onboarding com cliente real
+- ✅ Validar segmentação com 5 contas reais — OK
 - Métricas: validar números/contagens em Dashboard KPIs, Analytics, etc.
 
 **Adiado para V3:**
 - 2FA para admins
-- Calculadora de Onboarding (refinamentos)
+- Calculadora de Onboarding (refinamentos + testes com cliente real)
 - Analytics PDF (números grandes cortam na parte inferior)
 - Bugs com peso por severidade (ver decisão 27)
 
@@ -107,20 +106,11 @@
 
 ### Pendências para próxima sessão:
 
-1. **n8n - Verificar filtros funcionando**:
-   - Filtros de calendário foram adicionados ao Firebase
-   - Testar se novos emails de "Convite:" e "Aceito:" são bloqueados
-   - Emails já importados precisam ser marcados como irrelevantes manualmente
+1. ~~**n8n - Verificar filtros funcionando**~~ — ✅ Validado (13/02/2026). Keywords de calendário (aceito:, convite:, recusado:, etc.) confirmados no Firestore. Bug corrigido: categoria/status `informativo` adicionados ao schema Zod + `requer_acao: false` setado automaticamente na classificação IA. Cloud Functions re-deployadas
 
-2. **Emails de vendedores externos** (Wellhub, etc.):
-   - Ficam na timeline para histórico completo
-   - CS usa botão "Irrelevante" para filtrar
-   - Considerar criar categoria `promocional_terceiro` na IA (opcional)
+2. ~~**Emails de vendedores externos**~~ — ✅ Decisão: CS marca manualmente como "Irrelevante". Sem categoria IA adicional
 
-3. **Regra de fechamento automático**:
-   - Threads `aguardando_cliente` + `resposta_resolutiva: true` → fecham após 3 dias
-   - Cloud Function `fecharThreadsResolutivas` roda às 8h seg-sex
-   - Verificar se `resposta_resolutiva` está sendo setado corretamente
+3. ~~**Regra de fechamento automático**~~ — ✅ Validado manualmente (12/02/2026), funcionando corretamente
 
 ### Arquivos de documentação:
 - `/docs/TECHNICAL.md` - Documentação técnica completa (arquitetura, APIs, etc)

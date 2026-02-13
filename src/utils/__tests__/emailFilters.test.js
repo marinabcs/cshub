@@ -17,7 +17,7 @@ describe('DEFAULT_EMAIL_FILTERS', () => {
 
   it('tem lista de domínios bloqueados', () => {
     expect(DEFAULT_EMAIL_FILTERS.dominios_bloqueados.length).toBeGreaterThan(0);
-    expect(DEFAULT_EMAIL_FILTERS.dominios_bloqueados).toContain('noreply@');
+    expect(DEFAULT_EMAIL_FILTERS.dominios_bloqueados).toContain('noreply');
   });
 
   it('tem lista de domínios completos bloqueados', () => {
@@ -65,7 +65,7 @@ describe('isThreadFiltered', () => {
     const thread = { remetente_email: 'noreply@company.com' };
     const result = isThreadFiltered(thread, config);
     expect(result.filtered).toBe(true);
-    expect(result.reason).toContain('noreply@');
+    expect(result.reason).toContain('noreply');
   });
 
   it('filtra emails newsletter@', () => {

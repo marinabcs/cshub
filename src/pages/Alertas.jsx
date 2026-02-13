@@ -12,7 +12,7 @@ import {
   formatarTempoRelativo
 } from '../utils/alertas';
 import { isClickUpConfigured, criarTarefaClickUp, buscarMembrosClickUp, PRIORIDADES_CLICKUP } from '../services/clickup';
-import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { Pagination } from '../components/UI/Pagination';
 
@@ -175,6 +175,29 @@ export default function Alertas() {
   const handleVerificar = async () => {
     await verificarEGerarAlertas();
     refetch();
+  };
+
+  // Limpar todos os alertas
+  const [limpando, setLimpando] = useState(false);
+  const [showConfirmLimpar, setShowConfirmLimpar] = useState(false);
+
+  const handleLimparTodos = async () => {
+    setLimpando(true);
+    try {
+      const snap = await getDocs(collection(db, 'alertas'));
+      const batch = [];
+      snap.docs.forEach(d => {
+        batch.push(deleteDoc(doc(db, 'alertas', d.id)));
+      });
+      await Promise.all(batch);
+      setShowConfirmLimpar(false);
+      setSelectedAlertas(new Set());
+      refetch();
+    } catch (error) {
+      console.error('Erro ao limpar alertas:', error);
+    } finally {
+      setLimpando(false);
+    }
   };
 
   // Toggle de filtros
@@ -375,29 +398,76 @@ export default function Alertas() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
+          {/* Botão "Verificar Novos Alertas" oculto — criação automática desativada temporariamente (13/02/2026) */}
           <button
-            onClick={handleVerificar}
-            disabled={verificando}
+            onClick={() => setShowConfirmLimpar(true)}
+            disabled={limpando || alertas.length === 0}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
               padding: '12px 20px',
-              background: verificando ? 'rgba(139, 92, 246, 0.5)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
-              border: 'none',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
               borderRadius: '12px',
-              color: 'white',
+              color: '#ef4444',
               fontSize: '14px',
               fontWeight: '600',
-              cursor: verificando ? 'not-allowed' : 'pointer'
+              cursor: limpando || alertas.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: alertas.length === 0 ? 0.5 : 1
             }}
           >
-            <RefreshCw style={{ width: '18px', height: '18px', animation: verificando ? 'spin 1s linear infinite' : 'none' }} />
-            {verificando ? 'Verificando...' : 'Verificar Novos Alertas'}
+            <XCircle style={{ width: '18px', height: '18px' }} />
+            Limpar Todos
           </button>
-
         </div>
       </div>
+
+      {/* Modal confirmação limpar */}
+      {showConfirmLimpar && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{
+            background: '#1e1b4b', border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '16px', padding: '32px', maxWidth: '420px', width: '90%'
+          }}>
+            <h3 style={{ color: '#ef4444', margin: '0 0 12px', fontSize: '18px' }}>
+              Limpar todos os alertas?
+            </h3>
+            <p style={{ color: '#94a3b8', margin: '0 0 24px', fontSize: '14px', lineHeight: '1.5' }}>
+              Isso vai deletar permanentemente <strong style={{ color: 'white' }}>{alertas.length} alerta{alertas.length !== 1 ? 's' : ''}</strong>. Essa acao nao pode ser desfeita.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowConfirmLimpar(false)}
+                disabled={limpando}
+                style={{
+                  padding: '10px 20px', background: 'rgba(100, 116, 139, 0.2)',
+                  border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '12px',
+                  color: '#94a3b8', fontSize: '14px', fontWeight: '500', cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleLimparTodos}
+                disabled={limpando}
+                style={{
+                  padding: '10px 20px', background: limpando ? 'rgba(239, 68, 68, 0.5)' : '#ef4444',
+                  border: 'none', borderRadius: '12px', color: 'white',
+                  fontSize: '14px', fontWeight: '600',
+                  cursor: limpando ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {limpando ? 'Deletando...' : 'Deletar Todos'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Resultado da verificação */}
       {resultados && !resultados.error && (

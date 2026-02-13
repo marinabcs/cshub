@@ -1643,14 +1643,17 @@ async function buscarComentariosClickUp(taskId, apiKey) {
  *
  * Também cria tarefas no ClickUp automaticamente.
  */
+// DESATIVADO TEMPORARIAMENTE (13/02/2026) — criação automática de alertas pausada
 export const verificarAlertasAutomatico = onSchedule({
-  schedule: '0 9,14 * * 1-5', // 9h e 14h de segunda a sexta (após classificação)
+  schedule: '0 3 29 2 *', // Praticamente nunca roda (29 de fev, 3h — só em ano bissexto)
   timeZone: 'America/Sao_Paulo',
   region: 'southamerica-east1',
   timeoutSeconds: 540,
   memory: '512MiB',
   secrets: ['CLICKUP_API_KEY', 'CLICKUP_LIST_ID']
 }, async () => {
+  console.log('[Alertas Auto] Criação automática de alertas DESATIVADA temporariamente');
+  return;
   // Configurações ClickUp
   const clickupApiKey = process.env.CLICKUP_API_KEY;
   const clickupListId = process.env.CLICKUP_LIST_ID;
@@ -2162,11 +2165,13 @@ export const classifyPendingThreads = onSchedule({
         }
 
         // Atualizar thread no Firestore (incluindo status da IA e resposta_resolutiva)
+        const isInformativo = classificacao.categoria === 'informativo' || classificacao.status === 'informativo';
         await thread.ref.update({
           categoria: classificacao.categoria || 'outro',
           sentimento: classificacao.sentimento || 'neutro',
           status: classificacao.status || 'aguardando_equipe',
           resposta_resolutiva: classificacao.resposta_resolutiva === true,
+          requer_acao: !isInformativo,
           resumo_ia: classificacao.resumo || null,
           classificado_por: 'ia_automatico',
           classificado_em: Timestamp.now(),

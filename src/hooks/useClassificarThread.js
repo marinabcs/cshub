@@ -34,10 +34,12 @@ export function useClassificarThread() {
       const resultado = await classificarThread(conversa, contextoCliente);
 
       // Preparar dados para salvar (incluindo status da IA)
+      const isInformativo = resultado.categoria === 'informativo' || resultado.status === 'informativo';
       const classificacaoData = {
         categoria: resultado.categoria,
         sentimento: resultado.sentimento,
         status: resultado.status || 'aguardando_equipe',
+        requer_acao: !isInformativo,
         resumo_ia: resultado.resumo,
         classificado_em: Timestamp.now(),
         classificado_por: 'ia'

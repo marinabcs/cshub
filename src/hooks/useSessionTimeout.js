@@ -4,7 +4,7 @@ import { db, auth } from '../services/firebase';
 import { registrarSessionTimeout } from '../services/auditService';
 
 // Tempo de inatividade antes do logout (em minutos)
-const INACTIVITY_TIMEOUT_MINUTES = 480; // 8 horas
+const INACTIVITY_TIMEOUT_MINUTES = 60; // 1 hora
 // Tempo de aviso antes do logout (em segundos)
 const WARNING_SECONDS = 60;
 
@@ -12,7 +12,7 @@ const WARNING_SECONDS = 60;
  * Hook para auto-logout após período de inatividade
  *
  * Monitora: mouse, teclado, cliques, scroll, touch
- * Após 30min de inatividade: exibe aviso de 60s
+ * Após 1h de inatividade: exibe aviso de 60s
  * Sem resposta: faz logout automático
  */
 export function useSessionTimeout() {
