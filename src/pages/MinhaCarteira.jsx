@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,7 +10,7 @@ import {
   Clock, TrendingUp, TrendingDown, Activity, Bell, CheckCircle,
   XCircle, Calendar, ArrowUpRight, ChevronDown, Lock, ClipboardList
 } from 'lucide-react';
-import { STATUS_OPTIONS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
+import { STATUS_OPTIONS } from '../utils/clienteStatus';
 import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
 
 export default function MinhaCarteira() {
@@ -179,12 +179,12 @@ export default function MinhaCarteira() {
           try {
             const snap = await getDocs(query(collection(db, 'clientes', cliente.id, 'onboarding_planos'), where('status', '==', 'em_andamento'), limit(1)));
             temOnboarding = !snap.empty;
-          } catch {}
+          } catch { /* ignore */ }
 
           try {
             const snap = await getDocs(query(collection(db, 'clientes', cliente.id, 'ongoing_ciclos'), where('status', '==', 'em_andamento'), limit(1)));
             temOngoing = !snap.empty;
-          } catch {}
+          } catch { /* ignore */ }
 
           return (temOnboarding || temOngoing) ? null : cliente;
         }));
@@ -228,7 +228,7 @@ export default function MinhaCarteira() {
         const alertasData = alertasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setAlertas(alertasData);
         statsCalc.alertasPendentes = alertasData.length;
-      } catch (e) {
+      } catch {
         // Pode falhar se não tiver índice, ignorar silenciosamente
         console.log('Alertas query failed, skipping');
       }
@@ -255,26 +255,6 @@ export default function MinhaCarteira() {
     if (diffDays === 1) return 'Ontem';
     if (diffDays < 7) return `${diffDays} dias atrás`;
     return date.toLocaleDateString('pt-BR');
-  };
-
-  const getStatusColor = (status) => {
-    const colors = {
-      aguardando_equipe: '#f59e0b',
-      aguardando_cliente: '#06b6d4',
-      ativo: '#8b5cf6',
-      resolvido: '#10b981'
-    };
-    return colors[status] || '#64748b';
-  };
-
-  const getStatusLabel = (status) => {
-    const labels = {
-      aguardando_equipe: 'Aguardando Você',
-      aguardando_cliente: 'Aguardando Cliente',
-      ativo: 'Ativo',
-      resolvido: 'Resolvido'
-    };
-    return labels[status] || status;
   };
 
   const getClienteNameByTeamId = (teamId) => {

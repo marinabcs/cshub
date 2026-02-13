@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, getDocs, query, orderBy, limit, where, startAfter } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, History, Search, Filter, X, ChevronDown, ChevronRight, User, FileText, Users, Settings, MessageSquare, Calendar, RefreshCw, Download, LogIn, LogOut, Clock, Shield } from 'lucide-react';
@@ -31,7 +31,7 @@ const PAGE_SIZE = 50;
 
 export default function Auditoria() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

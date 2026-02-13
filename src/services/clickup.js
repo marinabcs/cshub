@@ -99,6 +99,7 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
 /**
  * Buscar ID do usuário no ClickUp pelo email
  */
+// eslint-disable-next-line no-unused-vars
 async function buscarUsuarioClickUpPorEmail(email) {
   if (!email) return null;
 

@@ -47,7 +47,7 @@ export function useSessionTimeout() {
         await registrarSessionTimeout(db, auth).catch(() => {});
       }
       await logout();
-    } catch (error) {
+    } catch (_error) {
       // Silently fail - user will be redirected to login anyway
     }
   }, [logout, clearAllTimers]);
@@ -106,6 +106,7 @@ export function useSessionTimeout() {
   useEffect(() => {
     if (!isAuthenticated) {
       clearAllTimers();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowWarning(false);
       return;
     }

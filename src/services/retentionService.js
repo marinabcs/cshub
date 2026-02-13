@@ -15,13 +15,10 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc,
   updateDoc,
   deleteDoc,
   query,
   where,
-  orderBy,
-  limit as fbLimit,
   Timestamp,
   writeBatch,
 } from 'firebase/firestore';
@@ -52,19 +49,6 @@ function calcularDataLimite(meses) {
   const data = new Date();
   data.setMonth(data.getMonth() - meses);
   return data;
-}
-
-/**
- * Converte Firestore Timestamp para Date
- * @param {any} timestamp - Timestamp do Firestore ou Date
- * @returns {Date|null}
- */
-function toDate(timestamp) {
-  if (!timestamp) return null;
-  if (timestamp instanceof Date) return timestamp;
-  if (timestamp.toDate) return timestamp.toDate();
-  if (typeof timestamp === 'string') return new Date(timestamp);
-  return null;
 }
 
 /**

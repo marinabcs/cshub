@@ -19,7 +19,7 @@ export function useEmailFilters() {
         if (snap.exists()) {
           setFilterConfig((prev) => ({ ...prev, ...snap.data() }));
         }
-      } catch (error) {
+      } catch {
         // Em caso de erro, mantém config padrão
       } finally {
         setLoading(false);

@@ -412,6 +412,7 @@ export function HistoricoTimeline({
 /**
  * Hook para usar o histórico em componentes funcionais
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useHistorico(firestore, entidadeTipo, entidadeId, limite = 50) {
   const [logs, setLogs] = useState([]);
   const [carregando, setCarregando] = useState(true);

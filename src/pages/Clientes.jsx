@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, getDoc, doc, deleteDoc, updateDoc, writeBatch, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, deleteDoc, writeBatch, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs, invalidateCache } from '../services/cache';
 import { getUsuariosCountByTeam, getThreadsByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw, Bug, Phone, Calendar } from 'lucide-react';
-import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
+import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusLabel } from '../utils/clienteStatus';
 import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge } from '../components/UI/SegmentoBadge';
 import { Pagination } from '../components/UI/Pagination';
@@ -214,16 +214,6 @@ export default function Clientes() {
 
   const sharedTimes = getSharedTimes();
   const [showSharedModal, setShowSharedModal] = useState(false);
-
-  const formatDate = (timestamp) => {
-    if (!timestamp) return 'Sem registro';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    const now = new Date();
-    const diff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-    if (diff === 0) return 'Hoje';
-    if (diff === 1) return 'Ontem';
-    return `há ${diff} dias`;
-  };
 
   // Funções para seleção em lote
   const toggleSelectCliente = (clienteId) => {
@@ -525,12 +515,6 @@ export default function Clientes() {
     link.download = `clientes_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
-  };
-
-  const handleDeleteClick = (e, cliente) => {
-    e.stopPropagation();
-    setClienteToDelete(cliente);
-    setShowDeleteModal(true);
   };
 
   const handleConfirmDelete = async () => {

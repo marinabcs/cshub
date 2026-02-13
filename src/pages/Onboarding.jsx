@@ -75,6 +75,7 @@ export default function Onboarding() {
   // Gerar cronograma quando data de início muda
   useEffect(() => {
     if (dataInicio) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCronograma(gerarCronograma(dataInicio));
     }
   }, [dataInicio]);

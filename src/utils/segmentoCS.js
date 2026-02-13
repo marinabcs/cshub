@@ -349,6 +349,7 @@ export const DEFAULT_SAUDE_CONFIG = {
  * @param {Object} config - Configuracao de thresholds (opcional)
  * @returns {Object} { segmento, motivo, fatores }
  */
+// eslint-disable-next-line no-unused-vars
 export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUsers = 1, config = {}) {
   // Mesclar config com defaults
   const cfg = { ...DEFAULT_SAUDE_CONFIG, ...config };

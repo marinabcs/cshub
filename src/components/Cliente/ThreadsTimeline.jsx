@@ -81,8 +81,7 @@ export default function ThreadsTimeline({
   onClassificarClick,
   onCriarTarefaClick,
   onMarcarIrrelevante,
-  filterConfig,
-  cliente
+  filterConfig
 }) {
   // Estados dos filtros
   const [filtroCategoria, setFiltroCategoria] = useState('todos');

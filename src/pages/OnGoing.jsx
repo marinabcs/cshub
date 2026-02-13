@@ -62,7 +62,6 @@ export default function OnGoing() {
     tags: []
   });
   const [savingTemplate, setSavingTemplate] = useState(false);
-  const [importingTemplates, setImportingTemplates] = useState(false);
   const [expandedSections, setExpandedSections] = useState({ resgate: false, alerta: false, estavel: false, crescimento: false });
   const [expandedTemplates, setExpandedTemplates] = useState({});
   const [copiedTemplateId, setCopiedTemplateId] = useState(null);
@@ -134,50 +133,6 @@ export default function OnGoing() {
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Função para importar templates padrão (exclui existentes primeiro)
-  const handleImportTemplates = async () => {
-    const confirmMsg = templates.length > 0
-      ? `Isso vai EXCLUIR os ${templates.length} templates existentes e importar os padrões. Continuar?`
-      : 'Importar todos os templates padrão do Playbook de Ongoing?';
-    if (!window.confirm(confirmMsg)) return;
-    setImportingTemplates(true);
-    try {
-      // Excluir templates existentes
-      const { deleteDoc } = await import('firebase/firestore');
-      for (const t of templates) {
-        await deleteDoc(doc(db, 'templates_comunicacao', t.id));
-      }
-
-      // Importar novos
-      const now = new Date();
-      let count = 0;
-      for (const template of TEMPLATES_ONGOING) {
-        await setDoc(doc(db, 'templates_comunicacao', template.id), {
-          titulo: template.titulo,
-          tipo: template.tipo,
-          categoria: template.categoria,
-          assunto: template.assunto,
-          conteudo: template.conteudo,
-          tags: template.tags,
-          created_at: now,
-          created_by: user?.email || 'sistema',
-          updated_at: now,
-          updated_by: user?.email || 'sistema'
-        });
-        count++;
-      }
-      // Recarregar templates
-      const templatesSnap = await getDocs(collection(db, 'templates_comunicacao'));
-      setTemplates(templatesSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      alert(`${count} templates importados com sucesso!`);
-    } catch (err) {
-      console.error('Erro ao importar templates:', err);
-      alert('Erro ao importar templates');
-    } finally {
-      setImportingTemplates(false);
-    }
-  };
-
   // Constantes de templates
   const TEMPLATE_TIPOS = [
     { value: 'email', label: 'E-mail', icon: Mail },
@@ -236,7 +191,7 @@ export default function OnGoing() {
           const templatesSnap = await getDocs(collection(db, 'templates_comunicacao'));
           const templatesData = templatesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
           setTemplates(templatesData);
-        } catch (templatesErr) {
+        } catch {
           console.log('Coleção templates_comunicacao não encontrada ou sem permissão');
           setTemplates([]);
         }

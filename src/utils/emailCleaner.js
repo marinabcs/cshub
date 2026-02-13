@@ -64,6 +64,7 @@ const SIGNATURE_PATTERNS = [
 ];
 
 // Pattern for contact block in signature (phone, email, job title)
+// eslint-disable-next-line no-useless-escape
 const CONTACT_BLOCK_PATTERN = /(?:(?:Tel|Phone|Fone|Cel|Mobile|Telefone)[.:]\s*[\d\s\-\(\)\+]+)|(?:[A-Za-z\s]+\s*[|]\s*[A-Za-z\s]+)|(?:www\.[a-zA-Z0-9.-]+)/i;
 
 /**

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ClipboardList, Check, Clock, ChevronDown, ChevronUp, Play, X, SkipForward, MessageSquare, Calendar, Loader2, AlertTriangle, Timer, ArrowDown, TrendingUp, DollarSign, Pencil, Trash2 } from 'lucide-react';
 import { buscarCiclosCliente, atualizarAcao, cancelarCiclo, ONGOING_STATUS, ACAO_STATUS, CADENCIA_OPTIONS, atribuirCiclo } from '../../services/ongoing';
-import { getSegmentoInfo, SEGMENTOS_CS, DEFAULT_ONGOING_ACOES } from '../../utils/segmentoCS';
+import { SEGMENTOS_CS, DEFAULT_ONGOING_ACOES } from '../../utils/segmentoCS';
 import { useAuth } from '../../contexts/AuthContext';
 import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';

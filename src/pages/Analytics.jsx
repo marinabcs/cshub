@@ -9,7 +9,7 @@ import {
   Users, TrendingUp, AlertTriangle, MessageSquare,
   Filter, X, ChevronDown, Activity, Clock,
   ExternalLink, FileSpreadsheet, RefreshCw, UserCheck,
-  DollarSign, ShieldAlert, Star, Zap, Award, Target, ArrowUpRight,
+  ShieldAlert, Zap, Award, Target, ArrowUpRight,
   ArrowDownRight, Phone, Calendar, Building2, Bug, Tag
 } from 'lucide-react';
 import {
@@ -44,14 +44,6 @@ const STATUS_CLIENTE_COLORS = {
   cancelado: '#EF4444'
 };
 
-// Extrair iniciais do nome (ex: "Marina Barros" → "MB")
-const getInitials = (name) => {
-  if (!name) return 'U';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
-};
-
 // Definição das abas (otimizado - removido Vendas, mesclado Uso+Conversas)
 const TABS = [
   { id: 'engajamento', label: 'Engajamento', icon: Activity },
@@ -68,7 +60,7 @@ export default function Analytics() {
   const [clientes, setClientes] = useState([]);
   const [alertas, setAlertas] = useState([]);
   const [threads, setThreads] = useState([]);
-  const [usuarios, setUsuarios] = useState([]);
+  const [_usuarios, setUsuarios] = useState([]);
   const [metricasDiarias, setMetricasDiarias] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -470,40 +462,6 @@ export default function Analytics() {
       .slice(0, 5);
   }, [clientesFiltrados, threads, metricasDiarias, periodo, periodoCustom]);
 
-  // ========== SEÇÃO 2: DISTRIBUIÇÃO POR STATUS DO CLIENTE ==========
-  const statusClienteData = useMemo(() => {
-    const counts = {
-      ativo: clientesFiltrados.filter(c => c.status === 'ativo' || !c.status || c.status === 'onboarding').length,
-      aviso_previo: clientesFiltrados.filter(c => c.status === 'aviso_previo').length,
-      inativo: clientesFiltrados.filter(c => c.status === 'inativo').length,
-      cancelado: clientesFiltrados.filter(c => c.status === 'cancelado').length
-    };
-
-    return [
-      { name: 'Ativos', value: counts.ativo, color: STATUS_CLIENTE_COLORS.ativo },
-      { name: 'Aviso Prévio', value: counts.aviso_previo, color: STATUS_CLIENTE_COLORS.aviso_previo },
-      { name: 'Inativos', value: counts.inativo, color: STATUS_CLIENTE_COLORS.inativo },
-      { name: 'Cancelados', value: counts.cancelado, color: STATUS_CLIENTE_COLORS.cancelado }
-    ].filter(d => d.value > 0);
-  }, [clientesFiltrados]);
-
-  // ========== SEÇÃO 3: DISTRIBUIÇÃO POR SEGMENTO CS ==========
-  const segmentoDistribuicaoData = useMemo(() => {
-    const counts = {
-      CRESCIMENTO: clientesFiltrados.filter(c => getClienteSegmento(c) === 'CRESCIMENTO').length,
-      ESTAVEL: clientesFiltrados.filter(c => getClienteSegmento(c) === 'ESTAVEL').length,
-      ALERTA: clientesFiltrados.filter(c => getClienteSegmento(c) === 'ALERTA').length,
-      RESGATE: clientesFiltrados.filter(c => getClienteSegmento(c) === 'RESGATE').length
-    };
-
-    return [
-      { name: SEGMENTOS_CS.CRESCIMENTO.label, value: counts.CRESCIMENTO, color: SEGMENTOS_CS.CRESCIMENTO.color },
-      { name: SEGMENTOS_CS.ESTAVEL.label, value: counts.ESTAVEL, color: SEGMENTOS_CS.ESTAVEL.color },
-      { name: SEGMENTOS_CS.ALERTA.label, value: counts.ALERTA, color: SEGMENTOS_CS.ALERTA.color },
-      { name: SEGMENTOS_CS.RESGATE.label, value: counts.RESGATE, color: SEGMENTOS_CS.RESGATE.color }
-    ].filter(d => d.value > 0);
-  }, [clientesFiltrados]);
-
   // ========== SEÇÃO 4: TIMES EM RISCO ==========
   const timesEmRisco = useMemo(() => {
     return clientesFiltrados
@@ -574,7 +532,7 @@ export default function Analytics() {
 
     threadsFiltradas.forEach(t => {
       const cat = t.categoria || 'outro';
-      if (categorias.hasOwnProperty(cat)) {
+      if (Object.prototype.hasOwnProperty.call(categorias, cat)) {
         categorias[cat]++;
       } else {
         categorias['outro']++;
@@ -611,7 +569,7 @@ export default function Analytics() {
 
     threadsFiltradas.forEach(t => {
       const sent = t.sentimento || 'neutro';
-      if (sentimentos.hasOwnProperty(sent)) {
+      if (Object.prototype.hasOwnProperty.call(sentimentos, sent)) {
         sentimentos[sent]++;
       }
     });
@@ -731,9 +689,6 @@ export default function Analytics() {
     // Top heavy users
     const heavyUsers = [...users].sort((a, b) => b.activity_score - a.activity_score).slice(0, 15);
 
-    // Usuários inativos (sem login no período)
-    const usuariosAtivos = new Set(Object.keys(userMap));
-
     // Distribuição por faixa de atividade
     const faixas = {
       'Power User (50+)': users.filter(u => u.activity_score >= 50).length,
@@ -744,45 +699,6 @@ export default function Analytics() {
 
     return { heavyUsers, faixas, totalUsuariosAtivos: users.length };
   }, [metricasDiarias, clientes, periodo]);
-
-  // ========== ABA VENDAS: Oportunidades de Upsell ==========
-  const vendasData = useMemo(() => {
-    // Clientes engajados (segmento CRESCIMENTO + uso alto) = oportunidades de upsell
-    const clientesComUso = clientesFiltrados.map(c => {
-      const teamIds = c.times || [c.id];
-      const metricasCliente = metricasDiarias.filter(m => teamIds.includes(m.team_id));
-      const totalUso = metricasCliente.reduce((sum, m) =>
-        sum + (m.logins || 0) + (m.pecas_criadas || 0) * 2 + (m.downloads || 0) + (m.uso_ai_total || 0) * 1.5, 0);
-
-      return {
-        ...c,
-        totalUso,
-        segmento: getClienteSegmento(c),
-        potencialUpsell: getClienteSegmento(c) === 'CRESCIMENTO'
-      };
-    });
-
-    // Oportunidades de upsell (segmento CRESCIMENTO)
-    const oportunidadesUpsell = clientesComUso
-      .filter(c => c.potencialUpsell)
-      .sort((a, b) => b.totalUso - a.totalUso)
-      .slice(0, 10);
-
-    // Clientes com crescimento de uso (CRESCIMENTO ou ESTAVEL com bom uso)
-    const clientesEmCrescimento = clientesComUso
-      .filter(c => ['CRESCIMENTO', 'ESTAVEL'].includes(c.segmento) && c.totalUso > 30)
-      .sort((a, b) => b.totalUso - a.totalUso)
-      .slice(0, 10);
-
-    // Valor potencial por tier (segmento CRESCIMENTO)
-    const porTier = {
-      'Enterprise': clientesFiltrados.filter(c => c.team_type === 'enterprise' && getClienteSegmento(c) === 'CRESCIMENTO').length,
-      'Business': clientesFiltrados.filter(c => c.team_type === 'business' && getClienteSegmento(c) === 'CRESCIMENTO').length,
-      'Starter': clientesFiltrados.filter(c => c.team_type === 'starter' && getClienteSegmento(c) === 'CRESCIMENTO').length
-    };
-
-    return { oportunidadesUpsell, clientesEmCrescimento, porTier, totalOportunidades: oportunidadesUpsell.length };
-  }, [clientesFiltrados, metricasDiarias]);
 
   // ========== ABA CHURN: Prevenção de Churn ==========
   const churnData = useMemo(() => {
@@ -843,25 +759,6 @@ export default function Analytics() {
   }, [clientesFiltrados, alertasFiltrados, threadsFiltradas]);
 
   // ========== EXPORTAÇÃO EXCEL ==========
-  const exportToExcel = async (sectionName, data) => {
-    // Lazy load ExcelJS apenas quando necessário
-    const ExcelJS = (await import('exceljs')).default;
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet(sectionName);
-    if (data.length > 0) {
-      ws.columns = Object.keys(data[0]).map(key => ({ header: key, key, width: 20 }));
-      data.forEach(row => ws.addRow(row));
-    }
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${sectionName}_${new Date().toISOString().split('T')[0]}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const exportCompleteReport = async () => {
     // Lazy load ExcelJS apenas quando necessário
     const ExcelJS = (await import('exceljs')).default;
@@ -1002,11 +899,6 @@ export default function Analytics() {
   };
 
   const hasFilters = periodo !== '30' || responsaveis.length > 0 || teamTypes.length > 0 || filterArea.length > 0 || filterSaude.length > 0 || filterStatus.length > 0;
-
-  // Fechar dropdown ao clicar fora
-  const handleClickOutside = () => {
-    if (showFilters) setShowFilters(null);
-  };
 
   // Toggle para multiselect
   const toggleResponsavel = (resp) => {
@@ -1342,251 +1234,6 @@ export default function Analytics() {
     </>
   );
 
-  const renderTabUsoPlatforma = () => (
-    <>
-      {/* Cards de métricas de uso */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Users style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Logins ({periodo}d)</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalLogins}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <FileSpreadsheet style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Peças Criadas</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalPecasCriadas}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Download style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Downloads</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalDownloads}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Zap style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Uso de AI</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.totalUsoAI}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Médias diárias */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Média Diária</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div style={{ background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Logins/dia</p>
-              <p style={{ color: 'white', fontSize: '28px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.mediaLoginsDia}</p>
-            </div>
-            <div style={{ background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', padding: '16px', textAlign: 'center' }}>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 4px 0' }}>Peças/dia</p>
-              <p style={{ color: 'white', fontSize: '28px', fontWeight: 'bold', margin: 0 }}>{metricasUsoPlataforma.mediaPecasDia}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Top Times por Uso */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Top 10 Times por Uso</h3>
-          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-            {metricasUsoPlataforma.topTimesPorUso.map((time, index) => (
-              <div key={time.teamId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: index < 9 ? '1px solid rgba(139, 92, 246, 0.1)' : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ width: '24px', height: '24px', background: index < 3 ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'rgba(139, 92, 246, 0.2)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: '600' }}>
-                    {index + 1}
-                  </span>
-                  <span style={{ color: 'white', fontSize: '13px' }}>{time.nome}</span>
-                </div>
-                <span style={{ color: '#8b5cf6', fontSize: '13px', fontWeight: '600' }}>{Math.round(time.total)}</span>
-              </div>
-            ))}
-            {metricasUsoPlataforma.topTimesPorUso.length === 0 && (
-              <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Sem dados no período</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Gráfico de tendência de uso */}
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Tendências de Uso (últimos 30 dias)</h3>
-          </div>
-        </div>
-        <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={tendenciaData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="colorThreads" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" />
-            <XAxis dataKey="data" stroke="#64748b" fontSize={11} tickLine={false} />
-            <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
-            <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} />
-            <Area type="monotone" dataKey="threads" name="Atividade" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorThreads)" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-    </>
-  );
-
-  const renderTabConversas = () => (
-    <>
-      {/* Cards de visão geral */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <MessageSquare style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Total Threads ({periodo}d)</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{threadsFiltradas.length}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Star style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Positivas</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{sentimentoData.find(s => s.name === 'Positivo')?.value || 0}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <AlertTriangle style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Negativas/Urgentes</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{(sentimentoData.find(s => s.name === 'Negativo')?.value || 0) + (sentimentoData.find(s => s.name === 'Urgente')?.value || 0)}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(249, 115, 22, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Clock style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Aguardando Resposta</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{threadsFiltradas.filter(t => t.status === 'aguardando_equipe').length}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Gráficos */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-        {/* Threads por Categoria */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Threads por Categoria</h3>
-          {threadsPorCategoria.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={threadsPorCategoria} layout="vertical" margin={{ left: 20, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
-                <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
-                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={100} />
-                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
-                <Bar dataKey="value" name="Threads" radius={[0, 4, 4, 0]}>
-                  {threadsPorCategoria.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados no período</div>
-          )}
-        </div>
-
-        {/* Sentimento das Conversas */}
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Sentimento das Conversas</h3>
-          {sentimentoData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie data={sentimentoData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={3} dataKey="value">
-                  {sentimentoData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
-                <Legend verticalAlign="bottom" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados de sentimento</div>
-          )}
-        </div>
-      </div>
-
-      {/* Tendência de conversas */}
-      <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-        <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Tendência de Conversas (últimos 30 dias)</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={tendenciaData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="colorAlertasCriados" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#f97316" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
-              </linearGradient>
-              <linearGradient id="colorAlertasResolvidos" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" />
-            <XAxis dataKey="data" stroke="#64748b" fontSize={11} tickLine={false} />
-            <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
-            <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} labelStyle={{ color: '#94a3b8' }} itemStyle={{ color: 'white' }} />
-            <Legend verticalAlign="top" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>} />
-            <Area type="monotone" dataKey="threads" name="Threads" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorThreads)" />
-            <Area type="monotone" dataKey="alertasCriados" name="Alertas Criados" stroke="#f97316" fillOpacity={1} fill="url(#colorAlertasCriados)" />
-            <Area type="monotone" dataKey="alertasResolvidos" name="Alertas Resolvidos" stroke="#10b981" fillOpacity={1} fill="url(#colorAlertasResolvidos)" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-    </>
-  );
-
   const renderTabUsuarios = () => (
     <>
       {/* Cards de métricas */}
@@ -1695,151 +1342,6 @@ export default function Analytics() {
       </div>
 
       {/* Seção removida - Performance por CS movida para relatórios específicos */}
-    </>
-  );
-
-  // Função renderTabVendas removida (aba Vendas foi excluída)
-  const renderTabVendas = () => (
-    <>
-      {/* Cards de oportunidades */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Target style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Oportunidades de Upsell</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{vendasData.totalOportunidades}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ArrowUpRight style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Clientes em Crescimento</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{vendasData.clientesEmCrescimento.length}</p>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)', border: '1px solid rgba(6, 182, 212, 0.2)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '44px', height: '44px', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <DollarSign style={{ width: '22px', height: '22px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: '#94a3b8', fontSize: '12px', margin: 0 }}>Seg. Crescimento</p>
-              <p style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', margin: 0 }}>{clientesFiltrados.filter(c => getClienteSegmento(c) === 'CRESCIMENTO').length}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Oportunidades de Upsell */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <Target style={{ width: '20px', height: '20px', color: '#10b981' }} />
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Oportunidades de Upsell</h3>
-          </div>
-          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes na saúde Crescimento (prontos para expansão)</p>
-          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-            {vendasData.oportunidadesUpsell.map((cliente, index) => (
-              <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
-                <div>
-                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.nome || cliente.team_name}</p>
-                  <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.team_type || 'Standard'}</p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <SegmentoBadge segmento={getClienteSegmento(cliente)} size="sm" />
-                    <p style={{ color: '#8b5cf6', fontSize: '11px', margin: '4px 0 0 0' }}>Uso: {Math.round(cliente.totalUso)}</p>
-                  </div>
-                  <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
-                </div>
-              </div>
-            ))}
-            {vendasData.oportunidadesUpsell.length === 0 && (
-              <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Nenhuma oportunidade identificada</p>
-            )}
-          </div>
-        </div>
-
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <TrendingUp style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: 0 }}>Clientes em Crescimento</h3>
-          </div>
-          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0' }}>Clientes com saúde Crescimento ou Estável com uso crescente</p>
-          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-            {vendasData.clientesEmCrescimento.map((cliente, index) => (
-              <div key={cliente.id} onClick={() => navigate(`/clientes/${cliente.id}`)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '10px', marginBottom: '8px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
-                <div>
-                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: 0 }}>{cliente.nome || cliente.team_name}</p>
-                  <p style={{ color: '#64748b', fontSize: '11px', margin: 0 }}>{cliente.responsavel_nome || '-'}</p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ padding: '4px 8px', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6', borderRadius: '6px', fontSize: '11px', fontWeight: '500' }}>
-                    {Math.round(cliente.totalUso)} pts
-                  </span>
-                  <ExternalLink style={{ width: '14px', height: '14px', color: '#64748b' }} />
-                </div>
-              </div>
-            ))}
-            {vendasData.clientesEmCrescimento.length === 0 && (
-              <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>Nenhum cliente em crescimento</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Distribuição por Segmento CS e Status */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Saúde CS</h3>
-          {segmentoDistribuicaoData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={segmentoDistribuicaoData} layout="vertical" margin={{ left: 20, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139, 92, 246, 0.1)" horizontal={true} vertical={false} />
-                <XAxis type="number" stroke="#64748b" fontSize={11} tickLine={false} />
-                <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} width={100} />
-                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
-                <Bar dataKey="value" name="Clientes" radius={[0, 4, 4, 0]}>
-                  {segmentoDistribuicaoData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados</div>
-          )}
-        </div>
-
-        <div style={{ background: 'rgba(30, 27, 75, 0.4)', border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '16px', padding: '20px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 16px 0' }}>Distribuição por Status</h3>
-          {statusClienteData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={statusClienteData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
-                  {statusClienteData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ background: 'rgba(15, 10, 31, 0.95)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px' }} itemStyle={{ color: 'white' }} />
-                <Legend verticalAlign="bottom" height={36} formatter={(value) => <span style={{ color: '#94a3b8', fontSize: '12px' }}>{value}</span>} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>Sem dados</div>
-          )}
-        </div>
-      </div>
     </>
   );
 
@@ -2015,7 +1517,6 @@ export default function Analytics() {
   const renderTabSazonalidade = () => {
     const MESES_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const mesAtualIdx = new Date().getMonth();
-    const mesAtualKey = MESES_KEYS[mesAtualIdx];
 
     // Seção A - Visão Geral do Mês Atual
     const contagens = { alta: 0, normal: 0, baixa: 0 };
@@ -2040,7 +1541,7 @@ export default function Analytics() {
     // Para cada área e mês, contar clientes em 'alta'
     const heatmapData = areasComClientes.map(area => {
       const row = { area, label: getAreaLabel(area) };
-      MESES_KEYS.forEach((mes, i) => {
+      MESES_KEYS.forEach((mes) => {
         row[mes] = clientesPorArea[area].filter(c =>
           c.calendario_campanhas && c.calendario_campanhas[mes] === 'alta'
         ).length;

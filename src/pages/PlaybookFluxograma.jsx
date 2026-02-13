@@ -163,6 +163,7 @@ export default function PlaybookFluxograma() {
                 { seg: 'ESTAVEL', criterio: criterios.ESTAVEL, icon: Heart },
                 { seg: 'ALERTA', criterio: criterios.ALERTA, icon: Eye },
                 { seg: 'RESGATE', criterio: criterios.RESGATE, icon: AlertTriangle },
+              // eslint-disable-next-line no-unused-vars
               ].map(({ seg, criterio, icon: Icon }) => (
                 <div key={seg} style={{
                   padding: '20px',
@@ -262,6 +263,7 @@ export default function PlaybookFluxograma() {
                   { dia: 'D8-14', acao: 'Call diagnostico', icone: Phone },
                   { dia: 'D14-21', acao: 'Verificar metricas', icone: FileText },
                   { dia: 'D21+', acao: 'RESGATE', icone: AlertTriangle },
+                // eslint-disable-next-line no-unused-vars
                 ].map(({ dia, acao, icone: Icone }) => (
                   <div key={dia} style={{ padding: '8px 12px', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '8px', textAlign: 'center' }}>
                     <Icone style={{ width: '14px', height: '14px', color: '#f59e0b', marginBottom: '2px' }} />
@@ -295,6 +297,7 @@ export default function PlaybookFluxograma() {
                   { dia: 'D3-5', acao: 'Call 30min', icone: Phone },
                   { dia: 'D5-7', acao: 'Criar roadmap', icone: Calendar },
                   { dia: 'D7+', acao: 'Acompanhamento semanal', icone: Clock },
+                // eslint-disable-next-line no-unused-vars
                 ].map(({ dia, acao, icone: Icone }) => (
                   <div key={dia} style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', textAlign: 'center' }}>
                     <Icone style={{ width: '14px', height: '14px', color: '#ef4444', marginBottom: '2px' }} />

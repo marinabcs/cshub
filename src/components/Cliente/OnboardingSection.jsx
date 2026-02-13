@@ -38,10 +38,6 @@ export default function OnboardingSection({ clienteId }) {
   const [historico, setHistorico] = useState([]);
   const [showHistorico, setShowHistorico] = useState(false);
 
-  useEffect(() => {
-    loadPlano();
-  }, [clienteId]);
-
   async function loadPlano() {
     setLoading(true);
     const [p, todos] = await Promise.all([
@@ -52,6 +48,11 @@ export default function OnboardingSection({ clienteId }) {
     setHistorico(todos.filter(pl => pl.status !== 'em_andamento'));
     setLoading(false);
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadPlano();
+  }, [clienteId]);
 
   // ============================================
   // V2 Handlers (mantidos)
@@ -203,17 +204,6 @@ export default function OnboardingSection({ clienteId }) {
     setAtualizando(`reabrir-${reuniaoId}`);
     try {
       await atualizarReuniaoV1(clienteId, plano.id, reuniaoId, { status: 'pendente' });
-      await loadPlano();
-    } catch {
-      // erro logado
-    }
-    setAtualizando(null);
-  }
-
-  async function handleLimparDataV1(reuniaoId) {
-    setAtualizando(`limpar-data-${reuniaoId}`);
-    try {
-      await atualizarReuniaoV1(clienteId, plano.id, reuniaoId, { data_sugerida: null });
       await loadPlano();
     } catch {
       // erro logado

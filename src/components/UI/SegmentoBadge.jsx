@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/static-components */
 import { TrendingUp, Heart, Eye, AlertTriangle } from 'lucide-react';
 import { getSegmentoInfo } from '../../utils/segmentoCS';
 
@@ -66,7 +67,7 @@ export function SegmentoBadge({ segmento, showLabel = true, showIcon = true, siz
         whiteSpace: 'nowrap'
       }}
     >
-      {showIcon && Icon && (
+{showIcon && Icon && (
         <Icon style={{ width: s.iconSize, height: s.iconSize, flexShrink: 0 }} />
       )}
       {showLabel && info.label}
@@ -106,7 +107,7 @@ export function SegmentoIcon({ segmento, size = 'md' }) {
         cursor: 'help'
       }}
     >
-      <Icon style={{ width: s.size, height: s.size }} />
+<Icon style={{ width: s.size, height: s.size }} />
     </span>
   );
 }
@@ -142,7 +143,7 @@ export function SegmentoCard({ segmento, showAcoes = true, onAcaoClick }) {
             justifyContent: 'center'
           }}
         >
-          <Icon style={{ width: 20, height: 20, color: 'white' }} />
+        <Icon style={{ width: 20, height: 20, color: 'white' }} />
         </div>
         <div>
           <div style={{ color: info.color, fontSize: '16px', fontWeight: '700' }}>

@@ -4,7 +4,6 @@ import { db } from '../services/firebase'
 // Helper para criar timestamps
 const now = new Date()
 const daysAgo = (days) => Timestamp.fromDate(new Date(now.getTime() - days * 24 * 60 * 60 * 1000))
-const hoursAgo = (hours) => Timestamp.fromDate(new Date(now.getTime() - hours * 60 * 60 * 1000))
 
 // Dados dos clientes
 const clientes = [
@@ -396,37 +395,6 @@ const gerarMetricasDiarias = () => {
         uso_ai_total: Math.round(team.baseAI * variacao)
       })
     }
-  }
-
-  return metricas
-}
-
-/**
- * Gera métricas diárias para um team_id específico
- */
-const gerarMetricasParaTeam = (teamId) => {
-  const metricas = []
-  const currentDate = new Date()
-
-  // Base de uso aleatória para cada cliente
-  const baseLogins = 10 + Math.floor(Math.random() * 30)
-  const basePecas = 15 + Math.floor(Math.random() * 40)
-  const baseDownloads = 10 + Math.floor(Math.random() * 25)
-  const baseAI = 20 + Math.floor(Math.random() * 50)
-
-  for (let i = 0; i < 30; i++) {
-    const dataMetrica = new Date(currentDate.getTime() - i * 24 * 60 * 60 * 1000)
-    const variacao = 0.7 + Math.random() * 0.6 // Variação de 70% a 130%
-
-    metricas.push({
-      id: `${teamId}_${dataMetrica.toISOString().split('T')[0]}`,
-      team_id: teamId,
-      data: Timestamp.fromDate(dataMetrica),
-      logins: Math.round(baseLogins * variacao),
-      pecas_criadas: Math.round(basePecas * variacao),
-      downloads: Math.round(baseDownloads * variacao),
-      uso_ai_total: Math.round(baseAI * variacao)
-    })
   }
 
   return metricas

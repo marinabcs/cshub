@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, where } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClipboardList } from 'lucide-react';
@@ -54,7 +54,7 @@ export default function Documentos() {
   const [saving, setSaving] = useState(false);
 
   // Menu de contexto
-  const [contextMenu, setContextMenu] = useState(null);
+  const [, setContextMenu] = useState(null);
 
   const cores = [
     '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6'

@@ -592,6 +592,7 @@ export function gerarAlertasEntrouResgate(clientes, alertasExistentes) {
 }
 
 // Executar todas as verificações
+// eslint-disable-next-line no-unused-vars
 export function verificarTodosAlertas(clientes, threads, alertasExistentes, metricas = [], filterConfig = null) {
   console.log(`[Alertas] ========== INICIO VERIFICACAO ==========`);
   console.log(`[Alertas] Total clientes recebidos: ${clientes.length}`);

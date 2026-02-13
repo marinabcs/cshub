@@ -124,7 +124,7 @@ export default function Alertas() {
   });
   const { counts } = useAlertasCount();
   const { atualizarStatus, updating } = useAtualizarAlerta();
-  const { verificarEGerarAlertas, verificando, resultados } = useVerificarAlertas();
+  const { resultados } = useVerificarAlertas();
 
   // Responsáveis únicos e tipos de time (separa nomes concatenados por vírgula)
   const responsaveis = [...new Set(
@@ -169,12 +169,6 @@ export default function Alertas() {
     if (result.success) {
       refetch();
     }
-  };
-
-  // Handler para verificar novos alertas
-  const handleVerificar = async () => {
-    await verificarEGerarAlertas();
-    refetch();
   };
 
   // Limpar todos os alertas

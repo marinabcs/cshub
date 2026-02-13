@@ -4,7 +4,7 @@ import { doc, getDoc, setDoc, updateDoc, collection, getDocs, serverTimestamp } 
 import { db } from '../services/firebase';
 import { getUsuariosCountByTeam } from '../services/api';
 import { ArrowLeft, Save, X, Search, Users, Building2, Check, AlertCircle, Plus, Trash2, UserCircle, Eye, EyeOff, Key, Pencil } from 'lucide-react';
-import { STATUS_OPTIONS, DEFAULT_STATUS, getStatusColor, getStatusLabel } from '../utils/clienteStatus';
+import { STATUS_OPTIONS, DEFAULT_STATUS } from '../utils/clienteStatus';
 import { logAction } from '../utils/audit';
 import { useAuth } from '../contexts/AuthContext';
 import { AREAS_ATUACAO } from '../utils/areasAtuacao';
@@ -111,7 +111,7 @@ export default function ClienteForm() {
           setAreaAtuacao(data.area_atuacao || '');
           setTipoConta(data.tipo_conta || 'pagante');
         }
-      } catch (error) {
+      } catch (_error) {
         // erro silenciado em produção
       } finally {
         setLoading(false);

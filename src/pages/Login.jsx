@@ -61,7 +61,7 @@ export default function Login() {
     try {
       await sendPasswordResetEmail(auth, forgotEmail);
       setForgotSuccess(true);
-    } catch (err) {
+    } catch {
       setError('Erro ao enviar email. Verifique o endereço e tente novamente.');
     } finally {
       setForgotLoading(false);

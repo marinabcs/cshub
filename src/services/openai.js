@@ -95,7 +95,7 @@ export async function classificarThread(conversa, contextoCliente = '') {
     const result = await classifyThreadFn({ conversa, contextoCliente });
     // Validar com Zod — campos inválidos recebem fallback automático
     return classificacaoIASchema.parse(result.data);
-  } catch (error) {
+  } catch {
     logger.error('Falha na classificação de thread');
     throw new Error('Não foi possível classificar a conversa. Tente novamente.');
   }

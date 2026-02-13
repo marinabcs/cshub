@@ -273,7 +273,7 @@ export default function PlaybooksSection({ clienteId }) {
                     borderTop: '1px solid rgba(139, 92, 246, 0.1)'
                   }}>
                     <div style={{ paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {playbook.etapas?.map((etapa, index) => {
+                      {playbook.etapas?.map((etapa, _index) => {
                         const etapaStatus = ETAPA_STATUS[etapa.status];
                         const prazoInfo = formatarPrazo(etapa.prazo_data, etapa.status);
                         const key = `${playbook.id}-${etapa.ordem}`;

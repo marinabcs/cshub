@@ -7,14 +7,12 @@ import {
   getDocs,
   addDoc,
   updateDoc,
-  deleteDoc,
   query,
-  where,
   orderBy,
   Timestamp,
   serverTimestamp
 } from 'firebase/firestore';
-import { isClickUpConfigured, criarTarefaClickUp, atualizarStatusTarefaClickUp, buscarTarefaClickUp, STATUS_CSHUB_TO_CLICKUP, STATUS_CLICKUP_TO_ETAPA } from './clickup';
+import { isClickUpConfigured, atualizarStatusTarefaClickUp, buscarTarefaClickUp, STATUS_CSHUB_TO_CLICKUP, STATUS_CLICKUP_TO_ETAPA } from './clickup';
 
 // Status possíveis do playbook aplicado
 export const PLAYBOOK_STATUS = {

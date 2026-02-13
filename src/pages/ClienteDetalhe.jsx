@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { doc, getDoc, collection, getDocs, query, orderBy, limit, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, orderBy, where, addDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { getThreadsByTeam, getMensagensByThread } from '../services/api';
 import { ArrowLeft, Building2, Users, Clock, MessageSquare, Mail, AlertTriangle, CheckCircle, ChevronRight, X, LogIn, FileImage, Download, Sparkles, Pencil, User, ChevronDown, Activity, Bot, HelpCircle, Bug, Wrench, FileText, MoreHorizontal, Briefcase, Phone, Star, Eye, EyeOff, Key, FolderOpen, Plus, ExternalLink, Trash2, Link2, ClipboardList, CheckCircle2, RotateCcw, Video, Calendar, Linkedin, GraduationCap, Search, Loader2, Copy } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { SEGMENTOS_CS, getSegmentoInfo, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
+import { SEGMENTOS_CS, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge, SegmentoCard } from '../components/UI/SegmentoBadge';
 import { useClassificarThread } from '../hooks/useClassificarThread';
 import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../services/openai';
@@ -13,9 +13,8 @@ import OnboardingSection from '../components/Cliente/OnboardingSection';
 import OngoingSection from '../components/Cliente/OngoingSection';
 import ThreadsTimeline from '../components/Cliente/ThreadsTimeline';
 import HeavyUsersCard from '../components/Cliente/HeavyUsersCard';
-import { useEmailFilters } from '../hooks/useEmailFilters';
 import { validateForm } from '../validation';
-import { documentoSchema, observacaoSchema, interacaoSchema } from '../validation/documento';
+import { documentoSchema, observacaoSchema } from '../validation/documento';
 import { ErrorMessage } from '../components/UI/ErrorMessage';
 import { useUserActivityStatus } from '../hooks/useUserActivityStatus';
 import { UserActivityDot } from '../components/UserActivityBadge';
@@ -170,7 +169,6 @@ export default function ClienteDetalhe() {
 
   // Classificação de threads
   const { classificar, classificarManual, classificando, erro: erroClassificacao } = useClassificarThread();
-  const { filterConfig } = useEmailFilters();
   const [showManualClassification, setShowManualClassification] = useState(false);
   const [showSenhaPadrao, setShowSenhaPadrao] = useState(false);
   const [manualCategoria, setManualCategoria] = useState('');
@@ -188,12 +186,11 @@ export default function ClienteDetalhe() {
 
   // Observações do CS
   const [observacoes, setObservacoes] = useState([]);
-  const [loadingObs, setLoadingObs] = useState(false);
+  const [_loadingObs, setLoadingObs] = useState(false);
   const [showObsForm, setShowObsForm] = useState(false);
   const [obsTexto, setObsTexto] = useState('');
   const [obsTags, setObsTags] = useState([]);
   const [savingObs, setSavingObs] = useState(false);
-  const [mostrarResolvidas, setMostrarResolvidas] = useState(false);
 
   // Contatos sugeridos (extraídos das threads)
   const [suggestedContacts, setSuggestedContacts] = useState([]);
@@ -203,20 +200,13 @@ export default function ClienteDetalhe() {
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [customTag, setCustomTag] = useState('');
 
-  // Bugs/Problemas
-  const [showBugForm, setShowBugForm] = useState(false);
-  const [bugForm, setBugForm] = useState({ titulo: '', descricao: '', prioridade: 'media', link_clickup: '' });
-  const [savingBug, setSavingBug] = useState(false);
-  const [editingBugId, setEditingBugId] = useState(null);
-  const [mostrarResolvidos, setMostrarResolvidos] = useState(false);
-
   // Alertas do cliente
   const [alertasCliente, setAlertasCliente] = useState([]);
   const [alertaDetalhe, setAlertaDetalhe] = useState(null);
 
   // Interações
   const [interacoes, setInteracoes] = useState([]);
-  const [loadingInteracoes, setLoadingInteracoes] = useState(false);
+  const [_loadingInteracoes, setLoadingInteracoes] = useState(false);
   const [showInteracaoForm, setShowInteracaoForm] = useState(false);
   const [interacaoForm, setInteracaoForm] = useState({ tipo: 'feedback', data: '', participantes: '', notas: '', duracao: '', link_gravacao: '' });
   const [savingInteracao, setSavingInteracao] = useState(false);
@@ -592,7 +582,7 @@ export default function ClienteDetalhe() {
           ? { ...t, filtrado_manual: novoValor }
           : t
       ));
-    } catch (error) {
+    } catch {
       // Silently handle error
     }
   };
@@ -782,91 +772,6 @@ export default function ClienteDetalhe() {
     }
   };
 
-  // Bugs/Problemas - Handlers
-  const PRIORIDADES_BUG = [
-    { value: 'baixa', label: 'Baixa', color: '#64748b' },
-    { value: 'media', label: 'Média', color: '#f59e0b' },
-    { value: 'alta', label: 'Alta', color: '#f97316' },
-    { value: 'critica', label: 'Crítica', color: '#ef4444' }
-  ];
-
-  const STATUS_BUG = [
-    { value: 'aberto', label: 'Aberto', color: '#ef4444' },
-    { value: 'em_andamento', label: 'Em andamento', color: '#f59e0b' },
-    { value: 'resolvido', label: 'Resolvido', color: '#10b981' }
-  ];
-
-  const handleSaveBug = async () => {
-    if (!bugForm.titulo.trim()) return;
-    setSavingBug(true);
-    try {
-      const bugsAtuais = cliente.bugs_reportados || [];
-      let novoArray;
-      if (editingBugId) {
-        novoArray = bugsAtuais.map(b => b.id === editingBugId ? {
-          ...b,
-          titulo: bugForm.titulo.trim(),
-          descricao: bugForm.descricao.trim(),
-          prioridade: bugForm.prioridade,
-          link_clickup: bugForm.link_clickup.trim()
-        } : b);
-      } else {
-        const novoBug = {
-          id: Date.now().toString(),
-          titulo: bugForm.titulo.trim(),
-          descricao: bugForm.descricao.trim(),
-          prioridade: bugForm.prioridade,
-          status: 'aberto',
-          link_clickup: bugForm.link_clickup.trim(),
-          data: Timestamp.now(),
-          resolvido_em: null
-        };
-        novoArray = [...bugsAtuais, novoBug];
-      }
-      await updateDoc(doc(db, 'clientes', id), { bugs_reportados: novoArray });
-      setCliente(prev => ({ ...prev, bugs_reportados: novoArray }));
-      setBugForm({ titulo: '', descricao: '', prioridade: 'media', link_clickup: '' });
-      setShowBugForm(false);
-      setEditingBugId(null);
-    } catch (error) {
-      console.error('Erro ao salvar bug:', error);
-    } finally {
-      setSavingBug(false);
-    }
-  };
-
-  const handleToggleBugStatus = async (bugId, novoStatus) => {
-    const bugsAtuais = cliente.bugs_reportados || [];
-    const novoArray = bugsAtuais.map(b => b.id === bugId ? {
-      ...b,
-      status: novoStatus,
-      resolvido_em: novoStatus === 'resolvido' ? Timestamp.now() : null
-    } : b);
-    try {
-      await updateDoc(doc(db, 'clientes', id), { bugs_reportados: novoArray });
-      setCliente(prev => ({ ...prev, bugs_reportados: novoArray }));
-    } catch (error) {
-      console.error('Erro ao atualizar status do bug:', error);
-    }
-  };
-
-  const handleDeleteBug = async (bugId) => {
-    if (!confirm('Excluir este bug?')) return;
-    const novoArray = (cliente.bugs_reportados || []).filter(b => b.id !== bugId);
-    try {
-      await updateDoc(doc(db, 'clientes', id), { bugs_reportados: novoArray });
-      setCliente(prev => ({ ...prev, bugs_reportados: novoArray }));
-    } catch (error) {
-      console.error('Erro ao excluir bug:', error);
-    }
-  };
-
-  const handleEditBug = (bug) => {
-    setBugForm({ titulo: bug.titulo, descricao: bug.descricao || '', prioridade: bug.prioridade, link_clickup: bug.link_clickup || '' });
-    setEditingBugId(bug.id);
-    setShowBugForm(true);
-  };
-
   // Interações - Handlers
   const TIPOS_INTERACAO = [
     { value: 'email', label: 'Email', color: '#06b6d4' },
@@ -912,7 +817,7 @@ export default function ClienteDetalhe() {
       setCliente(prev => ({ ...prev, stakeholders: updatedStakeholders }));
       setStakeholderForm({ nome: '', email: '', cargo: '', telefone: '', linkedin_url: '', tipo_contato: 'outro' });
       setShowStakeholderForm(false);
-    } catch (error) {
+    } catch {
       alert('Erro ao salvar stakeholder');
     } finally {
       setSavingStakeholder(false);
@@ -926,7 +831,7 @@ export default function ClienteDetalhe() {
       const updatedStakeholders = current.filter((s, i) => s.id ? s.id !== stakeholderId : i !== index);
       await updateDoc(doc(db, 'clientes', id), { stakeholders: updatedStakeholders });
       setCliente(prev => ({ ...prev, stakeholders: updatedStakeholders }));
-    } catch (error) {
+    } catch {
       alert('Erro ao remover stakeholder');
     }
   };
@@ -1291,15 +1196,7 @@ export default function ClienteDetalhe() {
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
-  const formatRelativeDate = (timestamp) => {
-    if (!timestamp) return 'Sem registro';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    const now = new Date();
-    const diff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-    if (diff === 0) return 'Hoje';
-    if (diff === 1) return 'Ontem';
-    return `há ${diff} dias`;
-  };
+
 
   const formatSimpleDate = (timestamp) => {
     if (!timestamp) return '-';

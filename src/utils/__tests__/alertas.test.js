@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   getTipoInfo,
   getPrioridadeInfo,
@@ -459,7 +459,6 @@ describe('ordenarAlertas', () => {
 
 describe('verificarTodosAlertas', () => {
   it('retorna array de alertas combinados', () => {
-    const vinteDias = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
     // Cliente em RESGATE deve gerar alerta
     const clientes = [{
       id: 'c1',

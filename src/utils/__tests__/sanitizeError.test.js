@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // sanitizeError usa import.meta.env.DEV que é controlado pelo Vitest
 // Em test environment, DEV será true por padrão

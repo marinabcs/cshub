@@ -48,6 +48,7 @@ export function useCachedQuery(cacheKey, fetchFn, ttlMs = 300000, deps = []) {
 
   useEffect(() => {
     mountedRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     doFetch();
     return () => { mountedRef.current = false; };
   }, [cacheKey, ...deps]);
