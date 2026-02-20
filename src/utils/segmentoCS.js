@@ -68,8 +68,8 @@ export const SEGMENTOS_CS = {
     priority: 1,
     ciclo: 'mensal',
     criterios: [
-      '20+ dias ativos',
-      'Score 100+',
+      '25+ dias ativos',
+      'Score 40+',
       '0 bugs/reclamações'
     ],
     acoes: [
@@ -90,8 +90,8 @@ export const SEGMENTOS_CS = {
     priority: 2,
     ciclo: 'mensal',
     criterios: [
-      '8-19 dias ativos',
-      'Score 30-99',
+      '12-24 dias ativos',
+      'Score 10-39',
       '0 bugs/reclamações'
     ],
     acoes: [
@@ -112,8 +112,8 @@ export const SEGMENTOS_CS = {
     priority: 3,
     ciclo: '21 dias',
     criterios: [
-      '1 bug/reclamação OU 3-7 dias ativos',
-      'Score 5-29'
+      '1 bug/reclamação OU 5-11 dias ativos',
+      'Score 2-9'
     ],
     acoes: [
       { nome: 'Comunicacao rapida ao cliente', dias: 1 },
@@ -135,8 +135,8 @@ export const SEGMENTOS_CS = {
     priority: 4,
     ciclo: '15-30 dias',
     criterios: [
-      '2+ bugs/reclamações OU 0-2 dias ativos',
-      'Score 0-4'
+      '2+ bugs/reclamações OU 0-4 dias ativos',
+      'Score 0-1'
     ],
     acoes: [
       { nome: 'Alerta imediato (sem carencia)', dias: 0 },
@@ -301,15 +301,15 @@ function calcularEngajamentoScore(metricas, config = {}) {
  * Estes valores podem ser sobrescritos pela config do Firestore
  */
 export const DEFAULT_SAUDE_CONFIG = {
-  // Dias ativos no mes (por nivel)
-  dias_ativos_crescimento: 20,
-  dias_ativos_estavel: 8,
-  dias_ativos_alerta: 3,
+  // Dias ativos no mes (por nivel) — Moderado (20/02/2026)
+  dias_ativos_crescimento: 25,
+  dias_ativos_estavel: 12,
+  dias_ativos_alerta: 5,
   dias_ativos_resgate: 0,
-  // Score de engajamento (por nivel)
-  engajamento_crescimento: 50,
-  engajamento_estavel: 15,
-  engajamento_alerta: 1,
+  // Score de engajamento (por nivel) — Moderado (20/02/2026)
+  engajamento_crescimento: 40,
+  engajamento_estavel: 10,
+  engajamento_alerta: 2,
   engajamento_resgate: 0,
   // Reclamacoes em aberto (max permitido por nivel - 0 = nao aceita)
   // Bugs/erros reportados contam como reclamacao

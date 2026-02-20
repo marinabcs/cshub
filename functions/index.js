@@ -834,9 +834,9 @@ function calcularFrequenciaUso(metricas, totalUsers = 1, config = {}) {
   const loginsPerUser = logins / Math.max(totalUsers, 1);
 
   // Thresholds configuráveis (com defaults)
-  const thCrescimento = config.dias_ativos_crescimento || 20;
-  const thEstavel = config.dias_ativos_estavel || 8;
-  const thAlerta = config.dias_ativos_alerta || 3;
+  const thCrescimento = config.dias_ativos_crescimento || 25;
+  const thEstavel = config.dias_ativos_estavel || 12;
+  const thAlerta = config.dias_ativos_alerta || 5;
   const thResgate = config.dias_ativos_resgate || 2;
 
   if (dias_ativos >= thCrescimento || loginsPerUser >= 15) return 'frequente';
@@ -899,13 +899,14 @@ function calcularEngajamentoScore(metricas, config = {}) {
  * 3. Engajamento (elevacao) -> Pode subir para CRESCIMENTO
  */
 const DEFAULT_SAUDE_CONFIG = {
-  dias_ativos_crescimento: 20,
-  dias_ativos_estavel: 8,
-  dias_ativos_alerta: 3,
+  // Moderado (20/02/2026)
+  dias_ativos_crescimento: 25,
+  dias_ativos_estavel: 12,
+  dias_ativos_alerta: 5,
   dias_ativos_resgate: 0,
-  engajamento_crescimento: 50,
-  engajamento_estavel: 15,
-  engajamento_alerta: 1,
+  engajamento_crescimento: 40,
+  engajamento_estavel: 10,
+  engajamento_alerta: 2,
   engajamento_resgate: 0,
   reclamacoes_crescimento: false,
   reclamacoes_estavel: false,
@@ -1070,8 +1071,9 @@ const SEGMENTO_PRIORIDADE = {
   'RESGATE': 4
 };
 
-// Dias de carência para quedas de nível (exceto para RESGATE)
-const DIAS_CARENCIA = 7;
+// Dias de carência padrão para quedas de nível (exceto para RESGATE)
+// Valor pode ser sobrescrito pela config do Firestore (config/geral > segmentoConfig.dias_carencia)
+const DIAS_CARENCIA_DEFAULT = 7;
 
 /**
  * Registra transições de nível na collection interacoes.
@@ -1083,9 +1085,10 @@ const DIAS_CARENCIA = 7;
  * - Após 7 dias, se não recuperou, sistema cria alerta de playbook
  * - Se cliente SOBE de nível durante carência, cancela a carência
  */
-async function registrarTransicoesNivel(transicoes) {
+async function registrarTransicoesNivel(transicoes, config = {}) {
   if (!transicoes || transicoes.length === 0) return;
 
+  const DIAS_CARENCIA = config.dias_carencia ?? DIAS_CARENCIA_DEFAULT;
   const now = Timestamp.now();
   const nowDate = now.toDate();
 
@@ -1374,7 +1377,7 @@ export const recalcularSaudeDiaria = onSchedule({
 
     // Registrar transições na collection interacoes (após commit)
     if (transicoesParaRegistrar.length > 0) {
-      await registrarTransicoesNivel(transicoesParaRegistrar);
+      await registrarTransicoesNivel(transicoesParaRegistrar, saudeConfig);
     }
   }
 
@@ -1398,6 +1401,12 @@ export const verificarCarenciasVencidas = onSchedule({
   memory: '256MiB'
 }, async () => {
   console.log('[Carências] Verificando carências vencidas...');
+
+  // Ler config de carência do Firestore
+  const configSnap = await db.collection('config').doc('geral').get();
+  const saudeConfig = configSnap.exists ? (configSnap.data().segmentoConfig || {}) : {};
+  const DIAS_CARENCIA = saudeConfig.dias_carencia ?? DIAS_CARENCIA_DEFAULT;
+  console.log(`[Carências] Dias de carência configurados: ${DIAS_CARENCIA}`);
 
   const now = Timestamp.now();
   const nowDate = now.toDate();
@@ -1840,20 +1849,9 @@ export const verificarAlertasAutomatico = onSchedule({
           const alertaRef = await db.collection('alertas').add(alerta);
           alertasCriados++;
 
-          // Criar tarefa no ClickUp se configurado
-          if (clickupEnabled) {
-            const tarefaClickUp = await criarTarefaClickUpDireto(alerta, clickupApiKey, clickupListId);
-
-            if (tarefaClickUp) {
-              // Atualizar alerta com dados do ClickUp
-              await alertaRef.update({
-                clickup_task_id: tarefaClickUp.id,
-                clickup_task_url: tarefaClickUp.url,
-                status: 'em_andamento' // Já colocar em andamento pois tem tarefa
-              });
-              tarefasClickUpCriadas++;
-            }
-          }
+          // ClickUp desativado para alertas (20/02/2026)
+          // Tarefas ClickUp agora são criadas apenas via Ongoing e Onboarding
+          // Para reativar, descomentar o bloco abaixo
 
           return { success: true };
         } catch (error) {

@@ -425,7 +425,7 @@ export default function Configuracoes() {
             {/* Dias ativos/mês (BASE) */}
             <tr>
               <td style={{ padding: '12px 16px', color: 'white', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
-                Dias ativos/mês
+                <span title="Dias com pelo menos 1 atividade nos últimos 30 dias (não precisam ser consecutivos)">Dias ativos/mês ⓘ</span>
                 <span style={{ display: 'block', fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
                   (base da classificação)
                 </span>
@@ -509,87 +509,36 @@ export default function Configuracoes() {
           Reclamação = thread negativa/urgente, erro/bug reportado ou reclamação não resolvida
         </p>
 
-        {/* Critérios de Saída do Resgate */}
-        <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '16px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <span style={{ fontSize: '16px' }}>🚨</span>
-            <h3 style={{ color: '#ef4444', fontSize: '15px', fontWeight: '700', margin: 0 }}>Critérios de Saída do Resgate</h3>
+        {/* Carência de Queda de Nível */}
+        <div style={{ marginTop: '24px', padding: '20px', background: 'rgba(139, 92, 246, 0.05)', borderRadius: '16px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+            <span style={{ fontSize: '16px' }}>⏳</span>
+            <h3 style={{ color: '#8b5cf6', fontSize: '15px', fontWeight: '700', margin: 0 }}>Carência de Queda de Nível</h3>
           </div>
           <p style={{ color: '#94a3b8', fontSize: '12px', margin: '0 0 16px 0', lineHeight: '1.5' }}>
-            Para um cliente sair do nível RESGATE, <strong style={{ color: '#e2e8f0' }}>todos</strong> os critérios abaixo precisam ser atendidos simultaneamente:
+            Quando um cliente cai de nível (exceto para RESGATE), o sistema aguarda este período antes de acionar o playbook do novo nível. Se o cliente se recuperar durante a carência, a queda é cancelada.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-            {/* Dias Ativos Mínimos */}
-            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
-              <label style={{ color: '#ef4444', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
-                Dias ativos mínimos
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="number"
-                  min="1"
-                  value={segmentoConfig.saida_resgate_dias_ativos}
-                  onChange={(e) => handleSegmentoConfigChange('saida_resgate_dias_ativos', e.target.value)}
-                  disabled={!isAdmin}
-                  style={{
-                    width: '70px', padding: '8px 10px',
-                    background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px',
-                    color: '#ef4444', fontSize: '16px', fontWeight: '700',
-                    textAlign: 'center', outline: 'none',
-                    cursor: isAdmin ? 'text' : 'not-allowed'
-                  }}
-                />
-                <span style={{ color: '#94a3b8', fontSize: '13px' }}>dias no mês</span>
-              </div>
-            </div>
-            {/* Score Engajamento Mínimo */}
-            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
-              <label style={{ color: '#ef4444', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
-                Score engajamento mínimo
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="number"
-                  min="0"
-                  value={segmentoConfig.saida_resgate_engajamento}
-                  onChange={(e) => handleSegmentoConfigChange('saida_resgate_engajamento', e.target.value)}
-                  disabled={!isAdmin}
-                  style={{
-                    width: '70px', padding: '8px 10px',
-                    background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px',
-                    color: '#ef4444', fontSize: '16px', fontWeight: '700',
-                    textAlign: 'center', outline: 'none',
-                    cursor: isAdmin ? 'text' : 'not-allowed'
-                  }}
-                />
-                <span style={{ color: '#94a3b8', fontSize: '13px' }}>pontos</span>
-              </div>
-            </div>
-            {/* Zero Bugs */}
-            <div style={{ padding: '16px', background: 'rgba(15, 10, 31, 0.6)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
-              <label style={{ color: '#ef4444', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '8px' }}>
-                Zero bugs/reclamações
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
-                  <input
-                    type="checkbox"
-                    checked={segmentoConfig.saida_resgate_bugs_zero}
-                    onChange={(e) => handleSegmentoConfigChange('saida_resgate_bugs_zero', e.target.checked)}
-                    disabled={!isAdmin}
-                    style={{ width: '18px', height: '18px', accentColor: '#ef4444', cursor: isAdmin ? 'pointer' : 'not-allowed' }}
-                  />
-                  <span style={{ color: segmentoConfig.saida_resgate_bugs_zero ? '#ef4444' : '#64748b', fontSize: '13px', fontWeight: segmentoConfig.saida_resgate_bugs_zero ? '600' : '400' }}>
-                    {segmentoConfig.saida_resgate_bugs_zero ? 'Obrigatório' : 'Não exigido'}
-                  </span>
-                </label>
-              </div>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <input
+              type="number"
+              min="1"
+              max="30"
+              value={segmentoConfig.dias_carencia ?? 7}
+              onChange={(e) => handleSegmentoConfigChange('dias_carencia', e.target.value)}
+              disabled={!isAdmin}
+              style={{
+                width: '70px', padding: '8px 10px',
+                background: isAdmin ? '#0f0a1f' : 'rgba(15, 10, 31, 0.4)',
+                border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '8px',
+                color: '#8b5cf6', fontSize: '16px', fontWeight: '700',
+                textAlign: 'center', outline: 'none',
+                cursor: isAdmin ? 'text' : 'not-allowed'
+              }}
+            />
+            <span style={{ color: '#94a3b8', fontSize: '13px' }}>dias de carência</span>
           </div>
           <p style={{ color: '#64748b', fontSize: '11px', margin: '12px 0 0 0', fontStyle: 'italic' }}>
-            O recálculo diário (6:30 BRT) verifica estes critérios. Cliente que atender todos sobe para ALERTA automaticamente.
+            Queda para RESGATE é imediata (sem carência). O recálculo diário (6:30 BRT) verifica carências vencidas.
           </p>
         </div>
       </div>

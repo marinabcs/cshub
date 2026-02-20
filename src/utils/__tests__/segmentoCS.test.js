@@ -407,10 +407,10 @@ describe('calcularSegmentoCS', () => {
   // ============================================
 
   describe('ESTAVEL', () => {
-    it('dias ativos >= 8 sem problemas => ESTAVEL', () => {
+    it('dias ativos >= 12 sem problemas => ESTAVEL', () => {
       const cliente = makeCliente();
       const metricas = {
-        dias_ativos: 10,
+        dias_ativos: 14,
         pecas_criadas: 8,
         uso_ai_total: 2,
         downloads: 3,
@@ -420,14 +420,14 @@ describe('calcularSegmentoCS', () => {
       expect(result.motivo).toContain('dias ativos');
     });
 
-    it('dias ativos >= 8 mas engajamento baixo => ESTAVEL (não CRESCIMENTO)', () => {
+    it('dias ativos >= 12 mas engajamento baixo => ESTAVEL (não CRESCIMENTO)', () => {
       const cliente = makeCliente();
       const metricas = {
-        dias_ativos: 22, // >= 20 threshold crescimento
+        dias_ativos: 22, // >= 12 (estavel) mas < 25 (crescimento)
         pecas_criadas: 5, // engajamento baixo
         uso_ai_total: 2,
         downloads: 1,
-        // Score = (5*2) + (2*1.5) + (1*1) = 10 + 3 + 1 = 14 (< 50)
+        // Score = (5*2) + (2*1.5) + (1*1) = 10 + 3 + 1 = 14 (< 40)
       };
       const result = calcularSegmentoCS(cliente, [], metricas, 1);
       expect(result.segmento).toBe('ESTAVEL');
@@ -465,9 +465,9 @@ describe('calcularSegmentoCS', () => {
       const cliente = makeCliente({
         calendario_campanhas: { [mesAtual]: 'baixa' },
       });
-      // Com divisor 2: threshold estável = 8/2 = 4
+      // Com divisor 2: threshold estável = 12/2 = 6
       const metricas = {
-        dias_ativos: 5, // >= 4 = ESTÁVEL
+        dias_ativos: 7, // >= 6 = ESTÁVEL
         pecas_criadas: 10,
         uso_ai_total: 5,
         downloads: 3,
@@ -478,9 +478,9 @@ describe('calcularSegmentoCS', () => {
 
     it('google_gratuito divide thresholds por 2', () => {
       const cliente = makeCliente({ tipo_conta: 'google_gratuito' });
-      // Com divisor 2: threshold estável = 8/2 = 4
+      // Com divisor 2: threshold estável = 12/2 = 6
       const metricas = {
-        dias_ativos: 5, // >= 4 = ESTÁVEL
+        dias_ativos: 7, // >= 6 = ESTÁVEL
         pecas_criadas: 10,
         uso_ai_total: 5,
         downloads: 3,
@@ -499,7 +499,7 @@ describe('calcularSegmentoCS', () => {
       const cliente = makeCliente();
       const metricas = { dias_ativos: 5, pecas_criadas: 10, uso_ai_total: 5, downloads: 3 };
 
-      // Com config padrão (dias_ativos_estavel = 8), seria ALERTA
+      // Com config padrão (dias_ativos_estavel = 12), seria ALERTA
       const resultDefault = calcularSegmentoCS(cliente, [], metricas, 1);
       expect(resultDefault.segmento).toBe('ALERTA');
 
@@ -511,16 +511,17 @@ describe('calcularSegmentoCS', () => {
 
     it('usa pesos de engajamento customizados', () => {
       const cliente = makeCliente();
-      const metricas = { dias_ativos: 22, pecas_criadas: 10, uso_ai_total: 10, downloads: 5 };
+      const metricas = { dias_ativos: 26, pecas_criadas: 10, uso_ai_total: 10, downloads: 5 };
 
-      // Score padrão = (10*2) + (10*1.5) + (5*1) = 20 + 15 + 5 = 40 (< 50 = não CRESCIMENTO)
+      // Score padrão = (10*2) + (10*1.5) + (5*1) = 20 + 15 + 5 = 40 (>= 40 mas precisa de dias >= 25)
+      // dias_ativos = 26 >= 25 E score 40 >= 40 = CRESCIMENTO
       const resultDefault = calcularSegmentoCS(cliente, [], metricas, 1);
-      expect(resultDefault.segmento).toBe('ESTAVEL');
+      expect(resultDefault.segmento).toBe('CRESCIMENTO');
 
-      // Com pesos maiores: (10*3) + (10*2) + (5*2) = 30 + 20 + 10 = 60 (>= 50 = CRESCIMENTO)
-      const config = { peso_pecas: 3, peso_ia: 2, peso_downloads: 2 };
+      // Com pesos menores: (10*1) + (10*1) + (5*1) = 10 + 10 + 5 = 25 (< 40 = não CRESCIMENTO)
+      const config = { peso_pecas: 1, peso_ia: 1, peso_downloads: 1 };
       const resultCustom = calcularSegmentoCS(cliente, [], metricas, 1, config);
-      expect(resultCustom.segmento).toBe('CRESCIMENTO');
+      expect(resultCustom.segmento).toBe('ESTAVEL');
     });
   });
 

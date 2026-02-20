@@ -123,6 +123,17 @@
 - Métricas: validar números/contagens em Dashboard KPIs, Analytics
 - Analytics PDF: números grandes cortam na parte inferior (html2canvas clipping)
 
+### Pendências do Feedback do Time (reuniões 11-13/02/2026):
+> Detalhes completos em `/docs/FEEDBACK_REUNIOES.md`
+- **[URGENTE] Aumentar thresholds de classificação** — Clientes mudam de faixa 3-4x no mês, inviabiliza playbooks
+- **[URGENTE] Melhorar fluxo de report de bugs** — Processo sem dono, sem métricas, time não sabe para quem mandar
+- **Filtrar emails promocionais dos clientes** — Emails marketing em massa entram como threads de comunicação
+- **Clarificar "dias ativos" na UI** — Valéria achou que era consecutivo, precisa tooltip/descrição
+- **NÃO incluir previsão de tempo de resolução de bugs** nos templates de email (Valéria: "nunca são certas")
+- **Lista de ações pré-aprovadas para Resgate** — CS precisa saber o que pode oferecer sem validar (calls, treinamentos, materiais)
+- **Mapeamento de sazonalidade por segmento** — Time sabe de cabeça mas não está documentado
+- **[FUTURO] Aba de Rally no CS Hub** — Gabriel aprovou, acompanhar entregas de peças + relatórios com IA
+
 ---
 
 ## 📝 NOTAS DA SESSÃO (12/02/2026)
@@ -175,6 +186,7 @@
 ### Arquivos de documentação:
 - `/docs/TECHNICAL.md` - Documentação técnica completa (arquitetura, APIs, etc)
 - `/docs/FIREBASE_SETUP.md` - Setup específico do Firebase (collections, índices)
+- `/docs/FEEDBACK_REUNIOES.md` - Feedback consolidado das reuniões do time de CS (11 e 13/02/2026)
 
 ---
 

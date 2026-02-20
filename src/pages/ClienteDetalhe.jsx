@@ -1421,7 +1421,7 @@ export default function ClienteDetalhe() {
         )}
         {segmentoCalculado?.fatores && (
           <div style={{ display: 'flex', gap: '16px' }}>
-            <span style={{ color: '#64748b', fontSize: '12px' }}>{usageData.dias_ativos} dias ativos no mês | Score engajamento: <strong style={{ color: 'white' }}>{segmentoCalculado.fatores.engajamento}</strong></span>
+            <span style={{ color: '#64748b', fontSize: '12px' }}>{usageData.dias_ativos} <span title="Dias com pelo menos 1 atividade nos últimos 30 dias (não precisam ser consecutivos)">dias ativos</span> no mês | Score engajamento: <strong style={{ color: 'white' }}>{segmentoCalculado.fatores.engajamento}</strong></span>
           </div>
         )}
       </div>

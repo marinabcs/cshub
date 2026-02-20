@@ -78,13 +78,8 @@ export async function aplicarPlaybook(clienteId, playbookId, dataInicio = new Da
   const { criarTarefasClickUp: deveCriarClickUp = true } = opcoes;
 
   try {
-    // Buscar o template do playbook e dados do cliente
-    const [playbook, clienteDoc] = await Promise.all([
-      buscarPlaybook(playbookId),
-      getDoc(doc(db, 'clientes', clienteId))
-    ]);
-
-    const cliente = clienteDoc.exists() ? { id: clienteDoc.id, ...clienteDoc.data() } : { id: clienteId };
+    // Buscar o template do playbook
+    const playbook = await buscarPlaybook(playbookId);
 
     // Calcular datas das etapas
     const etapasComDatas = playbook.etapas.map(etapa => {
@@ -107,24 +102,9 @@ export async function aplicarPlaybook(clienteId, playbookId, dataInicio = new Da
     const dataPrevisaoFim = new Date(dataInicio);
     dataPrevisaoFim.setDate(dataPrevisaoFim.getDate() + playbook.duracao_estimada_dias);
 
-    // Criar tarefas no ClickUp se configurado
-    if (deveCriarClickUp && isClickUpConfigured()) {
-      const { criarTarefaPlaybook } = await import('./clickup');
-
-      for (let i = 0; i < etapasComDatas.length; i++) {
-        const etapa = etapasComDatas[i];
-        try {
-          const tarefaClickUp = await criarTarefaPlaybook(etapa, playbook, cliente);
-          if (tarefaClickUp) {
-            etapasComDatas[i].clickup_task_id = tarefaClickUp.id;
-            etapasComDatas[i].clickup_task_url = tarefaClickUp.url;
-          }
-        } catch (err) {
-          console.error(`Erro ao criar tarefa ClickUp para etapa ${etapa.ordem}:`, err);
-          // Continua mesmo se falhar
-        }
-      }
-    }
+    // ClickUp desativado para playbooks (20/02/2026)
+    // Playbooks substituídos por Ongoing e Onboarding
+    // Para reativar, descomentar o bloco abaixo
 
     // Criar o playbook aplicado
     const playbookAplicado = {

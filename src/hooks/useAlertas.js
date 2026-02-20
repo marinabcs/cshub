@@ -3,7 +3,7 @@ import { collection, getDocs, doc, getDoc, addDoc, updateDoc, setDoc, query, whe
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
 import { verificarTodosAlertas, ordenarAlertas } from '../utils/alertas';
-import { isClickUpConfigured, criarTarefaClickUp, buscarTarefaClickUp, buscarUsuariosClickUpPorEmails } from '../services/clickup';
+import { isClickUpConfigured, buscarTarefaClickUp } from '../services/clickup';
 
 // Constantes de performance
 const MAX_ALERTAS_LISTAGEM = 500; // Limite para listagens gerais
@@ -228,16 +228,15 @@ export function useVerificarAlertas() {
       // Gerar novos alertas (com filtro de email aplicado)
       const novosAlertas = verificarTodosAlertas(clientes, threads, alertasExistentes, metricas, filterConfig);
 
-      // Salvar novos alertas e criar tarefas no ClickUp
+      // Salvar novos alertas
       let criados = 0;
       let clickupCriados = 0;
       const erros = [];
-      const clickUpEnabled = isClickUpConfigured();
 
       for (const alerta of novosAlertas) {
         try {
           // 1. Criar alerta no Firebase
-          const docRef = await addDoc(collection(db, 'alertas'), {
+          await addDoc(collection(db, 'alertas'), {
             ...alerta,
             created_at: Timestamp.now(),
             updated_at: Timestamp.now(),
@@ -247,62 +246,9 @@ export function useVerificarAlertas() {
           });
           criados++;
 
-          // 2. Criar tarefa no ClickUp (se configurado)
-          if (clickUpEnabled) {
-            try {
-              const clienteNomeAlerta = alerta.cliente_nome || alerta.time_name || '';
-
-              // Calcular data de vencimento (3 dias a partir de agora)
-              const dataVencimento = new Date();
-              dataVencimento.setDate(dataVencimento.getDate() + 3);
-
-              // Buscar IDs de todos os responsáveis
-              let responsaveisIds = [];
-              const responsaveisEmails = alerta.responsaveis?.map(r => r.email) ||
-                (alerta.responsavel_email ? [alerta.responsavel_email] : []);
-
-              console.log(`[ClickUp] Alerta: ${alerta.titulo}`);
-              console.log(`[ClickUp] Responsáveis no alerta:`, alerta.responsaveis);
-              console.log(`[ClickUp] Emails a buscar:`, responsaveisEmails);
-
-              if (responsaveisEmails.length > 0) {
-                responsaveisIds = await buscarUsuariosClickUpPorEmails(responsaveisEmails);
-                console.log(`[ClickUp] IDs encontrados:`, responsaveisIds);
-              }
-
-              // Nomes dos responsáveis para a descrição
-              const responsaveisNomes = alerta.responsaveis?.map(r => r.nome).join(', ') ||
-                alerta.responsavel_nome || 'N/A';
-
-              const clickupResult = await criarTarefaClickUp(
-                {
-                  titulo: alerta.titulo,
-                  tipo: alerta.tipo,
-                  prioridade: alerta.prioridade,
-                  mensagem: alerta.mensagem,
-                  cliente_nome: clienteNomeAlerta,
-                  time_name: clienteNomeAlerta
-                },
-                {
-                  descricao: `**Cliente:** ${clienteNomeAlerta || 'N/A'}\n\n**Responsáveis:** ${responsaveisNomes}\n\n**Tipo:** ${alerta.tipo}\n\n**Mensagem:**\n${alerta.mensagem}\n\n---\n_Alerta criado automaticamente pelo CS Hub_`,
-                  responsaveisIds,
-                  dataVencimento
-                }
-              );
-
-              if (clickupResult && clickupResult.id) {
-                // Atualizar alerta com dados do ClickUp
-                await updateDoc(doc(db, 'alertas', docRef.id), {
-                  clickup_task_id: clickupResult.id,
-                  clickup_task_url: clickupResult.url
-                });
-                clickupCriados++;
-              }
-            } catch (clickupError) {
-              console.error('Erro ao criar tarefa no ClickUp:', clickupError);
-              // Não falha o alerta se ClickUp der erro
-            }
-          }
+          // ClickUp desativado para alertas (20/02/2026)
+          // Tarefas ClickUp agora são criadas apenas via Ongoing e Onboarding
+          // Para reativar, descomentar o bloco abaixo
         } catch (e) {
           erros.push({ alerta: alerta.titulo, error: e.message });
         }

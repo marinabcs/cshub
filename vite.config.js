@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => {
       environment: 'node',
       globals: true,
       include: ['src/**/*.test.{js,jsx}'],
+      setupFiles: ['src/test/setup.js'],
     },
     // Remove console.log em produção para segurança e performance
     esbuild: {
