@@ -239,6 +239,11 @@ export const DEFAULT_EMAIL_FILTERS = {
     'te mencionó',
   ],
 
+  // Domínios cujos emails promocionais são mantidos visíveis (não escondidos)
+  dominios_remetente_permitidos: [
+    'trakto.io',
+  ],
+
   // Detecções automáticas
   detectar_auto_reply: true,
   detectar_bulk_email: true,

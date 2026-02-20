@@ -27,6 +27,10 @@ describe('DEFAULT_EMAIL_FILTERS', () => {
   it('tem palavras-chave de assunto', () => {
     expect(DEFAULT_EMAIL_FILTERS.palavras_chave_assunto).toContain('newsletter');
   });
+
+  it('tem lista de domínios permitidos com trakto.io', () => {
+    expect(DEFAULT_EMAIL_FILTERS.dominios_remetente_permitidos).toContain('trakto.io');
+  });
 });
 
 // ============================================

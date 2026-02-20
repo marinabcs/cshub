@@ -466,7 +466,7 @@ CONVERSA:
 {contexto}
 Retorne APENAS um JSON válido (sem markdown, sem explicações) com:
 {
-  "categoria": "erro_bug" | "reclamacao" | "problema_tecnico" | "feedback" | "duvida_pergunta" | "solicitacao" | "informativo" | "outro",
+  "categoria": "erro_bug" | "reclamacao" | "problema_tecnico" | "feedback" | "duvida_pergunta" | "solicitacao" | "informativo" | "promocional" | "outro",
   "sentimento": "positivo" | "neutro" | "negativo" | "urgente",
   "status": "resolvido" | "aguardando_cliente" | "aguardando_equipe" | "informativo",
   "resposta_resolutiva": true | false,
@@ -481,6 +481,7 @@ Critérios para CATEGORIA (escolha a mais adequada):
 - duvida_pergunta = pergunta sobre como usar uma funcionalidade
 - solicitacao = pedido de feature, recurso ou ajuda específica
 - informativo = convite de reunião, RSVP (aceito/recusado), notificação de calendário, compartilhamento de arquivo, ou notificação automática sem necessidade de ação
+- promocional = email de marketing, newsletter, campanha promocional, convite para evento/webinar comercial, oferta, desconto, email em massa promocional
 - outro = não se encaixa nas anteriores
 
 Critérios para SENTIMENTO:
@@ -509,7 +510,8 @@ REGRAS IMPORTANTES:
 2. Se equipe CONFIRMA participação em reunião (ex: "nos vemos amanhã", "estaremos lá") → status=resolvido
 3. Se equipe AGENDA reunião (ex: "marquei call", "mandei invite") → status=resolvido
 4. Se é compartilhamento de arquivo do Google Drive → categoria=informativo, status=informativo
-5. Apenas use aguardando_cliente se a equipe fez pergunta ou está esperando retorno que NÃO seja uma reunião já agendada`;
+5. Apenas use aguardando_cliente se a equipe fez pergunta ou está esperando retorno que NÃO seja uma reunião já agendada
+6. Se o conteúdo é claramente promocional/marketing (newsletters, campanhas, ofertas, webinars comerciais, descontos, "inscreva-se", "register now") → categoria=promocional, status=informativo`;
 
 export const classifyThread = onCall({
   region: 'southamerica-east1',
@@ -2048,6 +2050,20 @@ export const classifyPendingThreads = onSchedule({
 
   console.log('[ClassifyThreads] Iniciando classificação de threads...');
 
+  // Buscar config de filtros (whitelist de domínios permitidos)
+  let dominiosPermitidos = ['trakto.io'];
+  try {
+    const filterSnap = await db.collection('config').doc('email_filters').get();
+    if (filterSnap.exists) {
+      const filterData = filterSnap.data();
+      if (Array.isArray(filterData.dominios_remetente_permitidos) && filterData.dominios_remetente_permitidos.length > 0) {
+        dominiosPermitidos = filterData.dominios_remetente_permitidos.map(d => d.toLowerCase().trim());
+      }
+    }
+  } catch (err) {
+    console.warn('[ClassifyThreads] Erro ao buscar filtros, usando whitelist padrão:', err.message);
+  }
+
   // Buscar threads para classificar (últimos 30 dias)
   const thirtyDaysAgo = Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
 
@@ -2162,14 +2178,26 @@ export const classifyPendingThreads = onSchedule({
           classificacao = { categoria: 'outro', sentimento: 'neutro', status: 'aguardando_equipe', resposta_resolutiva: false, resumo: 'Não foi possível classificar' };
         }
 
-        // Atualizar thread no Firestore (incluindo status da IA e resposta_resolutiva)
+        // Determinar se requer ação
         const isInformativo = classificacao.categoria === 'informativo' || classificacao.status === 'informativo';
+        const isPromocional = classificacao.categoria === 'promocional';
+        let requerAcao = !isInformativo;
+
+        // Promocional: verificar whitelist do remetente
+        if (isPromocional) {
+          const senderEmail = (thread.remetente_email || thread.sender_email || thread.from || '').toLowerCase().trim();
+          const senderDomain = senderEmail.includes('@') ? senderEmail.split('@')[1] : '';
+          const isWhitelisted = dominiosPermitidos.some(d => senderDomain === d || senderDomain.endsWith('.' + d));
+          requerAcao = isWhitelisted; // Permitido → visível, terceiro → escondido
+        }
+
+        // Atualizar thread no Firestore
         await thread.ref.update({
           categoria: classificacao.categoria || 'outro',
           sentimento: classificacao.sentimento || 'neutro',
           status: classificacao.status || 'aguardando_equipe',
           resposta_resolutiva: classificacao.resposta_resolutiva === true,
-          requer_acao: !isInformativo,
+          requer_acao: requerAcao,
           resumo_ia: classificacao.resumo || null,
           classificado_por: 'ia_automatico',
           classificado_em: Timestamp.now(),

@@ -20,7 +20,8 @@ export default function FiltrosEmail() {
     dominios_bloqueados: '',
     dominios_completos_bloqueados: '',
     palavras_chave_assunto: '',
-    assuntos_informativos: ''
+    assuntos_informativos: '',
+    dominios_remetente_permitidos: ''
   });
 
   // Verificar se usuário é admin
@@ -422,6 +423,76 @@ export default function FiltrosEmail() {
             <p style={{ color: '#06b6d4', fontSize: '12px', margin: 0, lineHeight: 1.5 }}>
               <strong>Diferença:</strong> Emails informativos são salvos na timeline mas não geram alertas nem aparecem como "aguardando resposta". Útil para compartilhamentos de Google Drive, comentários em docs, etc.
             </p>
+          </div>
+
+          {/* Domínios Permitidos (whitelist) */}
+          <div style={{ marginTop: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <p style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', margin: 0, textTransform: 'uppercase' }}>Domínios Permitidos</p>
+              <span style={{ color: '#64748b', fontSize: '11px' }}>{(emailFilterConfig.dominios_remetente_permitidos || []).length} itens</span>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '11px', margin: '0 0 10px 0' }}>
+              Emails promocionais destes domínios ficam visíveis na timeline. Terceiros são escondidos automaticamente.
+            </p>
+
+            {/* Chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+              {(emailFilterConfig.dominios_remetente_permitidos || []).map((item, idx) => (
+                <span key={idx} style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '4px 10px',
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                  borderRadius: '8px',
+                  color: '#10b981',
+                  fontSize: '11px'
+                }}>
+                  @{item}
+                  {isAdmin && (
+                    <button
+                      onClick={() => removerItemFiltro('dominios_remetente_permitidos', idx)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', display: 'flex', alignItems: 'center' }}
+                    >
+                      <X style={{ width: '12px', height: '12px', color: '#10b981' }} />
+                    </button>
+                  )}
+                </span>
+              ))}
+              {(emailFilterConfig.dominios_remetente_permitidos || []).length === 0 && (
+                <span style={{ color: '#64748b', fontSize: '12px', fontStyle: 'italic' }}>Nenhum domínio configurado</span>
+              )}
+            </div>
+
+            {/* Input para adicionar */}
+            {isAdmin && (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Ex: trakto.io"
+                  value={novoItemFiltro.dominios_remetente_permitidos || ''}
+                  onChange={(e) => setNovoItemFiltro(prev => ({ ...prev, dominios_remetente_permitidos: e.target.value }))}
+                  onKeyDown={(e) => e.key === 'Enter' && adicionarItemFiltro('dominios_remetente_permitidos')}
+                  style={{
+                    flex: 1, padding: '10px 12px',
+                    background: '#0f0a1f', border: '1px solid rgba(16, 185, 129, 0.2)',
+                    borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none'
+                  }}
+                />
+                <button
+                  onClick={() => adicionarItemFiltro('dominios_remetente_permitidos')}
+                  style={{
+                    padding: '10px 14px',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: '8px', color: '#10b981',
+                    fontSize: '13px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '4px'
+                  }}
+                >
+                  <Plus style={{ width: '14px', height: '14px' }} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -8,6 +8,7 @@ export const CATEGORIAS_VALIDAS = [
   'solicitacao',
   'reclamacao',
   'informativo',
+  'promocional',
   'outro'
 ];
 
