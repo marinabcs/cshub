@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { useToast } from '../contexts/ToastContext';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp, Users, Award, Star, Check, Search,
@@ -23,6 +24,7 @@ const getNivelCrescimento = (dias) => {
 
 export default function ResumoExecutivo() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [clientes, setClientes] = useState([]);
   const [transicoes, setTransicoes] = useState({});
@@ -128,8 +130,10 @@ export default function ResumoExecutivo() {
       setClientes(prev => prev.map(c =>
         c.id === clienteId ? { ...c, case_obtido: !currentValue } : c
       ));
+      toast.success(!currentValue ? 'Case marcado como obtido!' : 'Case desmarcado.');
     } catch (error) {
       console.error('Erro ao atualizar case:', error);
+      toast.error('Erro ao atualizar status do case. Tente novamente.');
     } finally {
       setUpdatingCase(null);
     }

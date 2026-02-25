@@ -11,6 +11,7 @@ import {
   getStatusInfo,
   formatarTempoRelativo
 } from '../utils/alertas';
+import { useToast } from '../contexts/ToastContext';
 import { isClickUpConfigured, criarTarefaClickUp, buscarMembrosClickUp, PRIORIDADES_CLICKUP } from '../services/clickup';
 import { doc, updateDoc, Timestamp, collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -28,6 +29,7 @@ const TIPO_ICONS = {
 
 export default function Alertas() {
   const navigate = useNavigate();
+  const toast = useToast();
 
   // Filtros
   const [filtroTipos, setFiltroTipos] = useState([]);
@@ -104,13 +106,14 @@ export default function Alertas() {
       );
 
       await Promise.all(promises);
+      toast.success(`${selectedAlertas.size} alerta(s) atualizado(s) com sucesso!`);
       setSelectedAlertas(new Set());
       setShowBatchModal(false);
       setBatchStatus('');
       refetch();
     } catch (error) {
       console.error('Erro ao atualizar alertas:', error);
-      alert(`Erro: ${error.message}`);
+      toast.error('Erro ao atualizar alertas em lote. Tente novamente.');
     } finally {
       setAtualizandoBatch(false);
     }
@@ -187,8 +190,10 @@ export default function Alertas() {
       setShowConfirmLimpar(false);
       setSelectedAlertas(new Set());
       refetch();
+      toast.success('Todos os alertas foram removidos!');
     } catch (error) {
       console.error('Erro ao limpar alertas:', error);
+      toast.error('Erro ao limpar alertas. Tente novamente.');
     } finally {
       setLimpando(false);
     }
@@ -288,9 +293,10 @@ export default function Alertas() {
       refetch();
       // Update local detail
       setDetailAlerta({ ...detailAlerta, ...updateData });
+      toast.success('Alerta atualizado com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar alerta:', error);
-      alert('Erro ao salvar alterações');
+      toast.error('Erro ao salvar alterações do alerta. Tente novamente.');
     } finally {
       setSavingEdit(false);
     }
@@ -347,12 +353,12 @@ export default function Alertas() {
         status: 'em_andamento'
       });
 
-      alert('Tarefa criada com sucesso no ClickUp!');
+      toast.success('Tarefa criada com sucesso no ClickUp!');
       fecharModalClickUp();
       refetch();
     } catch (error) {
       console.error('Erro ao criar tarefa:', error);
-      alert(`Erro ao criar tarefa: ${error.message}`);
+      toast.error('Erro ao criar tarefa no ClickUp. Tente novamente.');
     } finally {
       setCriandoTarefa(false);
     }

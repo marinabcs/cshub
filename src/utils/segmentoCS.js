@@ -470,7 +470,12 @@ export function calcularSegmentoCS(cliente, threads = [], metricas = {}, totalUs
  */
 export function getClienteSegmento(cliente) {
   const raw = cliente?.segmento_cs || DEFAULT_SEGMENTO;
-  return normalizarSegmento(raw);
+  const seg = normalizarSegmento(raw);
+  if (seg && !SEGMENTOS_CS[seg]) {
+    console.warn(`Segmento inválido "${seg}" para cliente ${cliente?.id || 'unknown'}, usando ESTAVEL`);
+    return 'ESTAVEL';
+  }
+  return seg;
 }
 
 /**

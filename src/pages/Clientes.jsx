@@ -5,6 +5,7 @@ import { cachedGetDocs, invalidateCache } from '../services/cache';
 import { getUsuariosCountByTeam, getThreadsByTeam } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { Users, Search, ChevronRight, ChevronDown, Building2, Plus, Pencil, Download, AlertTriangle, Trash2, X, Link, CheckSquare, Square, Edit3, UserCheck, Check, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw, Bug, Phone, Calendar } from 'lucide-react';
+import { useToast } from '../contexts/ToastContext';
 import { STATUS_OPTIONS, DEFAULT_VISIBLE_STATUS, getStatusLabel } from '../utils/clienteStatus';
 import { SEGMENTO_OPTIONS, getSegmentoColor, getSegmentoLabel, getClienteSegmento, calcularSegmentoCS } from '../utils/segmentoCS';
 import { SegmentoBadge } from '../components/UI/SegmentoBadge';
@@ -114,6 +115,7 @@ export default function Clientes() {
   });
 
   const navigate = useNavigate();
+  const toast = useToast();
 
   // Lista de responsáveis únicos para o batch edit
   const responsaveis = useMemo(() => {
@@ -284,9 +286,10 @@ export default function Clientes() {
       setShowBatchModal(false);
       setBatchField('');
       setBatchValue('');
+      toast.success(`${selectedClientes.size} cliente(s) atualizado(s) com sucesso!`);
     } catch (error) {
       console.error('Erro ao atualizar em lote:', error);
-      alert('Erro ao atualizar clientes. Tente novamente.');
+      toast.error('Erro ao atualizar clientes em lote. Tente novamente.');
     } finally {
       setBatchUpdating(false);
     }
@@ -405,10 +408,10 @@ export default function Clientes() {
       }
 
       await fetchData();
-      alert(`Recalculação concluída! ${updatedCount} saúde(s) atualizada(s) de ${clientesAtivos.length} clientes.`);
+      toast.success(`Recalculação concluída! ${updatedCount} saúde(s) atualizada(s) de ${clientesAtivos.length} clientes.`);
     } catch (error) {
       console.error('Erro ao recalcular segmentos:', error);
-      alert('Erro durante a recalculacao. Verifique o console.');
+      toast.error('Erro ao recalcular saúde dos clientes. Tente novamente.');
     } finally {
       setRecalculandoSegmentos(false);
     }
@@ -528,9 +531,10 @@ export default function Clientes() {
       await fetchData();
       setShowDeleteModal(false);
       setClienteToDelete(null);
+      toast.success('Cliente excluído com sucesso!');
     } catch (error) {
       console.error('Erro ao excluir cliente:', error);
-      alert('Erro ao excluir cliente. Tente novamente.');
+      toast.error('Erro ao excluir cliente. Tente novamente.');
     } finally {
       setDeleting(false);
     }

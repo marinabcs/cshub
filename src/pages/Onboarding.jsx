@@ -12,6 +12,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { REUNIOES_V1, REUNIOES_ORDEM, gerarCronograma, calcularDuracaoTotal } from '../constants/onboardingV1';
 import { criarPlanoOnboardingV1, buscarPlanoAtivo } from '../services/onboarding';
 import {
@@ -31,6 +32,7 @@ export default function Onboarding() {
   const { clienteId: paramClienteId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
 
   const [step, setStep] = useState(paramClienteId ? 2 : 1);
   const [clientes, setClientes] = useState([]);
@@ -115,8 +117,10 @@ export default function Onboarding() {
     try {
       await criarPlanoOnboardingV1(clienteId, dataInicio, user, observacoes);
       setStep(3);
+      toast.success('Plano de onboarding criado com sucesso!');
     } catch (error) {
       console.error('Erro ao criar plano:', error);
+      toast.error('Erro ao criar plano de onboarding. Tente novamente.');
     }
     setSaving(false);
   }

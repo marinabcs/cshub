@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { ClipboardList } from 'lucide-react';
 import {
   FileText, Plus, Search, Folder, FolderPlus, ExternalLink, Pencil, Trash2, X,
@@ -35,6 +36,7 @@ const getFileType = (url) => {
 
 export default function Documentos() {
   const { user } = useAuth();
+  const toast = useToast();
   const [secoes, setSecoes] = useState([]);
   const [documentos, setDocumentos] = useState([]);
   const [playbooks, setPlaybooks] = useState([]);
@@ -246,9 +248,10 @@ export default function Documentos() {
       setShowSecaoModal(false);
       setEditingSecao(null);
       setSecaoForm({ nome: '', descricao: '', cor: '#8b5cf6' });
+      toast.success(editingSecao ? 'Seção atualizada com sucesso!' : 'Seção criada com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar seção:', error);
-      alert(`Erro ao salvar seção: ${error.message}`);
+      toast.error('Erro ao salvar seção. Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -283,9 +286,10 @@ export default function Documentos() {
       setShowDocModal(false);
       setEditingDoc(null);
       setDocForm({ titulo: '', descricao: '', url: '', secao_id: '' });
+      toast.success(editingDoc ? 'Documento atualizado com sucesso!' : 'Documento criado com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar documento:', error);
-      alert(`Erro ao salvar documento: ${error.message}`);
+      toast.error('Erro ao salvar documento. Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -304,9 +308,10 @@ export default function Documentos() {
 
       await deleteDoc(doc(db, 'documentos_secoes', secao.id));
       await fetchData();
+      toast.success('Seção excluída com sucesso!');
     } catch (error) {
       console.error('Erro ao excluir seção:', error);
-      alert('Erro ao excluir seção');
+      toast.error('Erro ao excluir seção. Tente novamente.');
     }
   };
 
@@ -317,9 +322,10 @@ export default function Documentos() {
     try {
       await deleteDoc(doc(db, 'documentos', documento.id));
       await fetchData();
+      toast.success('Documento excluído com sucesso!');
     } catch (error) {
       console.error('Erro ao excluir documento:', error);
-      alert('Erro ao excluir documento');
+      toast.error('Erro ao excluir documento. Tente novamente.');
     }
   };
 

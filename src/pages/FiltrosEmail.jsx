@@ -5,11 +5,14 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Mail, Save, CheckCircle, Plus, X, Shield } from 'lucide-react';
+import { useToast } from '../contexts/ToastContext';
 import { DEFAULT_EMAIL_FILTERS } from '../utils/emailFilters';
+import { isGestorOrHigher } from '../utils/roles';
 
 export default function FiltrosEmail() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -24,7 +27,7 @@ export default function FiltrosEmail() {
     dominios_remetente_permitidos: ''
   });
 
-  // Verificar se usuário é admin
+  // Verificar se usuário é gestor+ via Custom Claims
   useEffect(() => {
     const checkAdminRole = async () => {
       if (!user?.uid) {
@@ -33,13 +36,9 @@ export default function FiltrosEmail() {
       }
 
       try {
-        const docRef = doc(db, 'usuarios_sistema', user.uid);
-        const snapshot = await getDoc(docRef);
-
-        if (snapshot.exists()) {
-          const userData = snapshot.data();
-          setIsAdmin(userData.role === 'admin' || userData.role === 'super_admin' || userData.role === 'gestor');
-        }
+        const tokenResult = await user.getIdTokenResult();
+        const role = tokenResult.claims.role;
+        setIsAdmin(isGestorOrHigher(role));
       } catch (error) {
         console.error('Erro ao verificar role:', error);
       }
@@ -101,7 +100,7 @@ export default function FiltrosEmail() {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
       console.error('Erro ao salvar:', error);
-      alert('Erro ao salvar configurações');
+      toast.error('Erro ao salvar filtros de email. Tente novamente.');
     } finally {
       setSaving(false);
     }

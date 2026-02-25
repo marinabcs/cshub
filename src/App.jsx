@@ -1,10 +1,10 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { ToastProvider } from './contexts/ToastContext'
 import { Layout } from './components/Layout'
 import { LoadingPage } from './components/UI/Loading'
-import { doc, getDoc } from 'firebase/firestore'
-import { db } from './services/firebase'
+import { isAdmin as checkIsAdmin } from './utils/roles'
 
 // Eager — páginas críticas (primeiro load)
 import Login from './pages/Login'
@@ -76,15 +76,9 @@ function AdminRoute({ children }) {
       }
 
       try {
-        const docRef = doc(db, 'usuarios_sistema', user.uid)
-        const snapshot = await getDoc(docRef)
-
-        if (snapshot.exists()) {
-          const userData = snapshot.data()
-          setIsAdmin(userData.role === 'admin' || userData.role === 'super_admin')
-        } else {
-          setIsAdmin(false)
-        }
+        const tokenResult = await user.getIdTokenResult()
+        const role = tokenResult.claims.role
+        setIsAdmin(checkIsAdmin(role))
       } catch (error) {
         console.error('Erro ao verificar role:', error)
         setIsAdmin(false)
@@ -176,9 +170,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Suspense fallback={<LoadingPage />}>
-          <AppRoutes />
-        </Suspense>
+        <ToastProvider>
+          <Suspense fallback={<LoadingPage />}>
+            <AppRoutes />
+          </Suspense>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   )

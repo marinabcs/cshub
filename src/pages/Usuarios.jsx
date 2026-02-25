@@ -7,6 +7,7 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { db, auth, firebaseConfig } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { logAction } from '../utils/audit';
 import { senhaSchema } from '../validation/usuario';
 import {
@@ -37,6 +38,7 @@ const SENHA_REQUISITOS = [
 export default function Usuarios() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
   const [usuarios, setUsuarios] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -333,6 +335,7 @@ export default function Usuarios() {
 
       setShowModal(false);
       fetchData();
+      toast.success(modalMode === 'add' ? 'Usuário criado com sucesso!' : 'Usuário atualizado com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar usuário:', error);
       if (error.code === 'auth/email-already-in-use') {
@@ -344,6 +347,7 @@ export default function Usuarios() {
       } else {
         setFormError('Erro ao salvar usuário. Tente novamente.');
       }
+      toast.error('Erro ao salvar usuário. Verifique os dados e tente novamente.');
     } finally {
       setFormLoading(false);
     }
@@ -393,9 +397,10 @@ export default function Usuarios() {
       setShowCarteiraModal(false);
       setCarteiraUser(null);
       fetchData();
+      toast.success('Carteira atualizada com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar carteira:', error);
-      alert('Erro ao salvar atribuições. Tente novamente.');
+      toast.error('Erro ao salvar atribuições de carteira. Tente novamente.');
     } finally {
       setSavingCarteira(false);
     }
@@ -416,8 +421,10 @@ export default function Usuarios() {
       setShowDeleteConfirm(false);
       setUserToDelete(null);
       fetchData();
+      toast.success('Usuário excluído com sucesso!');
     } catch (error) {
       console.error('Erro ao excluir usuário:', error);
+      toast.error('Erro ao excluir usuário. Tente novamente.');
     } finally {
       setDeleteLoading(false);
     }
@@ -430,6 +437,7 @@ export default function Usuarios() {
     try {
       await sendPasswordResetEmail(auth, userToReset.email);
       setResetSuccess(true);
+      toast.success('Email de redefinição de senha enviado com sucesso!');
       setTimeout(() => {
         setShowResetConfirm(false);
         setUserToReset(null);
@@ -437,6 +445,7 @@ export default function Usuarios() {
       }, 2000);
     } catch (error) {
       console.error('Erro ao enviar email de redefinição:', error);
+      toast.error('Erro ao enviar email de redefinição de senha. Tente novamente.');
     } finally {
       setResetLoading(false);
     }

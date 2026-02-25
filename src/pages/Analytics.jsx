@@ -1,5 +1,5 @@
 // Analytics - Dashboard Gerencial Completo com Abas
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -266,20 +266,36 @@ export default function Analytics() {
 
   // Clientes inativos/cancelados COM atividade (para aba Inativos)
   const clientesInativos = useMemo(() => {
+    if (activeTab !== 'inativos') return [];
     const dataLimite = getDataDoPeriodo();
     const clientesInativosCancelados = clientes.filter(c =>
       c.status === 'inativo' || c.status === 'cancelado'
     );
 
+    // Build lookup maps once: O(n) instead of O(n²)
+    const threadsByTeam = {};
+    threads.forEach(t => {
+      const key = t._teamId;
+      if (!threadsByTeam[key]) threadsByTeam[key] = [];
+      threadsByTeam[key].push(t);
+    });
+
+    const metricasByTeam = {};
+    metricasDiarias.forEach(m => {
+      const key = m.team_id;
+      if (!metricasByTeam[key]) metricasByTeam[key] = [];
+      metricasByTeam[key].push(m);
+    });
+
     // Verificar quais têm atividade no período
     return clientesInativosCancelados.map(c => {
       const teamIds = c.times || [c.id];
-      const threadsCliente = threads.filter(t => teamIds.includes(t._teamId));
+      const threadsCliente = teamIds.flatMap(id => threadsByTeam[id] || []);
       const threadsNoPeriodo = threadsCliente.filter(t => {
         const threadDate = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
         return threadDate >= dataLimite;
       });
-      const metricasCliente = metricasDiarias.filter(m => teamIds.includes(m.team_id));
+      const metricasCliente = teamIds.flatMap(id => metricasByTeam[id] || []);
       const metricasNoPeriodo = metricasCliente.filter(m => {
         const data = m.data?.toDate ? m.data.toDate() : new Date(m.data);
         return data >= dataLimite;
@@ -295,7 +311,7 @@ export default function Analytics() {
       };
     }).filter(c => c.temAtividade)
       .sort((a, b) => b.usoNoPeriodo - a.usoNoPeriodo); // Ordenar por uso decrescente
-  }, [clientes, threads, metricasDiarias, periodo, periodoCustom]);
+  }, [activeTab, clientes, threads, metricasDiarias, periodo, periodoCustom]);
 
   // Threads filtradas por período (respeita filtros globais)
   const threadsFiltradas = useMemo(() => {
@@ -431,16 +447,34 @@ export default function Analytics() {
 
   // ========== TOP 5 CLIENTES MAIS ENGAJADOS ==========
   const topClientesEngajados = useMemo(() => {
+    if (activeTab !== 'engajamento') return [];
     const dataLimite = getDataDoPeriodo();
+
+    // Build lookup maps once: O(n) instead of O(n²)
+    const threadsByTeam = {};
+    threads.forEach(t => {
+      const key = t._teamId;
+      if (!threadsByTeam[key]) threadsByTeam[key] = [];
+      threadsByTeam[key].push(t);
+    });
+
+    const metricasByTeam = {};
+    metricasDiarias.forEach(m => {
+      const key = m.team_id;
+      if (!metricasByTeam[key]) metricasByTeam[key] = [];
+      metricasByTeam[key].push(m);
+    });
+
     return clientesFiltrados
       .map(c => {
         const teamIds = c.times || [c.id];
-        const threadsCliente = threads.filter(t => teamIds.includes(t._teamId));
+        // Use lookup maps: O(1) per team instead of O(n)
+        const threadsCliente = teamIds.flatMap(id => threadsByTeam[id] || []);
         const threadsNoPeriodo = threadsCliente.filter(t => {
           const threadDate = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
           return threadDate >= dataLimite;
         });
-        const metricasCliente = metricasDiarias.filter(m => teamIds.includes(m.team_id));
+        const metricasCliente = teamIds.flatMap(id => metricasByTeam[id] || []);
         const metricasNoPeriodo = metricasCliente.filter(m => {
           const data = m.data?.toDate ? m.data.toDate() : new Date(m.data);
           return data >= dataLimite;
@@ -460,7 +494,7 @@ export default function Analytics() {
       .filter(c => c.scoreEngajamento > 0)
       .sort((a, b) => b.scoreEngajamento - a.scoreEngajamento)
       .slice(0, 5);
-  }, [clientesFiltrados, threads, metricasDiarias, periodo, periodoCustom]);
+  }, [activeTab, clientesFiltrados, threads, metricasDiarias, periodo, periodoCustom]);
 
   // ========== SEÇÃO 4: TIMES EM RISCO ==========
   const timesEmRisco = useMemo(() => {
@@ -521,6 +555,7 @@ export default function Analytics() {
 
   // ========== SEÇÃO 7: THREADS POR CATEGORIA ==========
   const threadsPorCategoria = useMemo(() => {
+    if (activeTab !== 'engajamento') return [];
     const categorias = {
       'erro_bug': 0,
       'problema_tecnico': 0,
@@ -556,10 +591,11 @@ export default function Analytics() {
       }))
       .filter(d => d.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [threadsFiltradas]);
+  }, [activeTab, threadsFiltradas]);
 
   // ========== SEÇÃO 8: SENTIMENTO DAS CONVERSAS ==========
   const sentimentoData = useMemo(() => {
+    if (activeTab !== 'engajamento') return [];
     const sentimentos = {
       positivo: 0,
       neutro: 0,
@@ -580,10 +616,11 @@ export default function Analytics() {
       { name: 'Negativo', value: sentimentos.negativo, color: SENTIMENTO_COLORS.negativo },
       { name: 'Urgente', value: sentimentos.urgente, color: SENTIMENTO_COLORS.urgente }
     ].filter(d => d.value > 0);
-  }, [threadsFiltradas]);
+  }, [activeTab, threadsFiltradas]);
 
   // ========== ABA USO PLATAFORMA: Métricas de Uso ==========
   const metricasUsoPlataforma = useMemo(() => {
+    if (activeTab !== 'engajamento') return { totalLogins: 0, totalPecasCriadas: 0, totalDownloads: 0, totalUsoAI: 0, mediaLoginsDia: 0, mediaPecasDia: 0, topTimesPorUso: [] };
     const dataLimite = getDataDoPeriodo();
     const metricasPeriodo = metricasDiarias.filter(m => {
       const data = m.data?.toDate ? m.data.toDate() : new Date(m.data);
@@ -638,10 +675,11 @@ export default function Analytics() {
       mediaPecasDia: Math.round(totalPecasCriadas / diasUnicos),
       topTimesPorUso
     };
-  }, [metricasDiarias, clientes, periodo]);
+  }, [activeTab, metricasDiarias, clientes, periodo]);
 
   // ========== ABA USUÁRIOS: Heavy Users ==========
   const heavyUsersData = useMemo(() => {
+    if (activeTab !== 'usuarios') return { heavyUsers: [], faixas: { 'Power User (50+)': 0, 'Ativo (20-49)': 0, 'Moderado (10-19)': 0, 'Baixo (1-9)': 0 }, totalUsuariosAtivos: 0 };
     const dataLimite = getDataDoPeriodo();
     const metricasPeriodo = metricasDiarias.filter(m => {
       const data = m.data?.toDate ? m.data.toDate() : new Date(m.data);
@@ -698,10 +736,11 @@ export default function Analytics() {
     };
 
     return { heavyUsers, faixas, totalUsuariosAtivos: users.length };
-  }, [metricasDiarias, clientes, periodo]);
+  }, [activeTab, metricasDiarias, clientes, periodo]);
 
   // ========== ABA CHURN: Prevenção de Churn ==========
   const churnData = useMemo(() => {
+    if (activeTab !== 'churn') return { clientesEmRisco: [], clientesCriticos: [], clientesSemContato: [], totalEmRisco: 0, totalSemContato: 0, alertasChurn: [], distribuicaoRisco: {}, threadsNegativas: 0 };
     const hoje = new Date();
 
     // Clientes em risco de churn (segmentos ALERTA e RESGATE)
@@ -756,10 +795,10 @@ export default function Analytics() {
       distribuicaoRisco,
       threadsNegativas
     };
-  }, [clientesFiltrados, alertasFiltrados, threadsFiltradas]);
+  }, [activeTab, clientesFiltrados, alertasFiltrados, threadsFiltradas]);
 
   // ========== EXPORTAÇÃO EXCEL ==========
-  const exportCompleteReport = async () => {
+  const exportCompleteReport = useCallback(async () => {
     // Lazy load ExcelJS apenas quando necessário
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
@@ -885,9 +924,9 @@ export default function Analytics() {
     a.download = `relatorio_completo_${new Date().toISOString().split('T')[0]}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }, [visaoGeral, clientesFiltrados, timesEmRisco, threadsFiltradas, alertasFiltrados, performancePorResponsavel]);
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setPeriodo('30');
     setPeriodoCustom({ inicio: '', fim: '' });
     setResponsaveisFilter([]);
@@ -896,40 +935,40 @@ export default function Analytics() {
     setFilterSaude([]);
     setFilterStatus([]);
     setShowFilters(null);
-  };
+  }, []);
 
   const hasFilters = periodo !== '30' || responsaveis.length > 0 || teamTypes.length > 0 || filterArea.length > 0 || filterSaude.length > 0 || filterStatus.length > 0;
 
   // Toggle para multiselect
-  const toggleResponsavel = (resp) => {
+  const toggleResponsavel = useCallback((resp) => {
     setResponsaveisFilter(prev =>
       prev.includes(resp) ? prev.filter(r => r !== resp) : [...prev, resp]
     );
-  };
+  }, []);
 
-  const toggleTeamType = (type) => {
+  const toggleTeamType = useCallback((type) => {
     setTeamTypesFilter(prev =>
       prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
     );
-  };
+  }, []);
 
-  const toggleArea = (area) => {
+  const toggleArea = useCallback((area) => {
     setFilterArea(prev =>
       prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]
     );
-  };
+  }, []);
 
-  const toggleSaude = (saude) => {
+  const toggleSaude = useCallback((saude) => {
     setFilterSaude(prev =>
       prev.includes(saude) ? prev.filter(s => s !== saude) : [...prev, saude]
     );
-  };
+  }, []);
 
-  const toggleStatus = (status) => {
+  const toggleStatus = useCallback((status) => {
     setFilterStatus(prev =>
       prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
     );
-  };
+  }, []);
 
   if (loading) {
     return (

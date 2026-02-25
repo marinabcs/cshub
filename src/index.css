@@ -126,3 +126,14 @@ body {
 .animate-pulse-glow {
   animation: pulse-glow 2s infinite;
 }
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

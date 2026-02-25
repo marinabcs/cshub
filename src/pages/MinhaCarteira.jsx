@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { STATUS_OPTIONS } from '../utils/clienteStatus';
 import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
+import { filterActiveCSUsers } from '../utils/roles';
 
 export default function MinhaCarteira() {
   const navigate = useNavigate();
@@ -44,10 +45,9 @@ export default function MinhaCarteira() {
       try {
         const usuariosRef = collection(db, 'usuarios_sistema');
         const docs = await cachedGetDocs('usuarios_sistema', usuariosRef, 600000);
-        const usuarios = docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter(u => u.ativo !== false && (u.role === 'cs' || u.role === 'gestor' || u.role === 'admin' || u.role === 'super_admin'))
-          .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+        const usuarios = filterActiveCSUsers(
+          docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        );
         setResponsaveis(usuarios);
 
         // Default: usuário logado

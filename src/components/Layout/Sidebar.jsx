@@ -5,6 +5,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { LayoutDashboard, Users, BarChart3, Bell, Settings, LogOut, UserCog, History, Briefcase, FileText, TrendingUp, ClipboardList, GraduationCap } from 'lucide-react';
 import { useAlertasCount } from '../../hooks/useAlertas';
+import { isAdmin as isAdminCheck } from '../../utils/roles';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -56,8 +57,7 @@ export default function Sidebar() {
     { to: '/alertas', icon: Bell, label: 'Alertas', badge: alertaCounts.pendentes, urgente: alertaCounts.urgentes > 0 },
   ];
 
-  // Verificar se usuário é admin
-  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'super_admin';
+  const isAdmin = userProfile ? isAdminCheck(userProfile.role) : false;
 
   const configItems = [
     { to: '/configuracoes', icon: Settings, label: 'Configurações', exact: true },

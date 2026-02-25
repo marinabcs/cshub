@@ -9,16 +9,19 @@ import {
   Zap, RefreshCw, XCircle, CloudDownload, Lock,
   Mail, ChevronRight
 } from 'lucide-react';
+import { useToast } from '../contexts/ToastContext';
 import { SEGMENTOS_CS } from '../utils/segmentoCS';
 import { isClickUpConfigured } from '../services/clickup';
 import { useSincronizarClickUp } from '../hooks/useAlertas';
 import { sincronizarOngoingComClickUp } from '../services/ongoing';
 import { validateForm } from '../validation';
 import { configGeralSchema } from '../validation/configuracoes';
+import { isGestorOrHigher } from '../utils/roles';
 
 export default function Configuracoes() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -100,7 +103,7 @@ export default function Configuracoes() {
     saida_resgate_bugs_zero: true,
   });
 
-  // Verificar se usuário é admin
+  // Verificar se usuário é gestor+ via Custom Claims
   useEffect(() => {
     const checkAdminRole = async () => {
       if (!user?.uid) {
@@ -110,15 +113,9 @@ export default function Configuracoes() {
       }
 
       try {
-        const docRef = doc(db, 'usuarios_sistema', user.uid);
-        const snapshot = await getDoc(docRef);
-
-        if (snapshot.exists()) {
-          const userData = snapshot.data();
-          setIsAdmin(userData.role === 'admin' || userData.role === 'super_admin' || userData.role === 'gestor');
-        } else {
-          setIsAdmin(false);
-        }
+        const tokenResult = await user.getIdTokenResult();
+        const role = tokenResult.claims.role;
+        setIsAdmin(isGestorOrHigher(role));
       } catch (error) {
         console.error('Erro ao verificar role:', error);
         setIsAdmin(false);
@@ -214,9 +211,11 @@ export default function Configuracoes() {
       const agora = new Date();
       const syncDocRef = doc(db, 'config', 'clickup_sync');
       await setDoc(syncDocRef, { ultima_sincronizacao: agora }, { merge: true });
+      toast.success('Sincronização com ClickUp concluída!');
     } catch (error) {
       console.error('Erro ao sincronizar com ClickUp:', error);
       setClickUpSyncResults({ erro: error.message });
+      toast.error('Erro ao sincronizar com ClickUp. Verifique as configurações.');
     } finally {
       setSincronizandoClickUp(false);
     }
@@ -269,10 +268,11 @@ export default function Configuracoes() {
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (error) {
       console.error('Erro ao salvar configurações:', error);
+      toast.error('Erro ao salvar configurações. Tente novamente.');
     } finally {
       setSaving(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, toast]);
 
   // useEffect para auto-save quando segmentoConfig muda
   useEffect(() => {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { ClipboardList, Plus, X, Save, CheckCircle, RotateCcw, Users, Search, Calendar, Play, BookOpen, FileText, Mail, MessageSquare, Edit3, Trash2, Copy, ChevronDown, ChevronRight, Crown, Circle, Star } from 'lucide-react';
 import { SEGMENTOS_CS, DEFAULT_ONGOING_ACOES, getClienteSegmento } from '../utils/segmentoCS';
 import { atribuirCiclo, buscarCicloAtivo, ONGOING_STATUS, ACAO_STATUS } from '../services/ongoing';
@@ -12,6 +13,7 @@ import { useUserActivityStatus, USER_ACTIVITY_CONFIG } from '../hooks/useUserAct
 export default function OnGoing() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -233,7 +235,7 @@ export default function OnGoing() {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error('Erro ao salvar:', err);
-      alert('Erro ao salvar configurações');
+      toast.error('Erro ao salvar configurações do Ongoing. Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -290,9 +292,10 @@ export default function OnGoing() {
       setShowTemplateForm(false);
       setEditingTemplate(null);
       setTemplateForm({ titulo: '', tipo: 'email', categoria: 'estavel', assunto: '', conteudo: '', tags: [] });
+      toast.success(editingTemplate ? 'Template atualizado com sucesso!' : 'Template criado com sucesso!');
     } catch (err) {
       console.error('Erro ao salvar template:', err);
-      alert('Erro ao salvar template');
+      toast.error('Erro ao salvar template. Tente novamente.');
     } finally {
       setSavingTemplate(false);
     }
@@ -317,8 +320,10 @@ export default function OnGoing() {
       const { deleteDoc } = await import('firebase/firestore');
       await deleteDoc(doc(db, 'templates_comunicacao', templateId));
       setTemplates(prev => prev.filter(t => t.id !== templateId));
+      toast.success('Template excluído com sucesso!');
     } catch (err) {
       console.error('Erro ao excluir template:', err);
+      toast.error('Erro ao excluir template. Tente novamente.');
     }
   };
 
@@ -387,9 +392,10 @@ export default function OnGoing() {
         c.id === modalCliente.id ? { ...c, cicloAtivo: ciclo } : c
       ));
       setShowModal(false);
+      toast.success('Ciclo Ongoing atribuído com sucesso!');
     } catch (err) {
       console.error('Erro ao atribuir ciclo:', err);
-      alert('Erro ao atribuir ciclo');
+      toast.error('Erro ao atribuir ciclo Ongoing. Tente novamente.');
     } finally {
       setAtribuindo(false);
     }
