@@ -132,7 +132,7 @@
 - **NÃO incluir previsão de tempo de resolução de bugs** nos templates de email (Valéria: "nunca são certas")
 - **Lista de ações pré-aprovadas para Resgate** — CS precisa saber o que pode oferecer sem validar (calls, treinamentos, materiais)
 - **Mapeamento de sazonalidade por segmento** — Time sabe de cabeça mas não está documentado
-- **[FUTURO] Aba de Rally no CS Hub** — Gabriel aprovou, acompanhar entregas de peças + relatórios com IA
+- **[FUTURO] Aba de Halley no CS Hub** — Gabriel aprovou, acompanhar entregas de peças + relatórios com IA
 
 ---
 

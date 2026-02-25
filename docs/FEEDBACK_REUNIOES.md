@@ -168,9 +168,9 @@ Marina apresentou ao time o sistema de playbooks baseado nos 4 niveis de saude d
 
 ### Ideias Novas
 
-#### Aba de Rally no CS Hub
-- Marina propos criar uma aba especifica para acompanhar rallys (entregas de pecas para clientes)
-- Puxaria threads de email do rally + transcricoes de calls
+#### Aba de Halley no CS Hub
+- Marina propos criar uma aba especifica para acompanhar halleys (entregas de pecas para clientes)
+- Puxaria threads de email do halley + transcricoes de calls
 - IA geraria relatorio automatico (interacoes, modificacoes, entregas)
 - Gabriel aprovou: "ia ajudar muito"
 - Util especialmente para clientes complexos como Amazon (Black Friday = muitas campanhas e entregas)
@@ -198,9 +198,9 @@ Marina apresentou ao time o sistema de playbooks baseado nos 4 niveis de saude d
 - Rafael foca em estrategia de onboarding (nao entra nos playbooks por enquanto)
 - Montar lista de acoes pre-aprovadas que CS pode oferecer ao cliente
 
-#### Rally
-- Gabriel voltou a receber rallys (Amazon, entre outros)
-- Marina vai pedir audio do Gabriel explicando processo do rally para alimentar IA
+#### Halley
+- Gabriel voltou a receber halleys (Amazon, entre outros)
+- Marina vai pedir audio do Gabriel explicando processo do halley para alimentar IA
 - Materiais de referencia: videos do Paulo (Banco Inter, Madeira Madeira)
 
 ---
@@ -230,10 +230,10 @@ Marina apresentou ao time o sistema de playbooks baseado nos 4 niveis de saude d
 
 | # | Item | Contexto |
 |---|------|----------|
-| 10 | **Aba de Rally no CS Hub** | Acompanhar entregas de pecas, gerar relatorios com IA. Gabriel aprovou |
+| 10 | **Aba de Halley no CS Hub** | Acompanhar entregas de pecas, gerar relatorios com IA. Gabriel aprovou |
 | 11 | **Emails personalizados com IA** | Usar historico de trades + classificacao para gerar emails sob medida |
 | 12 | **Modulos de onboarding online** | Diferente de tutoriais curtos (1-2min). Formato curso com introducao, tutoriais, fechamento |
-| 13 | **Relatorio automatico de rally** | IA analisa trades + transcricoes + planilhas para gerar relatorio de entregas |
+| 13 | **Relatorio automatico de halley** | IA analisa trades + transcricoes + planilhas para gerar relatorio de entregas |
 
 ---
 
@@ -244,7 +244,7 @@ Marina apresentou ao time o sistema de playbooks baseado nos 4 niveis de saude d
 | Membro | Perfil | Observacoes |
 |--------|--------|-------------|
 | **Cesar Oliveira** | CS senior, conhece a plataforma profundamente | Sabe diferenciar bugs novos vs antigos, contato direto com devs |
-| **Gabriel Aguiar** | CS senior, especialista em rallys e grandes contas | Fez resgate da Editora do Brasil (calls semanais por meses), Hyundai (pecas personalizadas) |
+| **Gabriel Aguiar** | CS senior, especialista em halleys e grandes contas | Fez resgate da Editora do Brasil (calls semanais por meses), Hyundai (pecas personalizadas) |
 | **Valeria Bendezu** | CS, foco em clientes LATAM | Comunicacao com Ines (Chile) e Caro (Mexico), experiencia com processo de bugs |
 | **Natalia Santos** | CS, participou de apresentacoes com Paulo | Conhece features novas, referencia para Campaign Manager |
 | **Nathalia Montiel** | CS, foco em clientes LATAM (espanhol) | Comunicacao em espanhol, testes de features para clientes |
@@ -262,7 +262,7 @@ Marina apresentou ao time o sistema de playbooks baseado nos 4 niveis de saude d
 
 - **Hyundai (Gabriel):** Resgate com criacao de pecas + treinamento recorrente para concessionarias
 - **Editora do Brasil (Gabriel):** Resgate com calls semanais por 2-3 meses (white label). Picos de uso nos dias de call, queda depois. Terminou em cancelamento
-- **Amazon (Gabriel):** Cliente complexo com rallys de Black Friday, agencia caotica
+- **Amazon (Gabriel):** Cliente complexo com halleys de Black Friday, agencia caotica
 - **Madeira Madeira (Cesar):** Primeiro cliente a ver demo de Analytics/Campaign Manager do Paulo
 - **Banco Inter (Paulo):** Apresentacao completa do editor, referencia para onboarding
 
