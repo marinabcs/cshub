@@ -1,6 +1,6 @@
 # CLAUDE.md - Diretrizes do CS Hub
 
-## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 13/02/2026)
+## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 20/02/2026)
 
 ### Status: Pronto para Lançamento ✅
 
@@ -19,7 +19,7 @@
 - ✅ Sistema Ongoing completo (ações recorrentes por saúde)
 - ✅ Minha Carteira com filtros multiselect (Status, Saúde, Responsável)
 - ✅ Seção "Sem Playbook" em Minha Carteira
-- ✅ 347 testes automatizados passando (Vitest)
+- ✅ 348 testes automatizados passando (Vitest)
 - ✅ Status "onboarding" removido (tratado como "ativo")
 - ✅ Label "Segmento" renomeado para "Saúde" em toda a UI
 - ✅ Status de threads classificado por IA (resolvido, aguardando_cliente, aguardando_equipe)
@@ -31,6 +31,10 @@
 - ✅ Página "Oportunidades de Vendas" substituiu Resumo Executivo (clientes em CRESCIMENTO, dias, vezes, case obtido)
 - ✅ CI/CD GitHub Actions (lint + test + build) passando
 - ✅ ESLint 0 erros em todo o projeto (119 erros corrigidos)
+- ✅ Filtro de emails promocionais de terceiros (categoria IA `promocional` + whitelist de domínios)
+- ✅ Templates de email V2 (27 templates: PT/ES/EN, revisados pelo time)
+- ✅ Thresholds de saúde moderados + carência configurável
+- ✅ Tooltips "dias ativos" e "score de engajamento" na UI
 
 **Índices criados no Firebase:**
 - `threads`: team_id + updated_at
@@ -59,11 +63,81 @@
 - ✅ Validar segmentação com 5 contas reais — OK
 - Métricas: validar números/contagens em Dashboard KPIs, Analytics, etc.
 
-**Adiado para V3:**
+**Adiado para futuro:**
 - 2FA para admins
 - Calculadora de Onboarding (refinamentos + testes com cliente real)
 - Analytics PDF (números grandes cortam na parte inferior)
 - Bugs com peso por severidade (ver decisão 27)
+- Melhorar fluxo de report de bugs (processo sem dono, sem métricas)
+- Aba de Halley no CS Hub (acompanhar entregas de peças + relatórios com IA)
+
+---
+
+## 📝 NOTAS DA SESSÃO (20/02/2026)
+
+### Concluído nesta sessão:
+
+1. **CI/CD fix — Firebase mock para testes**:
+   - Criado `src/test/setup.js` com mocks de Firebase (auth, firestore, functions)
+   - `vite.config.js`: adicionado `setupFiles: ['src/test/setup.js']`
+   - Corrigiu falha do CI (audit.test.js importava Firebase que crashava sem API key)
+   - 348 testes passando no CI
+
+2. **Thresholds de saúde moderados + carência configurável**:
+   - Thresholds aumentados para evitar trocas frequentes de faixa
+   - Carência agora configurável via Configurações
+   - ClickUp triggers desativados temporariamente
+
+3. **Tooltips de "dias ativos" e "score de engajamento"**:
+   - Tooltip em "dias ativos": esclarece que são dias pontuais nos últimos 30 dias, não consecutivos
+   - Tooltip em "score de engajamento": mostra fórmula de cálculo
+
+4. **Filtro de emails promocionais de terceiros**:
+   - Nova categoria IA `promocional` adicionada ao schema (`src/validation/thread.js`)
+   - CLASSIFY_PROMPT atualizado: detecta newsletters, campanhas, webinars, ofertas
+   - Whitelist de domínios (`dominios_remetente_permitidos`): emails @trakto.io mantidos visíveis
+   - Lógica pós-classificação: `promocional` + domínio na whitelist → `requer_acao: true`, senão → `false`
+   - UI em FiltrosEmail.jsx: seção "Domínios Permitidos" com chips verdes, add/remove
+   - Config lida do Firestore (`config/email_filters`) 1x por execução da Cloud Function
+   - Cloud Functions re-deployadas
+
+5. **Templates de email V2 (27 templates)**:
+   - `src/scripts/seedTemplates.js` reescrito com conteúdo V2 completo
+   - 27 templates seedados no Firestore (`templates_comunicacao`)
+   - Organização: Resgate (3), Alerta (9: comunicação rápida + bug/reclamação + queda de uso), Estável (6: data/novidade + sazonalidade), Crescimento (9: reconhecimento/case + case segmento + expansão)
+   - 3 idiomas: PT, ES, EN
+   - Revisões do time: Gabriel (CTAs padronizados: Diagnóstico/Relacionamento/Crescimento), Rafael (Resgate PT reescrito em formato pergunta, novo subject Alerta), Nathalia (espanhol natural, menos formal)
+   - Tags `mensal` em Estável e Crescimento
+   - Disponíveis em Ongoing > Templates
+
+6. **Correção Rally → Halley**:
+   - Referências "Rally/rally/rallys" corrigidas para "Halley/halley/halleys" em CLAUDE.md e docs/FEEDBACK_REUNIOES.md
+
+### Estado do CI:
+- **ESLint:** 0 erros
+- **Testes:** 348/348 passando
+- **Build:** Funcional
+
+### Pendências do Feedback do Time — Status atualizado:
+| Item | Status |
+|------|--------|
+| Aumentar thresholds de classificação | ✅ Feito (sessão 20/02) |
+| Clarificar "dias ativos" na UI | ✅ Feito — tooltips adicionados |
+| Filtrar emails promocionais | ✅ Feito — categoria IA + whitelist |
+| Templates de email finalizados | ✅ Feito — V2 com 27 templates no Firestore |
+| Melhorar fluxo de report de bugs | Adiado para futuro |
+| Lista de ações pré-aprovadas para Resgate | Pendente — lista proposta, aguardando confirmação |
+| Mapeamento de sazonalidade por segmento | Pendente — proposta: usar Observações com tag Sazonalidade |
+| Aba de Halley no CS Hub | Adiado para futuro |
+| Analytics PDF | Adiado para futuro |
+
+### Detalhes técnicos:
+- `src/test/setup.js`: Mock global de Firebase para Vitest — resolve `auth/invalid-api-key` no CI
+- `setupFiles` no `vite.config.js`: carrega mocks antes de cada teste
+- Categoria `promocional` na IA: `functions/index.js` CLASSIFY_PROMPT + lógica whitelist pós-classificação
+- Whitelist padrão: `['trakto.io']`, configurável via Firestore `config/email_filters.dominios_remetente_permitidos`
+- Templates no Firestore: collection `templates_comunicacao`, IDs como `resgate_diagnostico_pt`
+- OnGoing.jsx lê templates do Firestore (não do array local)
 
 ---
 
@@ -119,19 +193,19 @@
 - `functions/` e `scripts/` são excluídos do lint do frontend (Node.js globals diferentes)
 
 ### Pendências para próxima sessão:
-- Verificar se CI passou no GitHub (commit `be56fa4`)
+- ~~Verificar se CI passou no GitHub (commit `be56fa4`)~~ ✅ Passou
 - Métricas: validar números/contagens em Dashboard KPIs, Analytics
 - Analytics PDF: números grandes cortam na parte inferior (html2canvas clipping)
 
 ### Pendências do Feedback do Time (reuniões 11-13/02/2026):
 > Detalhes completos em `/docs/FEEDBACK_REUNIOES.md`
-- **[URGENTE] Aumentar thresholds de classificação** — Clientes mudam de faixa 3-4x no mês, inviabiliza playbooks
-- **[URGENTE] Melhorar fluxo de report de bugs** — Processo sem dono, sem métricas, time não sabe para quem mandar
-- **Filtrar emails promocionais dos clientes** — Emails marketing em massa entram como threads de comunicação
-- **Clarificar "dias ativos" na UI** — Valéria achou que era consecutivo, precisa tooltip/descrição
+- ~~**[URGENTE] Aumentar thresholds de classificação**~~ ✅ Feito (20/02/2026)
+- **[FUTURO] Melhorar fluxo de report de bugs** — Processo sem dono, sem métricas, time não sabe para quem mandar
+- ~~**Filtrar emails promocionais dos clientes**~~ ✅ Feito (20/02/2026) — categoria IA `promocional` + whitelist
+- ~~**Clarificar "dias ativos" na UI**~~ ✅ Feito (20/02/2026) — tooltips adicionados
 - **NÃO incluir previsão de tempo de resolução de bugs** nos templates de email (Valéria: "nunca são certas")
-- **Lista de ações pré-aprovadas para Resgate** — CS precisa saber o que pode oferecer sem validar (calls, treinamentos, materiais)
-- **Mapeamento de sazonalidade por segmento** — Time sabe de cabeça mas não está documentado
+- **Lista de ações pré-aprovadas para Resgate** — Proposta criada, aguardando confirmação
+- **Mapeamento de sazonalidade por segmento** — Proposta: usar Observações com tag Sazonalidade
 - **[FUTURO] Aba de Halley no CS Hub** — Gabriel aprovou, acompanhar entregas de peças + relatórios com IA
 
 ---
@@ -391,6 +465,24 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
     - **Ordenação:** Por dias, usuários, vezes ou nome (clicável nos headers)
     - **Arquivo:** `src/pages/ResumoExecutivo.jsx`
     - **Menu:** Renomeado de "Resumo Executivo" para "Oportunidades"
+35. **Filtro de emails promocionais** (20/02/2026). Emails de marketing/newsletter de terceiros escondidos automaticamente:
+    - **Nova categoria IA:** `promocional` adicionada ao CLASSIFY_PROMPT e schema Zod
+    - **Detecção:** Newsletters, campanhas, webinars comerciais, ofertas, descontos, emails em massa
+    - **Whitelist:** `dominios_remetente_permitidos` (padrão: `['trakto.io']`)
+    - **Lógica:** Classificação `promocional` + domínio na whitelist → `requer_acao: true` (visível), caso contrário → `false` (escondido)
+    - **Config:** Firestore `config/email_filters.dominios_remetente_permitidos`, lida 1x por execução
+    - **UI:** FiltrosEmail.jsx → seção "Domínios Permitidos" com chips verdes, add/remove
+    - **Arquivos:** `functions/index.js`, `src/validation/thread.js`, `src/utils/emailFilters.js`, `src/pages/FiltrosEmail.jsx`
+36. **Templates de Email V2** (20/02/2026). 27 templates de comunicação revisados pelo time:
+    - **Estrutura:** 9 tipos × 3 idiomas (PT/ES/EN)
+    - **Resgate:** E-mail de Diagnóstico (D1-2)
+    - **Alerta:** Comunicação Rápida (D0-1), Bug/Reclamação (D7-8, "Alerta A"), Queda de Uso (D7-8, "Alerta B")
+    - **Estável:** Gancho 1 Data/Novidade, Gancho 2 Sazonalidade (mensal)
+    - **Crescimento:** Gancho 1 Reconhecimento + Case, Gancho 2 Case do Segmento, Gancho 3 Expansão Estratégica (mensal)
+    - **Revisores:** Gabriel (CTAs padronizados), Rafael (Resgate PT reescrito), Nathalia (ES natural)
+    - **Armazenamento:** Firestore `templates_comunicacao`, IDs: `{categoria}_{tipo}_{idioma}`
+    - **UI:** Ongoing > Templates (cards expansíveis, preview, copiar)
+    - **Arquivo:** `src/scripts/seedTemplates.js`
 
 ---
 

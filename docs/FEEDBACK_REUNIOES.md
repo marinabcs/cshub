@@ -209,31 +209,31 @@ Marina apresentou ao time o sistema de playbooks baseado nos 4 niveis de saude d
 
 ### Prioridade Alta (antes dos testes)
 
-| # | Item | Contexto |
-|---|------|----------|
-| 1 | **Aumentar thresholds de classificacao** | Clientes mudam de faixa 3-4x no mes. Thresholds atuais muito baixos, especialmente para Crescimento |
-| 2 | **Melhorar fluxo de report de bugs** | Processo quebrado, sem dono, sem metricas. CS Hub tem formulario mas nao esta sendo usado |
-| 3 | **Filtrar emails promocionais** | Emails marketing dos proprios clientes poluem threads. Times de mkt usam mesmas contas |
-| 4 | **Clarificar "dias ativos" na UI** | Valeria achou que era consecutivo. Precisa tooltip ou descricao clara |
-| 5 | **Remover previsao de tempo de bugs dos templates** | Valeria: "nunca sao certas, perigoso colocar" |
+| # | Item | Contexto | Status |
+|---|------|----------|--------|
+| 1 | **Aumentar thresholds de classificacao** | Clientes mudam de faixa 3-4x no mes. Thresholds atuais muito baixos, especialmente para Crescimento | ✅ Feito (20/02/2026) |
+| 2 | **Melhorar fluxo de report de bugs** | Processo quebrado, sem dono, sem metricas. CS Hub tem formulario mas nao esta sendo usado | Adiado para futuro |
+| 3 | **Filtrar emails promocionais** | Emails marketing dos proprios clientes poluem threads. Times de mkt usam mesmas contas | ✅ Feito (20/02/2026) — categoria IA `promocional` + whitelist |
+| 4 | **Clarificar "dias ativos" na UI** | Valeria achou que era consecutivo. Precisa tooltip ou descricao clara | ✅ Feito (20/02/2026) — tooltips adicionados |
+| 5 | **Remover previsao de tempo de bugs dos templates** | Valeria: "nunca sao certas, perigoso colocar" | ✅ Templates V2 nao incluem previsao de tempo |
 
 ### Prioridade Media (pos-testes iniciais)
 
-| # | Item | Contexto |
-|---|------|----------|
-| 6 | **Lista de acoes pre-aprovadas para Resgate** | CS precisa saber o que pode oferecer sem validar internamente (calls, treinamentos, materiais) |
-| 7 | **Mapeamento de sazonalidade por segmento** | Time sabe de cabeca mas nao esta documentado. Precisa retroalimentar CS Hub |
-| 8 | **Classificacao de severidade de bugs** | Rafael sugeriu. Ja planejado para V3 (decisao 27 do CLAUDE.md) |
-| 9 | **Integracao com time de Vendas (Teness)** | Clientes em Crescimento devem ser sinalizados para Teness entrar nas calls |
+| # | Item | Contexto | Status |
+|---|------|----------|--------|
+| 6 | **Lista de acoes pre-aprovadas para Resgate** | CS precisa saber o que pode oferecer sem validar internamente (calls, treinamentos, materiais) | Proposta criada, aguardando confirmacao |
+| 7 | **Mapeamento de sazonalidade por segmento** | Time sabe de cabeca mas nao esta documentado. Precisa retroalimentar CS Hub | Proposta: usar Observacoes com tag Sazonalidade |
+| 8 | **Classificacao de severidade de bugs** | Rafael sugeriu. Ja planejado para V3 (decisao 27 do CLAUDE.md) | Adiado para futuro |
+| 9 | **Integracao com time de Vendas (Teness)** | Clientes em Crescimento devem ser sinalizados para Teness entrar nas calls | Pendente |
 
 ### Prioridade Baixa (futuro)
 
-| # | Item | Contexto |
-|---|------|----------|
-| 10 | **Aba de Halley no CS Hub** | Acompanhar entregas de pecas, gerar relatorios com IA. Gabriel aprovou |
-| 11 | **Emails personalizados com IA** | Usar historico de trades + classificacao para gerar emails sob medida |
-| 12 | **Modulos de onboarding online** | Diferente de tutoriais curtos (1-2min). Formato curso com introducao, tutoriais, fechamento |
-| 13 | **Relatorio automatico de halley** | IA analisa trades + transcricoes + planilhas para gerar relatorio de entregas |
+| # | Item | Contexto | Status |
+|---|------|----------|--------|
+| 10 | **Aba de Halley no CS Hub** | Acompanhar entregas de pecas, gerar relatorios com IA. Gabriel aprovou | Adiado para futuro |
+| 11 | **Emails personalizados com IA** | Usar historico de trades + classificacao para gerar emails sob medida | Adiado para futuro |
+| 12 | **Modulos de onboarding online** | Diferente de tutoriais curtos (1-2min). Formato curso com introducao, tutoriais, fechamento | Adiado para futuro |
+| 13 | **Relatorio automatico de halley** | IA analisa trades + transcricoes + planilhas para gerar relatorio de entregas | Adiado para futuro |
 
 ---
 
@@ -285,6 +285,18 @@ Valores atuais no CS Hub (muito baixos segundo Marina):
 Os times de marketing/design dos clientes sao os mesmos que usam a Trakto. Quando disparam campanhas em massa, esses emails entram como threads no CS Hub. Necessario:
 - Identificar padroes de emails em massa (muitos destinatarios, conteudo HTML pesado)
 - Possivelmente filtrar por volume de destinatarios ou conteudo tipico de marketing
+
+### Sobre os Templates de Email V2 (implementado 20/02/2026)
+
+Templates finais revisados pelo time e implementados no CS Hub:
+- **27 templates** no Firestore (`templates_comunicacao`): 9 tipos x 3 idiomas (PT/ES/EN)
+- **Resgate:** E-mail de Diagnostico (D1-2) — Rafael reescreveu PT em formato pergunta
+- **Alerta:** Comunicacao Rapida (D0-1), Bug/Reclamacao "Alerta A" (D7-8), Queda de Uso "Alerta B" (D7-8)
+- **Estavel:** Gancho 1 Data/Novidade, Gancho 2 Sazonalidade (mensal)
+- **Crescimento:** Gancho 1 Reconhecimento + Case, Gancho 2 Case do Segmento, Gancho 3 Expansao Estrategica (mensal)
+- **Revisores:** Gabriel (CTAs padronizados: Diagnostico/Relacionamento/Crescimento), Rafael (Resgate PT, subject Alerta), Nathalia (espanhol natural)
+- **Acesso:** Ongoing > Templates no CS Hub
+- Templates NAO incluem previsao de tempo de resolucao de bugs (decisao da Valeria)
 
 ### Sobre o Processo de Bugs
 
