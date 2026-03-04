@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react'
-import { ListTodo, RefreshCw, ListChecks, Bell, Clock, AlertTriangle, Search, X, Check, Play, Ban, Loader2 } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { ListTodo, RefreshCw, ListChecks, Bell, Clock, AlertTriangle, Search, X, Check, Play, Ban, Loader2, ChevronDown } from 'lucide-react'
 import useMinhasTarefas from '../hooks/useMinhasTarefas'
 import { atualizarStatusTarefa } from '../services/tarefasWriteBack'
+import { fetchUsuariosSistema } from '../services/dataAccess'
+import { filterActiveCSUsers } from '../utils/roles'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { Pagination } from '../components/UI/Pagination'
@@ -72,7 +74,7 @@ function StatsBar({ stats }) {
 // ============================================================================
 // FilterBar
 // ============================================================================
-function FilterBar({ filtros, setFiltros }) {
+function FilterBar({ filtros, setFiltros, responsaveis, selectedResponsavel, onResponsavelChange, userEmail }) {
   const { tipos, status, saude, busca } = filtros
 
   const toggleFilter = (key, value) => {
@@ -85,7 +87,7 @@ function FilterBar({ filtros, setFiltros }) {
     })
   }
 
-  const hasFilters = tipos.length > 0 || status.length > 0 || saude.length > 0 || busca.length > 0
+  const hasFilters = tipos.length > 0 || status.length > 0 || saude.length > 0 || busca.length > 0 || (selectedResponsavel && selectedResponsavel !== userEmail)
 
   const chipStyle = (active) => ({
     padding: '6px 12px',
@@ -110,6 +112,38 @@ function FilterBar({ filtros, setFiltros }) {
       gap: '12px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        {/* Responsável */}
+        <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Responsável:</span>
+        <div style={{ position: 'relative' }}>
+          <select
+            value={selectedResponsavel || ''}
+            onChange={(e) => onResponsavelChange(e.target.value)}
+            style={{
+              appearance: 'none',
+              padding: '6px 28px 6px 10px',
+              background: 'rgba(15, 10, 31, 0.6)',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '12px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              outline: 'none',
+              minWidth: '150px',
+            }}
+          >
+            <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
+            {responsaveis.map((resp) => (
+              <option key={resp.id} value={resp.email} style={{ background: '#1e1b4b' }}>
+                {resp.email === userEmail ? `${resp.nome} (Você)` : resp.nome}
+              </option>
+            ))}
+          </select>
+          <ChevronDown style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', width: '12px', height: '12px', color: '#8b5cf6', pointerEvents: 'none' }} />
+        </div>
+
+        <div style={{ width: '1px', height: '24px', background: 'rgba(139, 92, 246, 0.15)' }} />
+
         {/* Tipo */}
         <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Tipo:</span>
         {TIPO_OPTIONS.map(t => (
@@ -167,7 +201,7 @@ function FilterBar({ filtros, setFiltros }) {
 
         {hasFilters && (
           <button
-            onClick={() => setFiltros({ tipos: [], status: [], saude: [], busca: '' })}
+            onClick={() => { setFiltros({ tipos: [], status: [], saude: [], busca: '' }); onResponsavelChange(userEmail); }}
             style={{
               padding: '8px 14px',
               background: 'rgba(239, 68, 68, 0.1)',
@@ -532,7 +566,25 @@ function IgnorarModal({ tarefa, onConfirm, onCancel, loading }) {
 export default function MinhasTarefas() {
   const toast = useToast()
   const { user } = useAuth()
-  const { tarefas, loading, error, refetch, stats } = useMinhasTarefas()
+  const [responsaveis, setResponsaveis] = useState([])
+  const [selectedResponsavel, setSelectedResponsavel] = useState(null)
+
+  // Fetch CS users for dropdown
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const usuarios = await fetchUsuariosSistema()
+        setResponsaveis(filterActiveCSUsers(usuarios))
+        if (user?.email) setSelectedResponsavel(user.email)
+      } catch (err) {
+        console.error('Erro ao buscar responsáveis:', err)
+        if (user?.email) setSelectedResponsavel(user.email)
+      }
+    }
+    load()
+  }, [user?.email])
+
+  const { tarefas, loading, error, refetch, stats } = useMinhasTarefas(selectedResponsavel)
 
   // Filters
   const [filtros, setFiltros] = useState({ tipos: [], status: [], saude: [], busca: '' })
@@ -631,7 +683,9 @@ export default function MinhasTarefas() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
             <ListTodo style={{ width: '28px', height: '28px', color: '#8b5cf6' }} />
-            <h1 style={{ color: 'white', fontSize: '24px', fontWeight: '700', margin: 0 }}>Minhas Tarefas</h1>
+            <h1 style={{ color: 'white', fontSize: '24px', fontWeight: '700', margin: 0 }}>
+              {selectedResponsavel === 'todos' ? 'Todas as Tarefas' : selectedResponsavel === user?.email ? 'Minhas Tarefas' : 'Tarefas'}
+            </h1>
           </div>
           <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>
             {stats.total} tarefa{stats.total !== 1 ? 's' : ''} pendente{stats.total !== 1 ? 's' : ''}
@@ -665,7 +719,14 @@ export default function MinhasTarefas() {
       <StatsBar stats={stats} />
 
       {/* Filters */}
-      <FilterBar filtros={filtros} setFiltros={handleSetFiltros} />
+      <FilterBar
+        filtros={filtros}
+        setFiltros={handleSetFiltros}
+        responsaveis={responsaveis}
+        selectedResponsavel={selectedResponsavel}
+        onResponsavelChange={setSelectedResponsavel}
+        userEmail={user?.email}
+      />
 
       {/* Error */}
       {error && (

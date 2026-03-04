@@ -213,14 +213,17 @@ function sortTarefas(a, b) {
   return prioA - prioB
 }
 
-export default function useMinhasTarefas() {
+export default function useMinhasTarefas(responsavelEmail) {
   const { user } = useAuth()
   const [tarefas, setTarefas] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  // Use the override email if provided, otherwise default to logged-in user
+  const targetEmail = responsavelEmail || user?.email
+
   const fetchTarefas = useCallback(async () => {
-    if (!user?.email) {
+    if (!targetEmail) {
       setTarefas([])
       setLoading(false)
       return
@@ -232,12 +235,15 @@ export default function useMinhasTarefas() {
     try {
       // 1. Fetch all clientes and filter by responsibility
       const allClientes = await fetchAllClientes()
-      const meusClientes = allClientes.filter(c => {
-        if (c.responsaveis && Array.isArray(c.responsaveis)) {
-          return c.responsaveis.some(r => r.email === user.email)
-        }
-        return c.responsavel_email === user.email
-      })
+      const isTodos = targetEmail === 'todos'
+      const meusClientes = isTodos
+        ? allClientes.filter(c => c.status === 'ativo' || c.status === 'aviso_previo' || c.status === 'onboarding')
+        : allClientes.filter(c => {
+          if (c.responsaveis && Array.isArray(c.responsaveis)) {
+            return c.responsaveis.some(r => r.email === targetEmail)
+          }
+          return c.responsavel_email === targetEmail
+        })
 
       const clienteIds = meusClientes.map(c => c.id)
       const clienteMap = {}
@@ -246,10 +252,14 @@ export default function useMinhasTarefas() {
       }
 
       // 2. Fetch from all 3 sources in parallel
+      const alertasFetch = isTodos
+        ? Promise.resolve([]) // Alertas don't support "todos" — skip
+        : fetchAlertasAtivosDoResponsavel(targetEmail)
+
       const [ongoingResults, playbookResults, alertas] = await Promise.all([
         fetchOngoingCiclosBatch(clienteIds),
         fetchPlaybooksAtivosBatch(clienteIds),
-        fetchAlertasAtivosDoResponsavel(user.email),
+        alertasFetch,
       ])
 
       const unified = []
@@ -300,7 +310,7 @@ export default function useMinhasTarefas() {
     } finally {
       setLoading(false)
     }
-  }, [user?.email])
+  }, [targetEmail])
 
   useEffect(() => {
     fetchTarefas()
