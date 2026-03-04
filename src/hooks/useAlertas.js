@@ -84,9 +84,10 @@ export function useAlertas(filtros = {}) {
   return { alertas, loading, error, refetch: fetchAlertas };
 }
 
-// Hook para contar alertas pendentes (para o sidebar)
+// Hook para contar alertas pendentes (para o sidebar e dashboard)
 // Otimizado: usa queries filtradas ao invés de carregar tudo
-export function useAlertasCount() {
+// @param {string} [email] - se fornecido, filtra alertas pelo responsavel ou clientes do usuario
+export function useAlertasCount(email) {
   const [counts, setCounts] = useState({
     pendentes: 0,
     urgentes: 0,
@@ -105,24 +106,40 @@ export function useAlertasCount() {
           cachedGetDocs('clientes', collection(db, 'clientes'), 300000)
         ]);
 
-        // Criar mapa de clientes inativos/cancelados
+        // Criar mapa de clientes inativos/cancelados e set de clientes do usuario
         const clientesInativos = new Set();
+        const clientesDoUsuario = new Set();
         clientesDocs.forEach(d => {
           const data = d.data();
           if (data.status === 'inativo' || data.status === 'cancelado') {
             clientesInativos.add(d.id);
           }
+          if (email) {
+            const isResponsavel = (data.responsaveis && Array.isArray(data.responsaveis))
+              ? data.responsaveis.some(r => r.email === email)
+              : data.responsavel_email === email;
+            if (isResponsavel) clientesDoUsuario.add(d.id);
+          }
         });
 
         // Processar alertas pendentes
-        const alertasPendentes = pendentesSnap.docs
+        let alertasPendentes = pendentesSnap.docs
           .map(d => ({ id: d.id, ...d.data() }))
           .filter(a => !a.cliente_id || !clientesInativos.has(a.cliente_id));
 
         // Processar alertas em andamento
-        const alertasEmAndamento = emAndamentoSnap.docs
+        let alertasEmAndamento = emAndamentoSnap.docs
           .map(d => ({ id: d.id, ...d.data() }))
           .filter(a => !a.cliente_id || !clientesInativos.has(a.cliente_id));
+
+        // Se email fornecido, filtrar por responsavel_email OU cliente do usuario
+        if (email) {
+          const isUserAlert = (a) =>
+            a.responsavel_email === email ||
+            (a.cliente_id && clientesDoUsuario.has(a.cliente_id));
+          alertasPendentes = alertasPendentes.filter(isUserAlert);
+          alertasEmAndamento = alertasEmAndamento.filter(isUserAlert);
+        }
 
         setCounts({
           pendentes: alertasPendentes.length,
@@ -137,7 +154,7 @@ export function useAlertasCount() {
     };
 
     fetchCounts();
-  }, []);
+  }, [email]);
 
   return { counts, loading };
 }

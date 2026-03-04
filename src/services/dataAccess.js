@@ -323,6 +323,101 @@ export async function fetchAlertasAtivosDoResponsavel(email) {
   return data
 }
 
+/**
+ * Fetch active alertas for a list of cliente IDs.
+ * Uses chunked `in` queries (max 30 per chunk) for the given statuses.
+ * @param {string[]} clienteIds
+ * @returns {Promise<Array<Object>>}
+ */
+export async function fetchAlertasAtivosByClienteIds(clienteIds) {
+  if (!clienteIds || clienteIds.length === 0) return []
+
+  const colRef = collection(db, 'alertas')
+  const statuses = ['pendente', 'em_andamento', 'bloqueado']
+  const CHUNK = 30
+
+  const chunks = []
+  for (let i = 0; i < clienteIds.length; i += CHUNK) {
+    chunks.push(clienteIds.slice(i, i + CHUNK))
+  }
+
+  const results = await Promise.all(
+    chunks.flatMap(chunk =>
+      statuses.map(status =>
+        getDocs(query(colRef, where('cliente_id', 'in', chunk), where('status', '==', status)))
+      )
+    )
+  )
+
+  return results.flatMap(snap => snap.docs.map(docToObj))
+}
+
+// ---------- Tarefas Manuais -------------------------------------------------
+
+/**
+ * Fetch active manual tasks for a given user (as creator or assignee).
+ * @param {string} email
+ * @returns {Promise<Array<Object>>}
+ */
+export async function fetchTarefasManuaisDoResponsavel(email) {
+  if (!email) return []
+
+  const colRef = collection(db, 'tarefas_manuais')
+  const statuses = ['pendente', 'em_andamento', 'bloqueada']
+
+  const results = await Promise.all(
+    statuses.map(status =>
+      getDocs(query(colRef, where('responsavel_email', '==', email), where('status', '==', status)))
+    )
+  )
+
+  return results.flatMap(snap => snap.docs.map(docToObj))
+}
+
+/**
+ * Fetch all active manual tasks (for "todos" mode).
+ * @returns {Promise<Array<Object>>}
+ */
+export async function fetchTarefasManuaisAtivas() {
+  const colRef = collection(db, 'tarefas_manuais')
+  const statuses = ['pendente', 'em_andamento', 'bloqueada']
+
+  const results = await Promise.all(
+    statuses.map(status =>
+      getDocs(query(colRef, where('status', '==', status)))
+    )
+  )
+
+  return results.flatMap(snap => snap.docs.map(docToObj))
+}
+
+/**
+ * Create a new manual task.
+ * @param {Object} data
+ * @returns {Promise<{id: string}>}
+ */
+export async function createTarefaManual(data) {
+  const colRef = collection(db, 'tarefas_manuais')
+  const docRef = await addDoc(colRef, {
+    ...data,
+    status: 'pendente',
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  })
+  return { id: docRef.id }
+}
+
+/**
+ * Update a manual task.
+ * @param {string} id
+ * @param {Object} data
+ * @returns {Promise<void>}
+ */
+export async function updateTarefaManual(id, data) {
+  const docRef = doc(db, 'tarefas_manuais', id)
+  await updateDoc(docRef, { ...data, updated_at: serverTimestamp() })
+}
+
 // ---------- Ongoing Ciclos Batch --------------------------------------------
 
 /**

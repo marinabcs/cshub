@@ -1,11 +1,11 @@
 # CLAUDE.md - Diretrizes do CS Hub
 
-## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 25/02/2026)
+## 📋 ESTADO ATUAL DO PROJETO (Atualizado: 04/03/2026)
 
 ### Status: Pronto para Lançamento ✅
 
 **O que está pronto:**
-- ✅ Frontend React completo com todas as 17 páginas
+- ✅ Frontend React completo com todas as 18 páginas
 - ✅ Saúde CS (CRESCIMENTO, ESTAVEL, ALERTA, RESGATE) baseada em métricas diretas
 - ✅ Classificação de threads com IA (OpenAI GPT-4o-mini)
 - ✅ Sistema de auditoria (append-only log)
@@ -36,6 +36,12 @@
 - ✅ Thresholds de saúde moderados + carência configurável
 - ✅ Tooltips "dias ativos" e "score de engajamento" na UI
 - ✅ **Refatoração arquitetural completa (25/02/2026)** — ver notas da sessão
+- ✅ Página Minhas Tarefas com UX otimizada (filtros dropdown, Kanban, cards clicáveis, edição de data inline)
+- ✅ Alertas migrados para Minhas Tarefas (página /alertas removida)
+- ✅ Tarefas manuais (CRUD completo com collection `tarefas_manuais`)
+- ✅ Sidebar com dot indicator (amarelo/vermelho) em vez de badge numérico
+- ✅ Custom Claims sincronizadas para todos os usuários via Admin SDK
+- ✅ Token refresh forçado (`getIdTokenResult(true)`) em AdminRoute e pages protegidas
 
 **Índices criados no Firebase:**
 - `threads`: team_id + updated_at
@@ -56,6 +62,7 @@
 - ✅ Ongoing — OK (cards, D+X, nome clicável)
 - ✅ Onboarding — OK
 - ✅ Alertas — REMOVIDA (página /alertas deletada, alertas gerenciados via Minhas Tarefas como tarefas acionáveis)
+- ✅ Minhas Tarefas — OK (filtros dropdown, kanban, cards clicáveis, edição de data, tarefas manuais, multi-responsável)
 - ✅ Configurações — OK (Saúde CS: reclamações como números, pesos inteiros, regras especiais removidas, inputs 60px)
 - ✅ Usuarios — OK (CRUD completo, 5 roles, atribuição de carteira multi-responsável, reset senha, validação senha forte)
 - ✅ Auditoria — OK (filtros por entidade/ação/usuário/data, paginação 50/página, export CSV, entidades auth+system adicionadas)
@@ -71,6 +78,82 @@
 - Bugs com peso por severidade (ver decisão 27)
 - Melhorar fluxo de report de bugs (processo sem dono, sem métricas)
 - Aba de Halley no CS Hub (acompanhar entregas de peças + relatórios com IA)
+
+---
+
+## 📝 NOTAS DA SESSÃO (04/03/2026)
+
+### Concluído nesta sessão — Minhas Tarefas UX + Tarefas Manuais + Custom Claims:
+
+1. **Página Minhas Tarefas — UX completa (`src/pages/MinhasTarefas.jsx`)**:
+   - Filtros reordenados: FilterBar ANTES de StatsBar
+   - Todos os filtros convertidos de chips para dropdowns multiselect compactos (uma linha)
+   - TaskCard clicável com navegação ao cliente (`/clientes/:id`)
+   - Edição de data inline com botões Salvar/Cancelar (sem onBlur para evitar bug do calendar picker)
+   - Toggle Lista/Kanban no header (3 colunas: Pendente, Em Andamento, Bloqueada)
+   - Botões de ação otimizados: ícones com tooltip (texto apenas no botão primário)
+   - ConfirmModal com textarea de observação opcional (obrigatória apenas para "ignorar")
+   - NovaTarefaModal para criar tarefas manuais (titulo, descricao, cliente, data, prioridade, responsavel)
+
+2. **Tarefas manuais — CRUD completo**:
+   - Nova collection Firestore `tarefas_manuais` com regras de segurança
+   - `src/services/dataAccess.js`: `createTarefaManual`, `updateTarefaManual`, `fetchTarefasManuaisDoResponsavel`, `fetchTarefasManuaisAtivas`
+   - `src/services/tarefasWriteBack.js`: case `manual` em `atualizarStatusTarefa` e `atualizarDataTarefa`
+   - `src/hooks/useMinhasTarefas.js`: `normalizeManual` + fetch paralelo com 5 fontes
+   - `firestore.rules`: regra `tarefas_manuais/{tarefaId}` (read: trakto user, write: CS+)
+
+3. **Bug fix — Multi-responsável**:
+   - Tarefas de clientes com múltiplos responsáveis agora aparecem para TODOS os responsáveis
+   - Alertas buscados por `responsavel_email` E por `cliente_id` (clientes do usuário), com deduplicação
+   - Nova função `fetchAlertasAtivosByClienteIds` em dataAccess.js (chunked `in` queries)
+
+4. **Sidebar — Dot indicator**:
+   - Badge numérico substituído por bolinha 10px (amarelo `#f59e0b` ou vermelho `#ef4444`)
+   - Visível apenas para quem tem tarefas pendentes/atrasadas
+   - `useAlertasCount` aceita `email` opcional para filtro per-user
+
+5. **Dashboard — Card de tarefas removido**:
+   - Removido bloco "Tarefas Pendentes" (antigo alertas)
+   - Imports não utilizados limpos (`Bell`, `useAlertasCount`, `ALERTA_ICONS`, `Frown`, `MessageSquare`)
+
+6. **MinhaCarteira — Contagem filtrada por responsável**:
+   - `useAlertasCount(selectedResponsavel || user?.email)` filtra por responsável selecionado
+   - Corrigido crash (tela preta) causado por order de declaração de variáveis
+
+7. **Custom Claims sincronizadas para todos os 10 usuários**:
+   - marina@trakto.io → `super_admin`
+   - paulo@trakto.io, marinatorres@trakto.io → `admin`
+   - 7 CS users → `cs`
+   - Claims estavam `NONE` porque `syncUserRole` Cloud Function não disparou na criação dos docs
+   - Script via Firebase Admin SDK + refresh token do Firebase CLI
+
+8. **Token refresh forçado em rotas protegidas**:
+   - `getIdTokenResult()` → `getIdTokenResult(true)` em:
+     - `src/App.jsx` (AdminRoute)
+     - `src/pages/Configuracoes.jsx`
+     - `src/pages/FiltrosEmail.jsx`
+   - Garante que claims atualizadas são lidas sem necessidade de logout/login
+
+### Arquivos modificados (principais):
+- `src/pages/MinhasTarefas.jsx` — reescrita completa da página
+- `src/hooks/useMinhasTarefas.js` — 5 fontes paralelas, normalizeManual, dedup alertas
+- `src/hooks/useAlertas.js` — useAlertasCount com filtro per-user
+- `src/services/dataAccess.js` — 5 novas funções (alertas by clienteIds, tarefas manuais CRUD)
+- `src/services/tarefasWriteBack.js` — case manual para status e data
+- `src/components/Layout/Sidebar.jsx` — dot indicator
+- `src/pages/Dashboard.jsx` — removido card tarefas
+- `src/pages/MinhaCarteira.jsx` — contagem filtrada por responsável
+- `src/App.jsx` — getIdTokenResult(true)
+- `src/pages/Configuracoes.jsx` — getIdTokenResult(true)
+- `src/pages/FiltrosEmail.jsx` — getIdTokenResult(true)
+- `firestore.rules` — regra tarefas_manuais
+
+### Deploy: Firebase Hosting (04/03/2026)
+
+### Pendências para próxima sessão:
+- Sincronização de tarefas com Notion (recomendado via n8n)
+- Validar números/contagens em Dashboard KPIs, Analytics
+- Analytics PDF: números grandes cortam na parte inferior
 
 ---
 
@@ -754,8 +837,11 @@ firebase deploy --only firestore:rules --project cs-hub-8c032
 firebase functions:log --project cs-hub-8c032
 ```
 
-**⛔ NUNCA usar `firebase deploy --only hosting`!**
-O frontend NÃO usa Firebase Hosting. O deploy do frontend é feito externamente (não pelo Claude).
+### Deploy do frontend (Firebase Hosting):
+Frontend migrado da Hostoo para Firebase Hosting (março 2026).
+```bash
+npm run build && firebase deploy --only hosting --project cs-hub-8c032
+```
 
 ### Console de secrets:
 https://console.cloud.google.com/security/secret-manager?project=cs-hub-8c032

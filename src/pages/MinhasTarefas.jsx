@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ListTodo, RefreshCw, ListChecks, Bell, Clock, AlertTriangle, Search, X, Check, Play, Ban, Loader2, ChevronDown, Zap } from 'lucide-react'
+import { ListTodo, RefreshCw, ListChecks, Bell, Clock, AlertTriangle, Search, X, Check, Play, Ban, Loader2, ChevronDown, Zap, LayoutList, Columns3, Calendar, Plus, StickyNote } from 'lucide-react'
 import useMinhasTarefas from '../hooks/useMinhasTarefas'
-import { atualizarStatusTarefa } from '../services/tarefasWriteBack'
-import { fetchUsuariosSistema } from '../services/dataAccess'
+import { atualizarStatusTarefa, atualizarDataTarefa } from '../services/tarefasWriteBack'
+import { fetchUsuariosSistema, fetchAllClientes, createTarefaManual } from '../services/dataAccess'
 import { updateAlerta } from '../services/dataAccess'
 import { atribuirCiclo } from '../services/ongoing'
 import { getSegmentoAcoes } from '../utils/segmentoCS'
@@ -22,26 +22,118 @@ const SEGMENTO_CORES = {
   RESGATE: '#ef4444',
 }
 
-// ── Ícone por fonte ─────────────────────────────────────────────────────────
+// ── Icone por fonte ─────────────────────────────────────────────────────────
 const FONTE_ICON = {
   ongoing: RefreshCw,
   playbook: ListChecks,
   alerta: Bell,
+  manual: StickyNote,
 }
 
 const FONTE_LABEL = {
   ongoing: 'Ongoing',
   playbook: 'Playbook',
   alerta: 'Alerta',
+  manual: 'Manual',
 }
 
 const SAUDE_OPTIONS = ['CRESCIMENTO', 'ESTAVEL', 'ALERTA', 'RESGATE']
-const TIPO_OPTIONS = ['ongoing', 'playbook', 'alerta']
+const TIPO_OPTIONS = ['ongoing', 'playbook', 'alerta', 'manual']
 const STATUS_OPTIONS = ['pendente', 'em_andamento', 'bloqueada']
 const STATUS_LABELS = {
   pendente: 'Pendente',
   em_andamento: 'Em Andamento',
   bloqueada: 'Bloqueada',
+}
+
+// ============================================================================
+// MultiSelectDropdown (reusable)
+// ============================================================================
+function MultiSelectDropdown({ label, options, selected, onChange, getLabel, getColor }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handleClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  const toggle = (value) => {
+    if (selected.includes(value)) {
+      onChange(selected.filter(v => v !== value))
+    } else {
+      onChange([...selected, value])
+    }
+  }
+
+  const displayText = selected.length === 0
+    ? 'Todos'
+    : selected.length === options.length
+      ? 'Todos'
+      : `${selected.length} selecionado${selected.length > 1 ? 's' : ''}`
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} ref={ref}>
+      <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{label}:</span>
+      <div style={{ position: 'relative' }}>
+        <button
+          onClick={() => setOpen(!open)}
+          style={{
+            padding: '6px 28px 6px 10px',
+            background: 'rgba(15, 10, 31, 0.6)',
+            border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '8px',
+            color: 'white',
+            fontSize: '12px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            minWidth: '120px',
+            textAlign: 'left',
+          }}
+        >
+          {displayText}
+        </button>
+        <ChevronDown style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', width: '12px', height: '12px', color: '#8b5cf6', pointerEvents: 'none' }} />
+        {open && (
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, marginTop: '4px',
+            background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)',
+            borderRadius: '10px', padding: '8px', zIndex: 50, minWidth: '180px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          }}>
+            {options.map(opt => {
+              const checked = selected.includes(opt)
+              const color = getColor ? getColor(opt) : '#8b5cf6'
+              return (
+                <label key={opt} style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
+                  background: checked ? `${color}15` : 'transparent',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(opt)}
+                    style={{ accentColor: color }}
+                  />
+                  {getColor && (
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  )}
+                  <span style={{ color: checked ? color : '#94a3b8', fontSize: '13px', fontWeight: checked ? '600' : '400' }}>
+                    {getLabel ? getLabel(opt) : opt}
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ============================================================================
@@ -76,48 +168,28 @@ function StatsBar({ stats }) {
 }
 
 // ============================================================================
-// FilterBar
+// FilterBar (compact dropdowns, single line)
 // ============================================================================
 function FilterBar({ filtros, setFiltros, responsaveis, selectedResponsavel, onResponsavelChange, userEmail }) {
-  const { tipos, status, saude, busca } = filtros
+  const { busca } = filtros
 
-  const toggleFilter = (key, value) => {
-    setFiltros(prev => {
-      const current = prev[key]
-      const next = current.includes(value)
-        ? current.filter(v => v !== value)
-        : [...current, value]
-      return { ...prev, [key]: next }
-    })
-  }
-
-  const hasFilters = tipos.length > 0 || status.length > 0 || saude.length > 0 || busca.length > 0 || (selectedResponsavel && selectedResponsavel !== userEmail)
-
-  const chipStyle = (active) => ({
-    padding: '6px 12px',
-    background: active ? 'rgba(139, 92, 246, 0.25)' : 'rgba(15, 10, 31, 0.6)',
-    border: active ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.15)',
-    borderRadius: '8px',
-    color: active ? '#c4b5fd' : '#94a3b8',
-    fontSize: '12px',
-    fontWeight: '500',
-    cursor: 'pointer',
-  })
+  const hasFilters = filtros.tipos.length > 0 || filtros.status.length > 0 || filtros.saude.length > 0 || busca.length > 0 || (selectedResponsavel && selectedResponsavel !== userEmail)
 
   return (
     <div style={{
       background: 'rgba(30, 27, 75, 0.4)',
       border: '1px solid rgba(139, 92, 246, 0.15)',
       borderRadius: '12px',
-      padding: '16px',
+      padding: '12px 16px',
       marginBottom: '20px',
       display: 'flex',
-      flexDirection: 'column',
+      alignItems: 'center',
       gap: '12px',
+      flexWrap: 'wrap',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        {/* Responsável */}
-        <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Responsável:</span>
+      {/* Responsavel */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Responsavel:</span>
         <div style={{ position: 'relative' }}>
           <select
             value={selectedResponsavel || ''}
@@ -139,101 +211,97 @@ function FilterBar({ filtros, setFiltros, responsaveis, selectedResponsavel, onR
             <option value="todos" style={{ background: '#1e1b4b' }}>Todos</option>
             {responsaveis.map((resp) => (
               <option key={resp.id} value={resp.email} style={{ background: '#1e1b4b' }}>
-                {resp.email === userEmail ? `${resp.nome} (Você)` : resp.nome}
+                {resp.email === userEmail ? `${resp.nome} (Voce)` : resp.nome}
               </option>
             ))}
           </select>
           <ChevronDown style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', width: '12px', height: '12px', color: '#8b5cf6', pointerEvents: 'none' }} />
         </div>
-
-        <div style={{ width: '1px', height: '24px', background: 'rgba(139, 92, 246, 0.15)' }} />
-
-        {/* Tipo */}
-        <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Tipo:</span>
-        {TIPO_OPTIONS.map(t => (
-          <button key={t} onClick={() => toggleFilter('tipos', t)} style={chipStyle(tipos.includes(t))}>
-            {FONTE_LABEL[t]}
-          </button>
-        ))}
-
-        <div style={{ width: '1px', height: '24px', background: 'rgba(139, 92, 246, 0.15)' }} />
-
-        {/* Status */}
-        <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Status:</span>
-        {STATUS_OPTIONS.map(s => (
-          <button key={s} onClick={() => toggleFilter('status', s)} style={chipStyle(status.includes(s))}>
-            {STATUS_LABELS[s]}
-          </button>
-        ))}
-
-        <div style={{ width: '1px', height: '24px', background: 'rgba(139, 92, 246, 0.15)' }} />
-
-        {/* Saúde */}
-        <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', textTransform: 'uppercase' }}>Saúde:</span>
-        {SAUDE_OPTIONS.map(s => (
-          <button key={s} onClick={() => toggleFilter('saude', s)} style={{
-            ...chipStyle(saude.includes(s)),
-            borderColor: saude.includes(s) ? SEGMENTO_CORES[s] : 'rgba(139, 92, 246, 0.15)',
-            color: saude.includes(s) ? SEGMENTO_CORES[s] : '#94a3b8',
-          }}>
-            {s.charAt(0) + s.slice(1).toLowerCase()}
-          </button>
-        ))}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Busca */}
-        <div style={{ flex: 1, position: 'relative' }}>
-          <Search style={{ width: '16px', height: '16px', color: '#64748b', position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text"
-            placeholder="Buscar cliente ou tarefa..."
-            value={busca}
-            onChange={(e) => setFiltros(prev => ({ ...prev, busca: e.target.value }))}
-            style={{
-              width: '100%',
-              padding: '10px 12px 10px 36px',
-              background: '#0f0a1f',
-              border: '1px solid rgba(139, 92, 246, 0.15)',
-              borderRadius: '8px',
-              color: 'white',
-              fontSize: '13px',
-              outline: 'none',
-            }}
-          />
-        </div>
+      {/* Tipo */}
+      <MultiSelectDropdown
+        label="Tipo"
+        options={TIPO_OPTIONS}
+        selected={filtros.tipos}
+        onChange={(val) => setFiltros(prev => ({ ...prev, tipos: val }))}
+        getLabel={(opt) => FONTE_LABEL[opt]}
+      />
 
-        {hasFilters && (
-          <button
-            onClick={() => { setFiltros({ tipos: [], status: [], saude: [], busca: '' }); onResponsavelChange(userEmail); }}
-            style={{
-              padding: '8px 14px',
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.2)',
-              borderRadius: '8px',
-              color: '#ef4444',
-              fontSize: '12px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            <X style={{ width: '12px', height: '12px' }} />
-            Limpar
-          </button>
-        )}
+      {/* Status */}
+      <MultiSelectDropdown
+        label="Status"
+        options={STATUS_OPTIONS}
+        selected={filtros.status}
+        onChange={(val) => setFiltros(prev => ({ ...prev, status: val }))}
+        getLabel={(opt) => STATUS_LABELS[opt]}
+      />
+
+      {/* Saude */}
+      <MultiSelectDropdown
+        label="Saude"
+        options={SAUDE_OPTIONS}
+        selected={filtros.saude}
+        onChange={(val) => setFiltros(prev => ({ ...prev, saude: val }))}
+        getLabel={(opt) => opt.charAt(0) + opt.slice(1).toLowerCase()}
+        getColor={(opt) => SEGMENTO_CORES[opt] || '#8b5cf6'}
+      />
+
+      {/* Busca */}
+      <div style={{ flex: 1, position: 'relative', minWidth: '180px' }}>
+        <Search style={{ width: '14px', height: '14px', color: '#64748b', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+        <input
+          type="text"
+          placeholder="Buscar..."
+          value={busca}
+          onChange={(e) => setFiltros(prev => ({ ...prev, busca: e.target.value }))}
+          style={{
+            width: '100%',
+            padding: '6px 10px 6px 30px',
+            background: 'rgba(15, 10, 31, 0.6)',
+            border: '1px solid rgba(139, 92, 246, 0.15)',
+            borderRadius: '8px',
+            color: 'white',
+            fontSize: '12px',
+            outline: 'none',
+          }}
+        />
       </div>
+
+      {hasFilters && (
+        <button
+          onClick={() => { setFiltros({ tipos: [], status: [], saude: [], busca: '' }); onResponsavelChange(userEmail); }}
+          style={{
+            padding: '6px 10px',
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.2)',
+            borderRadius: '8px',
+            color: '#ef4444',
+            fontSize: '11px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <X style={{ width: '12px', height: '12px' }} />
+          Limpar
+        </button>
+      )}
     </div>
   )
 }
 
 // ============================================================================
-// TaskCard
+// TaskCard (clickable, icon-only secondary buttons, inline date edit)
 // ============================================================================
-function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
+function TaskCard({ tarefa, onAction, onPrimaryAction, updating, navigate, onDateChange, compact }) {
   const IconeFonte = FONTE_ICON[tarefa.fonte] || RefreshCw
+  const [editingDate, setEditingDate] = useState(false)
+  const [dateValue, setDateValue] = useState('')
+  const [savingDate, setSavingDate] = useState(false)
 
   // Border color: overdue > near deadline > segment
   let borderColor = SEGMENTO_CORES[tarefa.segmento] || '#8b5cf6'
@@ -248,36 +316,66 @@ function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
   }
 
+  const handleCardClick = () => {
+    if (tarefa.clienteId) {
+      navigate(`/clientes/${tarefa.clienteId}`)
+    }
+  }
+
+  const openDateEditor = () => {
+    setDateValue(tarefa.dataVencimento ? tarefa.dataVencimento.toISOString().split('T')[0] : '')
+    setEditingDate(true)
+  }
+
+  const saveDate = async () => {
+    if (!dateValue) return
+    setSavingDate(true)
+    try {
+      await onDateChange(tarefa, dateValue)
+    } finally {
+      setSavingDate(false)
+      setEditingDate(false)
+    }
+  }
+
+  const canEditDate = tarefa.fonte !== 'alerta'
+
   return (
-    <div style={{
-      background: 'rgba(30, 27, 75, 0.4)',
-      border: '1px solid rgba(139, 92, 246, 0.15)',
-      borderLeft: `4px solid ${borderColor}`,
-      borderRadius: '12px',
-      padding: '16px 20px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '16px',
-    }}>
-      {/* Icon */}
-      <div style={{
-        width: '40px',
-        height: '40px',
-        borderRadius: '10px',
-        background: `${borderColor}15`,
-        border: `1px solid ${borderColor}30`,
+    <div
+      onClick={handleCardClick}
+      style={{
+        background: 'rgba(30, 27, 75, 0.4)',
+        border: '1px solid rgba(139, 92, 246, 0.15)',
+        borderLeft: `4px solid ${borderColor}`,
+        borderRadius: '12px',
+        padding: compact ? '10px 14px' : '16px 20px',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-      }}>
-        <IconeFonte style={{ width: '20px', height: '20px', color: borderColor }} />
-      </div>
+        gap: compact ? '10px' : '16px',
+        cursor: tarefa.clienteId ? 'pointer' : 'default',
+      }}
+    >
+      {/* Icon */}
+      {!compact && (
+        <div style={{
+          width: '40px',
+          height: '40px',
+          borderRadius: '10px',
+          background: `${borderColor}15`,
+          border: `1px solid ${borderColor}30`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <IconeFonte style={{ width: '20px', height: '20px', color: borderColor }} />
+        </div>
+      )}
 
       {/* Content */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-          <span style={{ color: 'white', fontSize: '14px', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: compact ? '2px' : '4px', flexWrap: 'wrap' }}>
+          <span style={{ color: 'white', fontSize: compact ? '12px' : '14px', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: compact ? '200px' : '300px' }}>
             {tarefa.titulo}
           </span>
           <span style={{
@@ -322,7 +420,7 @@ function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           {tarefa.clienteNome && (
-            <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+            <span style={{ color: '#94a3b8', fontSize: compact ? '11px' : '12px' }}>
               {tarefa.clienteNome}
             </span>
           )}
@@ -338,25 +436,85 @@ function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
               {tarefa.segmento}
             </span>
           )}
-          {tarefa.dataVencimento && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: tarefa.vencida ? '#ef4444' : '#64748b', fontSize: '11px' }}>
+          {tarefa.dataVencimento && !editingDate && (
+            <span
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', color: tarefa.vencida ? '#ef4444' : '#64748b', fontSize: '11px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
               <Clock style={{ width: '11px', height: '11px' }} />
               {tarefa.vencida
                 ? `Atrasada ${tarefa.diasAtraso}d`
                 : `Prazo: ${formatDate(tarefa.dataVencimento)}`}
+              {canEditDate && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); openDateEditor() }}
+                  title="Alterar data"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
+                    color: '#64748b', display: 'flex', alignItems: 'center',
+                  }}
+                >
+                  <Calendar style={{ width: '11px', height: '11px' }} />
+                </button>
+              )}
+            </span>
+          )}
+          {editingDate && (
+            <span onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <input
+                type="date"
+                value={dateValue}
+                onChange={(e) => setDateValue(e.target.value)}
+                disabled={savingDate}
+                autoFocus
+                style={{
+                  padding: '2px 6px',
+                  background: '#0f0a1f',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                  borderRadius: '6px',
+                  color: 'white',
+                  fontSize: '11px',
+                  outline: 'none',
+                }}
+              />
+              <button
+                onClick={saveDate}
+                disabled={!dateValue || savingDate}
+                title="Salvar"
+                style={{
+                  background: 'none', border: 'none', cursor: dateValue && !savingDate ? 'pointer' : 'not-allowed',
+                  padding: '2px', color: '#10b981', display: 'flex', alignItems: 'center',
+                  opacity: dateValue && !savingDate ? 1 : 0.4,
+                }}
+              >
+                {savingDate
+                  ? <Loader2 style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} />
+                  : <Check style={{ width: '12px', height: '12px' }} />}
+              </button>
+              <button
+                onClick={() => setEditingDate(false)}
+                disabled={savingDate}
+                title="Cancelar"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '2px', color: '#ef4444', display: 'flex', alignItems: 'center',
+                }}
+              >
+                <X style={{ width: '12px', height: '12px' }} />
+              </button>
             </span>
           )}
         </div>
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
         {tarefa.acaoSugerida && (
           <button
             onClick={() => onPrimaryAction(tarefa)}
             disabled={updating}
             style={{
-              padding: '8px 14px',
+              padding: compact ? '6px 10px' : '8px 14px',
               background: tarefa.acaoSugerida.tipo === 'iniciar_ciclo'
                 ? 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)'
                 : 'rgba(6, 182, 212, 0.15)',
@@ -374,7 +532,7 @@ function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
             }}
           >
             <Zap style={{ width: '14px', height: '14px' }} />
-            {tarefa.acaoSugerida.label}
+            {!compact && tarefa.acaoSugerida.label}
           </button>
         )}
         <button
@@ -382,44 +540,36 @@ function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
           disabled={updating}
           title="Concluir"
           style={{
-            padding: '8px 12px',
+            padding: '6px 8px',
             background: 'rgba(16, 185, 129, 0.1)',
             border: '1px solid rgba(16, 185, 129, 0.3)',
             borderRadius: '8px',
             color: '#10b981',
-            fontSize: '11px',
-            fontWeight: '500',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px',
           }}
         >
           <Check style={{ width: '14px', height: '14px' }} />
-          Concluir
         </button>
 
         {tarefa.statusUnificado === 'pendente' && (
           <button
             onClick={() => onAction(tarefa, 'em_andamento')}
             disabled={updating}
-            title="Em Andamento"
+            title="Iniciar"
             style={{
-              padding: '8px 12px',
+              padding: '6px 8px',
               background: 'rgba(59, 130, 246, 0.1)',
               border: '1px solid rgba(59, 130, 246, 0.3)',
               borderRadius: '8px',
               color: '#3b82f6',
-              fontSize: '11px',
-              fontWeight: '500',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
             }}
           >
             <Play style={{ width: '14px', height: '14px' }} />
-            Iniciar
           </button>
         )}
 
@@ -428,22 +578,18 @@ function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
           disabled={updating || tarefa.statusUnificado === 'bloqueada'}
           title="Bloquear"
           style={{
-            padding: '8px 12px',
+            padding: '6px 8px',
             background: 'rgba(249, 115, 22, 0.1)',
             border: '1px solid rgba(249, 115, 22, 0.3)',
             borderRadius: '8px',
             color: '#f97316',
-            fontSize: '11px',
-            fontWeight: '500',
             cursor: tarefa.statusUnificado === 'bloqueada' ? 'not-allowed' : 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px',
             opacity: tarefa.statusUnificado === 'bloqueada' ? 0.4 : 1,
           }}
         >
           <AlertTriangle style={{ width: '14px', height: '14px' }} />
-          Bloquear
         </button>
 
         <button
@@ -451,21 +597,17 @@ function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
           disabled={updating}
           title="Ignorar"
           style={{
-            padding: '8px 12px',
+            padding: '6px 8px',
             background: 'rgba(100, 116, 139, 0.1)',
             border: '1px solid rgba(100, 116, 139, 0.3)',
             borderRadius: '8px',
             color: '#64748b',
-            fontSize: '11px',
-            fontWeight: '500',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px',
           }}
         >
           <Ban style={{ width: '14px', height: '14px' }} />
-          Ignorar
         </button>
       </div>
     </div>
@@ -473,15 +615,83 @@ function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
 }
 
 // ============================================================================
-// ConfirmModal
+// KanbanColumn
+// ============================================================================
+function KanbanColumn({ title, count, color, tarefas, onAction, onPrimaryAction, updating, navigate, onDateChange }) {
+  return (
+    <div style={{
+      flex: 1,
+      background: 'rgba(30, 27, 75, 0.3)',
+      border: '1px solid rgba(139, 92, 246, 0.15)',
+      borderRadius: '12px',
+      display: 'flex',
+      flexDirection: 'column',
+      minWidth: 0,
+    }}>
+      {/* Column header */}
+      <div style={{
+        padding: '12px 16px',
+        borderBottom: '1px solid rgba(139, 92, 246, 0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <span style={{ color: color, fontSize: '13px', fontWeight: '600' }}>{title}</span>
+        <span style={{
+          padding: '2px 8px',
+          background: `${color}20`,
+          borderRadius: '10px',
+          color: color,
+          fontSize: '11px',
+          fontWeight: '700',
+        }}>
+          {count}
+        </span>
+      </div>
+
+      {/* Cards */}
+      <div style={{
+        padding: '8px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        overflowY: 'auto',
+        flex: 1,
+        maxHeight: 'calc(100vh - 340px)',
+      }}>
+        {tarefas.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#64748b', fontSize: '12px' }}>
+            Nenhuma tarefa
+          </div>
+        )}
+        {tarefas.map(tarefa => (
+          <TaskCard
+            key={tarefa.id}
+            tarefa={tarefa}
+            onAction={onAction}
+            onPrimaryAction={onPrimaryAction}
+            updating={updating}
+            navigate={navigate}
+            onDateChange={onDateChange}
+            compact
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// ConfirmModal (with optional observation)
 // ============================================================================
 function ConfirmModal({ tarefa, status, onConfirm, onCancel, loading }) {
+  const [observacao, setObservacao] = useState('')
   const labels = {
-    concluida: { title: 'Concluir Tarefa', desc: 'Deseja marcar esta tarefa como concluída?', color: '#10b981' },
+    concluida: { title: 'Concluir Tarefa', desc: 'Deseja marcar esta tarefa como concluida?', color: '#10b981' },
     em_andamento: { title: 'Iniciar Tarefa', desc: 'Deseja marcar esta tarefa como em andamento?', color: '#3b82f6' },
     bloqueada: { title: 'Bloquear Tarefa', desc: 'Deseja marcar esta tarefa como bloqueada?', color: '#f97316' },
   }
-  const info = labels[status] || { title: 'Confirmar', desc: 'Confirmar ação?', color: '#8b5cf6' }
+  const info = labels[status] || { title: 'Confirmar', desc: 'Confirmar acao?', color: '#8b5cf6' }
 
   return (
     <div style={{
@@ -490,13 +700,34 @@ function ConfirmModal({ tarefa, status, onConfirm, onCancel, loading }) {
     }} onClick={onCancel}>
       <div style={{
         background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '16px',
-        padding: '24px', width: '400px', maxWidth: '90vw',
+        padding: '24px', width: '440px', maxWidth: '90vw',
       }} onClick={e => e.stopPropagation()}>
         <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 8px 0' }}>{info.title}</h3>
         <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 8px 0' }}>{info.desc}</p>
-        <p style={{ color: '#c4b5fd', fontSize: '13px', margin: '0 0 20px 0' }}>
+        <p style={{ color: '#c4b5fd', fontSize: '13px', margin: '0 0 16px 0' }}>
           {tarefa.titulo} — {tarefa.clienteNome}
         </p>
+
+        <textarea
+          value={observacao}
+          onChange={(e) => setObservacao(e.target.value)}
+          placeholder="Observacao (opcional)..."
+          rows={2}
+          style={{
+            width: '100%',
+            padding: '10px 14px',
+            background: '#0f0a1f',
+            border: '1px solid rgba(139, 92, 246, 0.15)',
+            borderRadius: '12px',
+            color: 'white',
+            fontSize: '13px',
+            outline: 'none',
+            resize: 'vertical',
+            marginBottom: '16px',
+            boxSizing: 'border-box',
+          }}
+        />
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
           <button onClick={onCancel} style={{
             padding: '10px 20px', background: 'rgba(100, 116, 139, 0.1)', border: '1px solid rgba(100, 116, 139, 0.3)',
@@ -504,7 +735,7 @@ function ConfirmModal({ tarefa, status, onConfirm, onCancel, loading }) {
           }}>
             Cancelar
           </button>
-          <button onClick={onConfirm} disabled={loading} style={{
+          <button onClick={() => onConfirm(observacao)} disabled={loading} style={{
             padding: '10px 20px', background: `${info.color}20`, border: `1px solid ${info.color}50`,
             borderRadius: '10px', color: info.color, fontSize: '14px', fontWeight: '600', cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: '6px',
@@ -545,7 +776,7 @@ function IgnorarModal({ tarefa, onConfirm, onCancel, loading }) {
         <textarea
           value={justificativa}
           onChange={(e) => setJustificativa(e.target.value)}
-          placeholder="Justificativa (mínimo 10 caracteres)..."
+          placeholder="Justificativa (minimo 10 caracteres)..."
           rows={3}
           style={{
             width: '100%',
@@ -614,10 +845,10 @@ function IniciarCicloModal({ tarefa, onConfirm, onCancel, loading }) {
           {tarefa.clienteNome}
         </p>
 
-        {/* Ações do segmento */}
+        {/* Acoes do segmento */}
         <div style={{ marginBottom: '16px' }}>
           <span style={{ color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-            Ações padrão ({acoes.length})
+            Acoes padrao ({acoes.length})
           </span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {acoes.map((acao, i) => (
@@ -637,10 +868,10 @@ function IniciarCicloModal({ tarefa, onConfirm, onCancel, loading }) {
           </div>
         </div>
 
-        {/* Cadência */}
+        {/* Cadencia */}
         <div style={{ marginBottom: '20px' }}>
           <span style={{ color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-            Cadência
+            Cadencia
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
             {['mensal', 'bimestral'].map(opt => (
@@ -693,6 +924,267 @@ function IniciarCicloModal({ tarefa, onConfirm, onCancel, loading }) {
 }
 
 // ============================================================================
+// NovaTarefaModal
+// ============================================================================
+function NovaTarefaModal({ onConfirm, onCancel, loading, responsaveis, userEmail }) {
+  const [titulo, setTitulo] = useState('')
+  const [descricao, setDescricao] = useState('')
+  const [clienteId, setClienteId] = useState('')
+  const [clienteNome, setClienteNome] = useState('')
+  const [dataVencimento, setDataVencimento] = useState('')
+  const [prioridade, setPrioridade] = useState('media')
+  const [responsavelEmail, setResponsavelEmail] = useState(userEmail || '')
+  const [clientes, setClientes] = useState([])
+  const [buscaCliente, setBuscaCliente] = useState('')
+  const [showClientes, setShowClientes] = useState(false)
+  const clienteRef = useRef(null)
+
+  useEffect(() => {
+    fetchAllClientes().then(all => {
+      setClientes(all.filter(c => c.status === 'ativo' || c.status === 'aviso_previo' || c.status === 'onboarding'))
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!showClientes) return
+    const handle = (e) => {
+      if (clienteRef.current && !clienteRef.current.contains(e.target)) setShowClientes(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [showClientes])
+
+  const clientesFiltrados = buscaCliente.trim()
+    ? clientes.filter(c => (c.team_name || '').toLowerCase().includes(buscaCliente.toLowerCase()))
+    : clientes
+
+  const selectCliente = (c) => {
+    setClienteId(c.id)
+    setClienteNome(c.team_name || '')
+    setBuscaCliente(c.team_name || '')
+    setShowClientes(false)
+  }
+
+  const clearCliente = () => {
+    setClienteId('')
+    setClienteNome('')
+    setBuscaCliente('')
+  }
+
+  const valid = titulo.trim().length >= 3
+
+  const handleSubmit = () => {
+    if (!valid) return
+    onConfirm({
+      titulo: titulo.trim(),
+      descricao: descricao.trim(),
+      cliente_id: clienteId || null,
+      cliente_nome: clienteNome || null,
+      data_vencimento: dataVencimento ? new Date(dataVencimento + 'T12:00:00') : null,
+      prioridade,
+      responsavel_email: responsavelEmail,
+    })
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }} onClick={onCancel}>
+      <div style={{
+        background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '16px',
+        padding: '24px', width: '520px', maxWidth: '90vw', maxHeight: '85vh', overflowY: 'auto',
+      }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Plus style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
+          Nova Tarefa
+        </h3>
+
+        {/* Titulo */}
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+            Titulo *
+          </label>
+          <input
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            placeholder="Ex: Agendar call de alinhamento..."
+            autoFocus
+            style={{
+              width: '100%', padding: '10px 14px', background: '#0f0a1f',
+              border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '12px',
+              color: 'white', fontSize: '14px', outline: 'none', boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* Descricao */}
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+            Descricao
+          </label>
+          <textarea
+            value={descricao}
+            onChange={(e) => setDescricao(e.target.value)}
+            placeholder="Detalhes da tarefa (opcional)..."
+            rows={2}
+            style={{
+              width: '100%', padding: '10px 14px', background: '#0f0a1f',
+              border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
+              color: 'white', fontSize: '13px', outline: 'none', resize: 'vertical',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* Cliente (searchable) */}
+        <div style={{ marginBottom: '14px' }} ref={clienteRef}>
+          <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+            Cliente
+          </label>
+          <div style={{ position: 'relative' }}>
+            <input
+              value={buscaCliente}
+              onChange={(e) => { setBuscaCliente(e.target.value); setShowClientes(true); if (!e.target.value) clearCliente() }}
+              onFocus={() => setShowClientes(true)}
+              placeholder="Buscar cliente (opcional)..."
+              style={{
+                width: '100%', padding: '10px 14px', background: '#0f0a1f',
+                border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
+                color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box',
+              }}
+            />
+            {clienteId && (
+              <button onClick={clearCliente} style={{
+                position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer', color: '#64748b',
+                display: 'flex', alignItems: 'center',
+              }}>
+                <X style={{ width: '14px', height: '14px' }} />
+              </button>
+            )}
+            {showClientes && clientesFiltrados.length > 0 && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px',
+                background: '#1e1b4b', border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '10px', maxHeight: '160px', overflowY: 'auto', zIndex: 60,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+              }}>
+                {clientesFiltrados.slice(0, 20).map(c => (
+                  <div
+                    key={c.id}
+                    onClick={() => selectCliente(c)}
+                    style={{
+                      padding: '8px 14px', cursor: 'pointer', color: '#e2e8f0', fontSize: '13px',
+                      borderBottom: '1px solid rgba(139, 92, 246, 0.08)',
+                      background: clienteId === c.id ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+                    }}
+                  >
+                    {c.team_name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row: Data + Prioridade */}
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+              Prazo
+            </label>
+            <input
+              type="date"
+              value={dataVencimento}
+              onChange={(e) => setDataVencimento(e.target.value)}
+              style={{
+                width: '100%', padding: '10px 14px', background: '#0f0a1f',
+                border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
+                color: 'white', fontSize: '13px', outline: 'none', boxSizing: 'border-box',
+              }}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+              Prioridade
+            </label>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {[
+                { value: 'baixa', label: 'Baixa', color: '#10b981' },
+                { value: 'media', label: 'Media', color: '#f59e0b' },
+                { value: 'alta', label: 'Alta', color: '#f97316' },
+                { value: 'urgente', label: 'Urgente', color: '#ef4444' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setPrioridade(opt.value)}
+                  style={{
+                    flex: 1, padding: '8px 4px',
+                    background: prioridade === opt.value ? `${opt.color}20` : 'rgba(15, 10, 31, 0.6)',
+                    border: prioridade === opt.value ? `1px solid ${opt.color}50` : '1px solid rgba(139, 92, 246, 0.15)',
+                    borderRadius: '8px',
+                    color: prioridade === opt.value ? opt.color : '#64748b',
+                    fontSize: '11px', fontWeight: '600', cursor: 'pointer',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Responsavel */}
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+            Responsavel
+          </label>
+          <div style={{ position: 'relative' }}>
+            <select
+              value={responsavelEmail}
+              onChange={(e) => setResponsavelEmail(e.target.value)}
+              style={{
+                width: '100%', appearance: 'none', padding: '10px 28px 10px 14px', background: '#0f0a1f',
+                border: '1px solid rgba(139, 92, 246, 0.15)', borderRadius: '12px',
+                color: 'white', fontSize: '13px', outline: 'none', cursor: 'pointer',
+              }}
+            >
+              {responsaveis.map(r => (
+                <option key={r.id} value={r.email} style={{ background: '#1e1b4b' }}>
+                  {r.email === userEmail ? `${r.nome} (Voce)` : r.nome}
+                </option>
+              ))}
+            </select>
+            <ChevronDown style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: '#8b5cf6', pointerEvents: 'none' }} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <button onClick={onCancel} style={{
+            padding: '10px 20px', background: 'rgba(100, 116, 139, 0.1)', border: '1px solid rgba(100, 116, 139, 0.3)',
+            borderRadius: '10px', color: '#94a3b8', fontSize: '14px', fontWeight: '500', cursor: 'pointer',
+          }}>
+            Cancelar
+          </button>
+          <button onClick={handleSubmit} disabled={!valid || loading} style={{
+            padding: '10px 20px',
+            background: valid && !loading ? 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)' : 'rgba(139, 92, 246, 0.2)',
+            border: 'none', borderRadius: '10px', color: 'white', fontSize: '14px', fontWeight: '600',
+            cursor: valid && !loading ? 'pointer' : 'not-allowed',
+            display: 'flex', alignItems: 'center', gap: '6px',
+          }}>
+            {loading ? <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} /> : <Plus style={{ width: '16px', height: '16px' }} />}
+            Criar Tarefa
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
 // MinhasTarefas (Main Page)
 // ============================================================================
 export default function MinhasTarefas() {
@@ -702,6 +1194,9 @@ export default function MinhasTarefas() {
   const [responsaveis, setResponsaveis] = useState([])
   const [selectedResponsavel, setSelectedResponsavel] = useState(null)
 
+  // View mode
+  const [viewMode, setViewMode] = useState('lista')
+
   // Fetch CS users for dropdown
   useEffect(() => {
     const load = async () => {
@@ -710,7 +1205,7 @@ export default function MinhasTarefas() {
         setResponsaveis(filterActiveCSUsers(usuarios))
         if (user?.email) setSelectedResponsavel(user.email)
       } catch (err) {
-        console.error('Erro ao buscar responsáveis:', err)
+        console.error('Erro ao buscar responsaveis:', err)
         if (user?.email) setSelectedResponsavel(user.email)
       }
     }
@@ -729,6 +1224,7 @@ export default function MinhasTarefas() {
   const [confirmModal, setConfirmModal] = useState(null) // { tarefa, status }
   const [ignorarModal, setIgnorarModal] = useState(null) // tarefa
   const [cicloModal, setCicloModal] = useState(null) // tarefa (for IniciarCicloModal)
+  const [novaTarefaModal, setNovaTarefaModal] = useState(false)
   const [updating, setUpdating] = useState(false)
 
   // Apply filters
@@ -763,10 +1259,25 @@ export default function MinhasTarefas() {
   const totalPages = Math.ceil(tarefasFiltradas.length / PAGE_SIZE)
   const paginatedTarefas = tarefasFiltradas.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
+  // Kanban columns
+  const kanbanColumns = useMemo(() => ({
+    pendente: tarefasFiltradas.filter(t => t.statusUnificado === 'pendente'),
+    em_andamento: tarefasFiltradas.filter(t => t.statusUnificado === 'em_andamento'),
+    bloqueada: tarefasFiltradas.filter(t => t.statusUnificado === 'bloqueada'),
+  }), [tarefasFiltradas])
+
   // Reset to page 1 when filters change
   const handleSetFiltros = (newFiltros) => {
-    setFiltros(newFiltros)
-    setCurrentPage(1)
+    if (typeof newFiltros === 'function') {
+      setFiltros(prev => {
+        const next = newFiltros(prev)
+        setCurrentPage(1)
+        return next
+      })
+    } else {
+      setFiltros(newFiltros)
+      setCurrentPage(1)
+    }
   }
 
   // Handle action button clicks
@@ -785,7 +1296,7 @@ export default function MinhasTarefas() {
       await atualizarStatusTarefa(tarefa, status, user.email, justificativa)
 
       const labels = {
-        concluida: 'concluída',
+        concluida: 'concluida',
         em_andamento: 'iniciada',
         bloqueada: 'bloqueada',
         ignorada: 'ignorada',
@@ -814,6 +1325,18 @@ export default function MinhasTarefas() {
       }
     }
   }
+
+  // Handle date change
+  const handleDateChange = useCallback(async (tarefa, novaData) => {
+    try {
+      await atualizarDataTarefa(tarefa, novaData)
+      toast.success('Data atualizada com sucesso!')
+      refetch()
+    } catch (err) {
+      console.error('Erro ao atualizar data:', err)
+      toast.error(err.message || 'Erro ao atualizar data')
+    }
+  }, [refetch, toast])
 
   // Execute ciclo creation from IniciarCicloModal
   const executeCiclo = async ({ segmento, cadencia, acoes }) => {
@@ -848,6 +1371,25 @@ export default function MinhasTarefas() {
     }
   }
 
+  // Create a new manual task
+  const handleCriarTarefa = async (data) => {
+    setUpdating(true)
+    try {
+      await createTarefaManual({
+        ...data,
+        criado_por: user.email,
+      })
+      toast.success('Tarefa criada com sucesso!')
+      setNovaTarefaModal(false)
+      refetch()
+    } catch (err) {
+      console.error('Erro ao criar tarefa:', err)
+      toast.error(err.message || 'Erro ao criar tarefa')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: '#0f0a1f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -874,31 +1416,91 @@ export default function MinhasTarefas() {
             )}
           </p>
         </div>
-        <button
-          onClick={refetch}
-          style={{
-            padding: '10px 16px',
-            background: 'rgba(139, 92, 246, 0.1)',
-            border: '1px solid rgba(139, 92, 246, 0.3)',
-            borderRadius: '10px',
-            color: '#a78bfa',
-            fontSize: '13px',
-            fontWeight: '500',
-            cursor: 'pointer',
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* View toggle */}
+          <div style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          <RefreshCw style={{ width: '14px', height: '14px' }} />
-          Atualizar
-        </button>
+            background: 'rgba(30, 27, 75, 0.6)',
+            border: '1px solid rgba(139, 92, 246, 0.2)',
+            borderRadius: '10px',
+            overflow: 'hidden',
+          }}>
+            <button
+              onClick={() => setViewMode('lista')}
+              title="Lista"
+              style={{
+                padding: '8px 12px',
+                background: viewMode === 'lista' ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
+                border: 'none',
+                color: viewMode === 'lista' ? '#c4b5fd' : '#64748b',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <LayoutList style={{ width: '18px', height: '18px' }} />
+            </button>
+            <button
+              onClick={() => setViewMode('kanban')}
+              title="Kanban"
+              style={{
+                padding: '8px 12px',
+                background: viewMode === 'kanban' ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
+                border: 'none',
+                color: viewMode === 'kanban' ? '#c4b5fd' : '#64748b',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <Columns3 style={{ width: '18px', height: '18px' }} />
+            </button>
+          </div>
+
+          <button
+            onClick={() => setNovaTarefaModal(true)}
+            style={{
+              padding: '10px 16px',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+              border: 'none',
+              borderRadius: '10px',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 16px rgba(139, 92, 246, 0.3)',
+            }}
+          >
+            <Plus style={{ width: '14px', height: '14px' }} />
+            Nova Tarefa
+          </button>
+
+          <button
+            onClick={refetch}
+            style={{
+              padding: '10px 16px',
+              background: 'rgba(139, 92, 246, 0.1)',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+              borderRadius: '10px',
+              color: '#a78bfa',
+              fontSize: '13px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <RefreshCw style={{ width: '14px', height: '14px' }} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
-      {/* Stats */}
-      <StatsBar stats={stats} />
-
-      {/* Filters */}
+      {/* Filters FIRST */}
       <FilterBar
         filtros={filtros}
         setFiltros={handleSetFiltros}
@@ -907,6 +1509,9 @@ export default function MinhasTarefas() {
         onResponsavelChange={setSelectedResponsavel}
         userEmail={user?.email}
       />
+
+      {/* Stats SECOND */}
+      <StatsBar stats={stats} />
 
       {/* Error */}
       {error && (
@@ -918,7 +1523,7 @@ export default function MinhasTarefas() {
         </div>
       )}
 
-      {/* Task List */}
+      {/* Task List / Kanban */}
       {tarefasFiltradas.length === 0 ? (
         <div style={{
           textAlign: 'center', padding: '60px 20px',
@@ -930,27 +1535,75 @@ export default function MinhasTarefas() {
           </h3>
           <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>
             {tarefas.length === 0
-              ? 'Todas as suas tarefas estão em dia!'
+              ? 'Todas as suas tarefas estao em dia!'
               : 'Tente ajustar os filtros para encontrar a tarefa desejada.'}
           </p>
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
-          {paginatedTarefas.map(tarefa => (
-            <TaskCard key={tarefa.id} tarefa={tarefa} onAction={handleAction} onPrimaryAction={handlePrimaryAction} updating={updating} />
-          ))}
+      ) : viewMode === 'kanban' ? (
+        /* Kanban View */
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+          <KanbanColumn
+            title="Pendente"
+            count={kanbanColumns.pendente.length}
+            color="#f59e0b"
+            tarefas={kanbanColumns.pendente}
+            onAction={handleAction}
+            onPrimaryAction={handlePrimaryAction}
+            updating={updating}
+            navigate={navigate}
+            onDateChange={handleDateChange}
+          />
+          <KanbanColumn
+            title="Em Andamento"
+            count={kanbanColumns.em_andamento.length}
+            color="#3b82f6"
+            tarefas={kanbanColumns.em_andamento}
+            onAction={handleAction}
+            onPrimaryAction={handlePrimaryAction}
+            updating={updating}
+            navigate={navigate}
+            onDateChange={handleDateChange}
+          />
+          <KanbanColumn
+            title="Bloqueada"
+            count={kanbanColumns.bloqueada.length}
+            color="#ef4444"
+            tarefas={kanbanColumns.bloqueada}
+            onAction={handleAction}
+            onPrimaryAction={handlePrimaryAction}
+            updating={updating}
+            navigate={navigate}
+            onDateChange={handleDateChange}
+          />
         </div>
-      )}
+      ) : (
+        /* List View */
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+            {paginatedTarefas.map(tarefa => (
+              <TaskCard
+                key={tarefa.id}
+                tarefa={tarefa}
+                onAction={handleAction}
+                onPrimaryAction={handlePrimaryAction}
+                updating={updating}
+                navigate={navigate}
+                onDateChange={handleDateChange}
+              />
+            ))}
+          </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={setCurrentPage}
-          totalItems={tarefasFiltradas.length}
-          pageSize={PAGE_SIZE}
-        />
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              totalItems={tarefasFiltradas.length}
+              pageSize={PAGE_SIZE}
+            />
+          )}
+        </>
       )}
 
       {/* Confirm Modal */}
@@ -958,7 +1611,7 @@ export default function MinhasTarefas() {
         <ConfirmModal
           tarefa={confirmModal.tarefa}
           status={confirmModal.status}
-          onConfirm={() => executeUpdate(confirmModal.tarefa, confirmModal.status)}
+          onConfirm={(obs) => executeUpdate(confirmModal.tarefa, confirmModal.status, obs)}
           onCancel={() => setConfirmModal(null)}
           loading={updating}
         />
@@ -981,6 +1634,17 @@ export default function MinhasTarefas() {
           onConfirm={executeCiclo}
           onCancel={() => setCicloModal(null)}
           loading={updating}
+        />
+      )}
+
+      {/* Nova Tarefa Modal */}
+      {novaTarefaModal && (
+        <NovaTarefaModal
+          onConfirm={handleCriarTarefa}
+          onCancel={() => setNovaTarefaModal(false)}
+          loading={updating}
+          responsaveis={responsaveis}
+          userEmail={user?.email}
         />
       )}
     </div>

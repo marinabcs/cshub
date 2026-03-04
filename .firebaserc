@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "cshub-trakto"
-  }
+  },
+  "targets": {
+    "cs-hub-8c032": {
+      "hosting": {
+        "cshub": [
+          "cshub"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

@@ -10,7 +10,7 @@ import { isAdmin as isAdminCheck } from '../../utils/roles';
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const { counts: alertaCounts } = useAlertasCount();
+  const { counts: alertaCounts } = useAlertasCount(user?.email);
   const [userProfile, setUserProfile] = useState(null);
 
   // Extrair iniciais do nome (ex: "Marina Barros" → "MB")
@@ -141,20 +141,12 @@ export default function Sidebar() {
                 </div>
                 {item.badge > 0 && (
                   <span style={{
-                    minWidth: '20px',
-                    height: '20px',
-                    padding: '0 6px',
+                    width: '10px',
+                    height: '10px',
                     background: item.urgente ? '#ef4444' : '#f59e0b',
-                    borderRadius: '10px',
-                    color: 'white',
-                    fontSize: '11px',
-                    fontWeight: '600',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    {item.badge}
-                  </span>
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                  }} />
                 )}
               </NavLink>
             ))}

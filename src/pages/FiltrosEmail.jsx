@@ -36,7 +36,7 @@ export default function FiltrosEmail() {
       }
 
       try {
-        const tokenResult = await user.getIdTokenResult();
+        const tokenResult = await user.getIdTokenResult(true);
         const role = tokenResult.claims.role;
         setIsAdmin(isGestorOrHigher(role));
       } catch (error) {

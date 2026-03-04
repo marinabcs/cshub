@@ -3,26 +3,14 @@ import { collection } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
 import { useNavigate } from 'react-router-dom';
-import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, MessageSquare, ChevronRight, Circle, Bell, Frown, Briefcase } from 'lucide-react';
+import { Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Clock, ChevronRight, Circle, Briefcase } from 'lucide-react';
 import { STATUS_OPTIONS } from '../utils/clienteStatus';
 import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
-import { useAlertasCount } from '../hooks/useAlertas';
-
-// Mapeamento de ícones por tipo de alerta
-const ALERTA_ICONS = {
-  sem_uso_plataforma: Clock,
-  sentimento_negativo: Frown,
-  resposta_pendente: MessageSquare,
-  problema_reclamacao: AlertTriangle,
-};
 
 export default function Dashboard() {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-
-  // Alertas
-  const { counts: alertaCounts } = useAlertasCount();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -279,59 +267,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-
-      {/* Card de Alertas Pendentes */}
-      {alertaCounts.pendentes > 0 && (
-        <div
-          onClick={() => navigate('/minha-carteira')}
-          style={{
-            marginBottom: '32px',
-            padding: '20px 24px',
-            background: alertaCounts.urgentes > 0
-              ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)'
-              : 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(30, 27, 75, 0.6) 100%)',
-            border: `1px solid ${alertaCounts.urgentes > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
-            borderRadius: '16px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{
-              width: '48px',
-              height: '48px',
-              background: alertaCounts.urgentes > 0
-                ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
-                : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-              borderRadius: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Bell style={{ width: '24px', height: '24px', color: 'white' }} />
-            </div>
-            <div>
-              <p style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0 0 4px 0' }}>
-                {alertaCounts.pendentes} alerta{alertaCounts.pendentes !== 1 ? 's' : ''} pendente{alertaCounts.pendentes !== 1 ? 's' : ''}
-              </p>
-              <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>
-                {alertaCounts.urgentes > 0 && (
-                  <span style={{ color: '#ef4444', fontWeight: '500' }}>
-                    {alertaCounts.urgentes} urgente{alertaCounts.urgentes !== 1 ? 's' : ''} •{' '}
-                  </span>
-                )}
-                {alertaCounts.emAndamento} em andamento
-              </p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: alertaCounts.urgentes > 0 ? '#ef4444' : '#f59e0b' }}>
-            <span style={{ fontSize: '14px', fontWeight: '500' }}>Ver minha carteira</span>
-            <ChevronRight style={{ width: '18px', height: '18px' }} />
-          </div>
-        </div>
-      )}
 
       {/* Grid de Seções */}
       <div style={{

@@ -12,6 +12,9 @@ import {
   fetchOngoingCiclosBatch,
   fetchPlaybooksAtivosBatch,
   fetchAlertasAtivosDoResponsavel,
+  fetchAlertasAtivosByClienteIds,
+  fetchTarefasManuaisDoResponsavel,
+  fetchTarefasManuaisAtivas,
 } from '../services/dataAccess'
 
 // Mapeamento segmento → prioridade derivada
@@ -232,6 +235,40 @@ function normalizeAlerta(alerta) {
 }
 
 /**
+ * Normalize a manual task to the unified task format.
+ */
+function normalizeManual(tarefa) {
+  const dataVenc = parseDate(tarefa.data_vencimento)
+  const { vencida, diasAtraso } = calcDiasAtraso(dataVenc)
+
+  let statusUnificado = 'pendente'
+  if (tarefa.status === 'em_andamento') statusUnificado = 'em_andamento'
+  else if (tarefa.status === 'bloqueada') statusUnificado = 'bloqueada'
+  else if (tarefa.status === 'concluida') statusUnificado = 'concluida'
+  else if (tarefa.status === 'ignorada') statusUnificado = 'ignorada'
+
+  return {
+    id: `manual:${tarefa.id}`,
+    fonte: 'manual',
+    clienteId: tarefa.cliente_id || null,
+    clienteNome: tarefa.cliente_nome || '',
+    segmento: null,
+    titulo: tarefa.titulo || 'Tarefa sem titulo',
+    descricao: tarefa.descricao || '',
+    dataVencimento: dataVenc,
+    vencida,
+    diasAtraso,
+    statusUnificado,
+    statusOriginal: tarefa.status,
+    prioridade: tarefa.prioridade || 'media',
+    origemRef: { docId: tarefa.id },
+    observacoes: tarefa.observacoes || '',
+    concluidaEm: parseDate(tarefa.concluida_em),
+    concluidaPor: tarefa.concluida_por || null,
+  }
+}
+
+/**
  * Sort tasks: overdue first (most overdue on top), then by nearest deadline, then by priority.
  */
 function sortTarefas(a, b) {
@@ -299,15 +336,33 @@ export default function useMinhasTarefas(responsavelEmail) {
       }
 
       // 2. Fetch from all 3 sources in parallel
-      const alertasFetch = isTodos
-        ? Promise.resolve([]) // Alertas don't support "todos" — skip
+      // Fetch alertas from both responsavel_email AND cliente_id to support
+      // clients with multiple responsaveis (alertas only store first responsavel_email)
+      const alertasByEmailFetch = isTodos
+        ? Promise.resolve([])
         : fetchAlertasAtivosDoResponsavel(targetEmail)
+      const alertasByClienteFetch = clienteIds.length > 0
+        ? fetchAlertasAtivosByClienteIds(clienteIds)
+        : Promise.resolve([])
+      const manuaisFetch = isTodos
+        ? fetchTarefasManuaisAtivas()
+        : fetchTarefasManuaisDoResponsavel(targetEmail)
 
-      const [ongoingResults, playbookResults, alertas] = await Promise.all([
+      const [ongoingResults, playbookResults, alertasByEmail, alertasByCliente, manuais] = await Promise.all([
         fetchOngoingCiclosBatch(clienteIds),
         fetchPlaybooksAtivosBatch(clienteIds),
-        alertasFetch,
+        alertasByEmailFetch,
+        alertasByClienteFetch,
+        manuaisFetch,
       ])
+
+      // Merge and deduplicate alertas
+      const alertasMap = new Map()
+      for (const a of alertasByEmail) alertasMap.set(a.id, a)
+      for (const a of alertasByCliente) {
+        if (!alertasMap.has(a.id)) alertasMap.set(a.id, a)
+      }
+      const alertas = Array.from(alertasMap.values())
 
       const unified = []
 
@@ -340,14 +395,19 @@ export default function useMinhasTarefas(responsavelEmail) {
         unified.push(normalizeAlerta(alerta))
       }
 
-      // 6. Filter: only pending/in-progress/blocked (not completed/ignored)
+      // 6. Normalize Manual tasks
+      for (const tarefa of manuais) {
+        unified.push(normalizeManual(tarefa))
+      }
+
+      // 7. Filter: only pending/in-progress/blocked (not completed/ignored)
       const active = unified.filter(t =>
         t.statusUnificado === 'pendente' ||
         t.statusUnificado === 'em_andamento' ||
         t.statusUnificado === 'bloqueada'
       )
 
-      // 7. Sort
+      // 8. Sort
       active.sort(sortTarefas)
 
       setTarefas(active)

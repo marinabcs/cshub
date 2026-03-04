@@ -75,7 +75,7 @@ function AdminRoute({ children }) {
       }
 
       try {
-        const tokenResult = await user.getIdTokenResult()
+        const tokenResult = await user.getIdTokenResult(true)
         const role = tokenResult.claims.role
         setIsAdmin(checkIsAdmin(role))
       } catch (error) {

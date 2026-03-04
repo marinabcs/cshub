@@ -120,6 +120,12 @@ service cloud.firestore {
       allow write: if isCSOrHigher();
     }
 
+    // Tarefas manuais - CS+ podem gerenciar
+    match /tarefas_manuais/{tarefaId} {
+      allow read: if isTraktoUser();
+      allow write: if isCSOrHigher();
+    }
+
     // Times com subcollections
     match /times/{timeId} {
       allow read: if isTraktoUser();

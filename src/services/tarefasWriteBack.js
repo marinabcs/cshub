@@ -7,8 +7,10 @@
 
 import { atualizarAcao } from './ongoing'
 import { atualizarEtapa } from './playbooks'
-import { updateAlerta } from './dataAccess'
+import { updateAlerta, updateTarefaManual } from './dataAccess'
 import { Timestamp } from 'firebase/firestore'
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from './firebase'
 
 // Status unificado → status por fonte
 const STATUS_MAP = {
@@ -32,6 +34,13 @@ const STATUS_MAP = {
     concluida: 'resolvido',
     bloqueada: 'bloqueado',
     ignorada: 'ignorado',
+  },
+  manual: {
+    pendente: 'pendente',
+    em_andamento: 'em_andamento',
+    concluida: 'concluida',
+    bloqueada: 'bloqueada',
+    ignorada: 'ignorada',
   },
 }
 
@@ -80,6 +89,74 @@ export async function atualizarStatusTarefa(tarefa, novoStatus, userEmail, justi
       }
       await updateAlerta(docId, updateData)
       return { success: true }
+    }
+
+    case 'manual': {
+      const { docId } = origemRef
+      const updateData = { status: statusFonte }
+      if (statusFonte === 'concluida' || statusFonte === 'ignorada') {
+        updateData.concluida_em = Timestamp.now()
+        updateData.concluida_por = userEmail
+      }
+      if (obs) updateData.observacoes = obs
+      await updateTarefaManual(docId, updateData)
+      return { success: true }
+    }
+
+    default:
+      throw new Error(`Fonte desconhecida: ${fonte}`)
+  }
+}
+
+/**
+ * Update a task's due date, routing to the correct source service.
+ *
+ * @param {Object} tarefa - unified task object from useMinhasTarefas
+ * @param {string} novaData - ISO date string (yyyy-mm-dd)
+ * @returns {Promise<void>}
+ */
+export async function atualizarDataTarefa(tarefa, novaData) {
+  const { fonte, origemRef } = tarefa
+  const timestamp = Timestamp.fromDate(new Date(novaData + 'T12:00:00'))
+
+  switch (fonte) {
+    case 'ongoing': {
+      const { clienteId, cicloId, index } = origemRef
+      const docRef = doc(db, 'clientes', clienteId, 'ongoing_ciclos', cicloId)
+      const snap = await getDoc(docRef)
+      if (!snap.exists()) throw new Error('Ciclo não encontrado')
+
+      const ciclo = snap.data()
+      const acoes = [...ciclo.acoes]
+      acoes[index] = { ...acoes[index], data_vencimento: timestamp }
+
+      await updateDoc(docRef, { acoes, updated_at: serverTimestamp() })
+      return
+    }
+
+    case 'playbook': {
+      const { clienteId, playbookId, ordem } = origemRef
+      const docRef = doc(db, 'clientes', clienteId, 'playbooks_ativos', playbookId)
+      const snap = await getDoc(docRef)
+      if (!snap.exists()) throw new Error('Playbook não encontrado')
+
+      const playbook = snap.data()
+      const etapas = [...playbook.etapas]
+      const idx = etapas.findIndex(e => e.ordem === ordem)
+      if (idx === -1) throw new Error('Etapa não encontrada')
+      etapas[idx] = { ...etapas[idx], prazo_data: timestamp }
+
+      await updateDoc(docRef, { etapas, updated_at: serverTimestamp() })
+      return
+    }
+
+    case 'alerta':
+      throw new Error('Alertas não suportam ajuste de data')
+
+    case 'manual': {
+      const { docId } = origemRef
+      await updateTarefaManual(docId, { data_vencimento: timestamp })
+      return
     }
 
     default:

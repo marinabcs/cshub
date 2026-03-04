@@ -21,9 +21,9 @@ export default function MinhaCarteira() {
   const [clientes, setClientes] = useState([]);
   const [threads, setThreads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { counts: alertaCounts } = useAlertasCount();
   const [responsaveis, setResponsaveis] = useState([]);
   const [selectedResponsavel, setSelectedResponsavel] = useState(null);
+  const { counts: alertaCounts } = useAlertasCount(selectedResponsavel || user?.email);
   const [filterStatus, setFilterStatus] = useState(['ativo', 'aviso_previo']);
   const [filterSegmento, setFilterSegmento] = useState(['CRESCIMENTO', 'ESTAVEL', 'ALERTA', 'RESGATE']);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
