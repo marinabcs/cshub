@@ -14,7 +14,6 @@ import Dashboard from './pages/Dashboard'
 const MinhaCarteira = lazy(() => import(/* webpackPrefetch: true */ './pages/MinhaCarteira'))
 const Clientes = lazy(() => import(/* webpackPrefetch: true */ './pages/Clientes'))
 const ClienteDetalhe = lazy(() => import(/* webpackPrefetch: true */ './pages/ClienteDetalhe'))
-const Alertas = lazy(() => import(/* webpackPrefetch: true */ './pages/Alertas'))
 const MinhasTarefas = lazy(() => import(/* webpackPrefetch: true */ './pages/MinhasTarefas'))
 
 // Lazy — carregamento sob demanda (menos frequentes)
@@ -153,7 +152,6 @@ function AppRoutes() {
         <Route path="/onboarding/:clienteId" element={<Onboarding />} />
         <Route path="/onboarding/calculadora" element={<OnboardingCalculadora />} />
         <Route path="/onboarding/calculadora/:clienteId" element={<OnboardingCalculadora />} />
-        <Route path="/alertas" element={<Alertas />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="/configuracoes/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
         <Route path="/configuracoes/filtros-email" element={<AdminRoute><FiltrosEmail /></AdminRoute>} />

@@ -55,7 +55,7 @@
 - Documentos — oculto (disponível dentro do cliente)
 - ✅ Ongoing — OK (cards, D+X, nome clicável)
 - ✅ Onboarding — OK
-- ✅ Alertas — OK (reduzido para: sentimento_negativo, problema_reclamacao, entrou_resgate)
+- ✅ Alertas — REMOVIDA (página /alertas deletada, alertas gerenciados via Minhas Tarefas como tarefas acionáveis)
 - ✅ Configurações — OK (Saúde CS: reclamações como números, pesos inteiros, regras especiais removidas, inputs 60px)
 - ✅ Usuarios — OK (CRUD completo, 5 roles, atribuição de carteira multi-responsável, reset senha, validação senha forte)
 - ✅ Auditoria — OK (filtros por entidade/ação/usuário/data, paginação 50/página, export CSV, entidades auth+system adicionadas)
@@ -551,6 +551,15 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
     - **Armazenamento:** Firestore `templates_comunicacao`, IDs: `{categoria}_{tipo}_{idioma}`
     - **UI:** Ongoing > Templates (cards expansíveis, preview, copiar)
     - **Arquivo:** `src/scripts/seedTemplates.js`
+37. **Alertas migrados para Minhas Tarefas** (04/03/2026). Página `/alertas` removida, alertas agora são tarefas acionáveis:
+    - **Página deletada:** `src/pages/Alertas.jsx` removida, rota e import removidos de `App.jsx`
+    - **Sidebar:** Item "Alertas" removido, badge de alertas pendentes movido para "Minhas Tarefas"
+    - **Títulos acionáveis:** Cada tipo de alerta gera título orientado a ação (ex: "X entrou em RESGATE — Iniciar ciclo de recuperação")
+    - **Campo `acaoSugerida`:** Adicionado ao objeto unificado de tarefa (`iniciar_ciclo` ou `ver_cliente`)
+    - **Botão primário no TaskCard:** `iniciar_ciclo` abre IniciarCicloModal, `ver_cliente` navega para `/clientes/:id`
+    - **IniciarCicloModal:** Mostra ações padrão do segmento, dropdown de cadência, ao confirmar cria ciclo Ongoing e marca alerta como resolvido
+    - **MinhaCarteira:** Links "Ver alertas" redirecionam para `/minhas-tarefas`
+    - **Mantidos:** `useAlertas.js`, `alertas.js` (utils), funções de alerta em `dataAccess.js` (usados por Dashboard, Sidebar, ClienteDetalhe)
 
 ---
 
@@ -635,7 +644,7 @@ Salvar threads/mensagens                                      (7:30 e 13:30)
 
 ---
 
-## 🔔 Sistema de Alertas (Atualizado: 06/02/2026)
+## 🔔 Sistema de Alertas (Atualizado: 04/03/2026)
 
 ### Tipos de Alertas ATIVOS:
 | Tipo | Descrição | Prioridade |
@@ -654,9 +663,15 @@ Salvar threads/mensagens                                      (7:30 e 13:30)
 - **Lógica:** Verifica threads dos últimos 7 dias + clientes em RESGATE
 - **ClickUp:** Cria tarefas automaticamente para cada alerta (requer `CLICKUP_LIST_ID` secret)
 
+### Gerenciamento:
+- Alertas são exibidos como **tarefas acionáveis** em `/minhas-tarefas` (página `/alertas` removida em 04/03/2026)
+- Botão "Iniciar Ciclo" cria ciclo Ongoing automaticamente e marca alerta como resolvido
+- Botão "Ver Cliente/Thread" navega direto para o cliente
+
 ### Arquivos relevantes:
 - `/src/utils/alertas.js` — Funções de geração de alertas
-- `/src/pages/Alertas.jsx` — Interface de gerenciamento
+- `/src/hooks/useMinhasTarefas.js` — Normalização de alertas com títulos acionáveis e `acaoSugerida`
+- `/src/pages/MinhasTarefas.jsx` — Interface com IniciarCicloModal
 - `/functions/index.js` — Cloud Function scheduled
 
 ---

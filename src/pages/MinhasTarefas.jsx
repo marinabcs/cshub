@@ -1,8 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
-import { ListTodo, RefreshCw, ListChecks, Bell, Clock, AlertTriangle, Search, X, Check, Play, Ban, Loader2, ChevronDown } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ListTodo, RefreshCw, ListChecks, Bell, Clock, AlertTriangle, Search, X, Check, Play, Ban, Loader2, ChevronDown, Zap } from 'lucide-react'
 import useMinhasTarefas from '../hooks/useMinhasTarefas'
 import { atualizarStatusTarefa } from '../services/tarefasWriteBack'
 import { fetchUsuariosSistema } from '../services/dataAccess'
+import { updateAlerta } from '../services/dataAccess'
+import { atribuirCiclo } from '../services/ongoing'
+import { getSegmentoAcoes } from '../utils/segmentoCS'
 import { filterActiveCSUsers } from '../utils/roles'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -228,7 +232,7 @@ function FilterBar({ filtros, setFiltros, responsaveis, selectedResponsavel, onR
 // ============================================================================
 // TaskCard
 // ============================================================================
-function TaskCard({ tarefa, onAction, updating }) {
+function TaskCard({ tarefa, onAction, onPrimaryAction, updating }) {
   const IconeFonte = FONTE_ICON[tarefa.fonte] || RefreshCw
 
   // Border color: overdue > near deadline > segment
@@ -347,6 +351,32 @@ function TaskCard({ tarefa, onAction, updating }) {
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+        {tarefa.acaoSugerida && (
+          <button
+            onClick={() => onPrimaryAction(tarefa)}
+            disabled={updating}
+            style={{
+              padding: '8px 14px',
+              background: tarefa.acaoSugerida.tipo === 'iniciar_ciclo'
+                ? 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)'
+                : 'rgba(6, 182, 212, 0.15)',
+              border: tarefa.acaoSugerida.tipo === 'iniciar_ciclo'
+                ? 'none'
+                : '1px solid rgba(6, 182, 212, 0.3)',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '11px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <Zap style={{ width: '14px', height: '14px' }} />
+            {tarefa.acaoSugerida.label}
+          </button>
+        )}
         <button
           onClick={() => onAction(tarefa, 'concluida')}
           disabled={updating}
@@ -561,11 +591,114 @@ function IgnorarModal({ tarefa, onConfirm, onCancel, loading }) {
 }
 
 // ============================================================================
+// IniciarCicloModal
+// ============================================================================
+function IniciarCicloModal({ tarefa, onConfirm, onCancel, loading }) {
+  const [cadencia, setCadencia] = useState('mensal')
+  const segmento = tarefa.acaoSugerida?.segmento || 'ALERTA'
+  const acoes = getSegmentoAcoes(segmento)
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }} onClick={onCancel}>
+      <div style={{
+        background: '#1a1033', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '16px',
+        padding: '24px', width: '520px', maxWidth: '90vw', maxHeight: '80vh', overflowY: 'auto',
+      }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: '0 0 8px 0' }}>
+          Iniciar Ciclo {segmento}
+        </h3>
+        <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 20px 0' }}>
+          {tarefa.clienteNome}
+        </p>
+
+        {/* Ações do segmento */}
+        <div style={{ marginBottom: '16px' }}>
+          <span style={{ color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+            Ações padrão ({acoes.length})
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {acoes.map((acao, i) => (
+              <div key={i} style={{
+                padding: '8px 12px',
+                background: 'rgba(15, 10, 31, 0.6)',
+                border: '1px solid rgba(139, 92, 246, 0.1)',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span style={{ color: '#c4b5fd', fontSize: '13px' }}>{acao.nome}</span>
+                <span style={{ color: '#64748b', fontSize: '11px' }}>D+{acao.dias}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Cadência */}
+        <div style={{ marginBottom: '20px' }}>
+          <span style={{ color: '#64748b', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+            Cadência
+          </span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {['mensal', 'bimestral'].map(opt => (
+              <button
+                key={opt}
+                onClick={() => setCadencia(opt)}
+                style={{
+                  padding: '8px 16px',
+                  background: cadencia === opt ? 'rgba(139, 92, 246, 0.25)' : 'rgba(15, 10, 31, 0.6)',
+                  border: cadencia === opt ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.15)',
+                  borderRadius: '8px',
+                  color: cadencia === opt ? '#c4b5fd' : '#94a3b8',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                }}
+              >
+                {opt.charAt(0).toUpperCase() + opt.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <button onClick={onCancel} style={{
+            padding: '10px 20px', background: 'rgba(100, 116, 139, 0.1)', border: '1px solid rgba(100, 116, 139, 0.3)',
+            borderRadius: '10px', color: '#94a3b8', fontSize: '14px', fontWeight: '500', cursor: 'pointer',
+          }}>
+            Cancelar
+          </button>
+          <button
+            onClick={() => onConfirm({ segmento, cadencia, acoes })}
+            disabled={loading}
+            style={{
+              padding: '10px 20px',
+              background: loading ? 'rgba(139, 92, 246, 0.3)' : 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+              border: 'none',
+              borderRadius: '10px', color: 'white', fontSize: '14px', fontWeight: '600',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '6px',
+            }}
+          >
+            {loading ? <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} /> : <Zap style={{ width: '16px', height: '16px' }} />}
+            Iniciar Ciclo
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
 // MinhasTarefas (Main Page)
 // ============================================================================
 export default function MinhasTarefas() {
   const toast = useToast()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [responsaveis, setResponsaveis] = useState([])
   const [selectedResponsavel, setSelectedResponsavel] = useState(null)
 
@@ -595,6 +728,7 @@ export default function MinhasTarefas() {
   // Modal state
   const [confirmModal, setConfirmModal] = useState(null) // { tarefa, status }
   const [ignorarModal, setIgnorarModal] = useState(null) // tarefa
+  const [cicloModal, setCicloModal] = useState(null) // tarefa (for IniciarCicloModal)
   const [updating, setUpdating] = useState(false)
 
   // Apply filters
@@ -663,6 +797,52 @@ export default function MinhasTarefas() {
     } catch (err) {
       console.error('Erro ao atualizar tarefa:', err)
       toast.error(err.message || 'Erro ao atualizar tarefa')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  // Handle primary action button on alert tasks
+  const handlePrimaryAction = (tarefa) => {
+    if (!tarefa.acaoSugerida) return
+
+    if (tarefa.acaoSugerida.tipo === 'iniciar_ciclo') {
+      setCicloModal(tarefa)
+    } else if (tarefa.acaoSugerida.tipo === 'ver_cliente') {
+      if (tarefa.clienteId) {
+        navigate(`/clientes/${tarefa.clienteId}`)
+      }
+    }
+  }
+
+  // Execute ciclo creation from IniciarCicloModal
+  const executeCiclo = async ({ segmento, cadencia, acoes }) => {
+    if (!cicloModal) return
+    setUpdating(true)
+    try {
+      await atribuirCiclo(cicloModal.clienteId, {
+        segmento,
+        cadencia,
+        dataInicio: new Date(),
+        acoes,
+      })
+
+      // Mark the alerta as resolved
+      const alertaDocId = cicloModal.origemRef?.docId
+      if (alertaDocId) {
+        await updateAlerta(alertaDocId, {
+          status: 'resolvido',
+          resolved_at: new Date(),
+          motivo_fechamento: `Ciclo ${segmento} iniciado via Minhas Tarefas`,
+        })
+      }
+
+      toast.success(`Ciclo ${segmento} iniciado para ${cicloModal.clienteNome}!`)
+      setCicloModal(null)
+      refetch()
+    } catch (err) {
+      console.error('Erro ao iniciar ciclo:', err)
+      toast.error(err.message || 'Erro ao iniciar ciclo')
     } finally {
       setUpdating(false)
     }
@@ -757,7 +937,7 @@ export default function MinhasTarefas() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
           {paginatedTarefas.map(tarefa => (
-            <TaskCard key={tarefa.id} tarefa={tarefa} onAction={handleAction} updating={updating} />
+            <TaskCard key={tarefa.id} tarefa={tarefa} onAction={handleAction} onPrimaryAction={handlePrimaryAction} updating={updating} />
           ))}
         </div>
       )}
@@ -790,6 +970,16 @@ export default function MinhasTarefas() {
           tarefa={ignorarModal}
           onConfirm={(justificativa) => executeUpdate(ignorarModal, 'ignorada', justificativa)}
           onCancel={() => setIgnorarModal(null)}
+          loading={updating}
+        />
+      )}
+
+      {/* Iniciar Ciclo Modal */}
+      {cicloModal && (
+        <IniciarCicloModal
+          tarefa={cicloModal}
+          onConfirm={executeCiclo}
+          onCancel={() => setCicloModal(null)}
           loading={updating}
         />
       )}

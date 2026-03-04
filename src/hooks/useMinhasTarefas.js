@@ -143,6 +143,48 @@ function normalizePlaybook(etapa, playbook, cliente) {
 }
 
 /**
+ * Build action-oriented title and acaoSugerida for an alerta based on its type.
+ */
+function buildAlertaTituloEAcao(alerta) {
+  const clienteNome = alerta.cliente_nome || alerta.time_name || 'Cliente'
+  const assunto = alerta.assunto || alerta.titulo || ''
+  const tipo = alerta.tipo
+
+  switch (tipo) {
+    case 'entrou_resgate':
+      return {
+        titulo: `${clienteNome} entrou em RESGATE — Iniciar ciclo de recuperação`,
+        acaoSugerida: { tipo: 'iniciar_ciclo', label: 'Iniciar Ciclo Resgate', segmento: 'RESGATE' },
+      }
+    case 'carencia_playbook':
+      return {
+        titulo: `${clienteNome} não recuperou após 7 dias — Iniciar playbook ${alerta.segmento_sugerido || ''}`.trim(),
+        acaoSugerida: { tipo: 'iniciar_ciclo', label: 'Iniciar Playbook', segmento: alerta.segmento_sugerido || 'ALERTA' },
+      }
+    case 'carencia_comunicacao':
+      return {
+        titulo: `${clienteNome} caiu de nível — Comunicar durante carência`,
+        acaoSugerida: { tipo: 'ver_cliente', label: 'Ver Cliente' },
+      }
+    case 'sentimento_negativo':
+      return {
+        titulo: `Thread negativa — ${clienteNome}: ${assunto}`,
+        acaoSugerida: { tipo: 'ver_cliente', label: 'Ver Thread' },
+      }
+    case 'problema_reclamacao':
+      return {
+        titulo: `Reclamação reportada — ${clienteNome}: ${assunto}`,
+        acaoSugerida: { tipo: 'ver_cliente', label: 'Ver Reclamação' },
+      }
+    default:
+      return {
+        titulo: alerta.titulo || 'Alerta',
+        acaoSugerida: null,
+      }
+  }
+}
+
+/**
  * Normalize an Alerta to the unified task format.
  */
 function normalizeAlerta(alerta) {
@@ -161,13 +203,15 @@ function normalizeAlerta(alerta) {
   else if (alerta.status === 'resolvido') statusUnificado = 'concluida'
   else if (alerta.status === 'ignorado') statusUnificado = 'ignorada'
 
+  const { titulo, acaoSugerida } = buildAlertaTituloEAcao(alerta)
+
   return {
     id: `alerta:${alerta.id}`,
     fonte: 'alerta',
     clienteId: alerta.cliente_id || null,
     clienteNome: alerta.cliente_nome || alerta.time_name || '',
     segmento: null,
-    titulo: alerta.titulo || 'Alerta',
+    titulo,
     descricao: alerta.mensagem || '',
     dataVencimento,
     vencida,
@@ -181,6 +225,9 @@ function normalizeAlerta(alerta) {
     observacoes: alerta.notas || '',
     concluidaEm: parseDate(alerta.resolved_at),
     concluidaPor: null,
+    acaoSugerida,
+    alertaTipo: alerta.tipo || null,
+    thread_id: alerta.thread_id || null,
   }
 }
 

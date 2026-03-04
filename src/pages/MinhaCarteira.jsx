@@ -628,7 +628,7 @@ export default function MinhaCarteira() {
               {alertas.map((alerta) => (
                 <div
                   key={alerta.id}
-                  onClick={() => navigate('/alertas')}
+                  onClick={() => navigate('/minhas-tarefas')}
                   style={{
                     padding: '12px',
                     background: 'rgba(15, 10, 31, 0.6)',
@@ -666,7 +666,7 @@ export default function MinhaCarteira() {
           )}
 
           <button
-            onClick={() => navigate('/alertas')}
+            onClick={() => navigate('/minhas-tarefas')}
             style={{
               width: '100%',
               marginTop: '12px',
@@ -684,7 +684,7 @@ export default function MinhaCarteira() {
               gap: '6px'
             }}
           >
-            Ver todos os alertas
+            Ver todas as tarefas
             <ArrowUpRight style={{ width: '14px', height: '14px' }} />
           </button>
         </div>
