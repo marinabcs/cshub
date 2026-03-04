@@ -334,17 +334,6 @@ export default function ClienteDetalhe() {
                       {alertaDetalhe.prioridade}
                     </span>
                   )}
-                  {alertaDetalhe.clickup_task_id && (
-                    <a
-                      href={alertaDetalhe.clickup_task_url || `https://app.clickup.com/t/${alertaDetalhe.clickup_task_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ padding: '4px 10px', background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4', borderRadius: '6px', fontSize: '11px', fontWeight: '500', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
-                    >
-                      <ExternalLink style={{ width: '12px', height: '12px' }} />
-                      ClickUp
-                    </a>
-                  )}
                 </div>
               </div>
               <button onClick={() => setAlertaDetalhe(null)} style={{ width: '36px', height: '36px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -404,34 +393,6 @@ export default function ClienteDetalhe() {
                 </div>
               )}
 
-              {/* Comentarios do ClickUp */}
-              {alertaDetalhe.clickup_comments && alertaDetalhe.clickup_comments.length > 0 && (
-                <div style={{ marginTop: '20px', borderTop: '1px solid rgba(139, 92, 246, 0.1)', paddingTop: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                    <MessageSquare style={{ width: '16px', height: '16px', color: '#06b6d4' }} />
-                    <p style={{ color: '#06b6d4', fontSize: '14px', fontWeight: '600', margin: 0 }}>
-                      Comentários do ClickUp ({alertaDetalhe.clickup_comments.length})
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {alertaDetalhe.clickup_comments.map((comment, idx) => (
-                      <div key={idx} style={{ padding: '12px', background: 'rgba(6, 182, 212, 0.08)', border: '1px solid rgba(6, 182, 212, 0.15)', borderRadius: '10px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <span style={{ color: 'white', fontSize: '13px', fontWeight: '500' }}>
-                            {comment.user?.username || comment.user?.email || 'Usuário'}
-                          </span>
-                          <span style={{ color: '#64748b', fontSize: '11px' }}>
-                            {comment.date ? new Date(parseInt(comment.date)).toLocaleString('pt-BR') : ''}
-                          </span>
-                        </div>
-                        <p style={{ color: '#e2e8f0', fontSize: '13px', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                          {comment.comment_text || comment.text_content || ''}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Footer */}

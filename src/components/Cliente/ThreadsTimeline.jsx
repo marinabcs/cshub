@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
-import { MessageSquare, Mail, ChevronRight, Search, SlidersHorizontal, X, ExternalLink, Bot, ListTodo, Clock, AlertTriangle, ArrowUpDown, Filter, EyeOff, Eye } from 'lucide-react';
+import { MessageSquare, Mail, ChevronRight, Search, SlidersHorizontal, X, ExternalLink, Bot, Clock, AlertTriangle, ArrowUpDown, Filter, EyeOff, Eye } from 'lucide-react';
 import { THREAD_CATEGORIAS, THREAD_SENTIMENTOS, getCategoriaInfo, getSentimentoInfo, isOpenAIConfigured } from '../../services/openai';
-import { isClickUpConfigured } from '../../services/clickup';
 import { applyFiltersToThreads, getFilterStats } from '../../utils/emailFilters';
 
 // Status das threads
@@ -79,7 +78,6 @@ export default function ThreadsTimeline({
   threads,
   onThreadClick,
   onClassificarClick,
-  onCriarTarefaClick,
   onMarcarIrrelevante,
   filterConfig
 }) {
@@ -679,31 +677,6 @@ export default function ThreadsTimeline({
                         >
                           <Bot style={{ width: '12px', height: '12px' }} />
                           Classificar
-                        </button>
-                      )}
-
-                      {/* Criar Tarefa ClickUp */}
-                      {isClickUpConfigured() && onCriarTarefaClick && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onCriarTarefaClick(thread);
-                          }}
-                          style={{
-                            padding: '4px 10px',
-                            background: 'rgba(124, 58, 237, 0.1)',
-                            border: '1px solid rgba(124, 58, 237, 0.2)',
-                            borderRadius: '6px',
-                            color: '#7c3aed',
-                            fontSize: '11px',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                        >
-                          <ListTodo style={{ width: '12px', height: '12px' }} />
-                          Tarefa
                         </button>
                       )}
 

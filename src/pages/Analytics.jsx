@@ -885,8 +885,7 @@ export default function Analytics() {
         'Prioridade': b.prioridade || '-',
         'Status': b.status || '-',
         'Data': b.data?.toDate ? b.data.toDate().toLocaleDateString('pt-BR') : '-',
-        'Resolvido Em': b.resolvido_em?.toDate ? b.resolvido_em.toDate().toLocaleDateString('pt-BR') : '-',
-        'Link ClickUp': b.link_clickup || '-'
+        'Resolvido Em': b.resolvido_em?.toDate ? b.resolvido_em.toDate().toLocaleDateString('pt-BR') : '-'
       }))
     );
     if (bugsExport.length > 0) {
@@ -2228,11 +2227,6 @@ export default function Analytics() {
                     whiteSpace: 'nowrap'
                   }}>{STATUS_BUG_LABELS[b.status] || b.status}</span>
                   <span style={{ color: '#64748b', fontSize: '11px', whiteSpace: 'nowrap' }}>{formatRelativeDate(b.data)}</span>
-                  {b.link_clickup && (
-                    <a href={b.link_clickup} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#8b5cf6' }}>
-                      <ExternalLink style={{ width: '12px', height: '12px' }} />
-                    </a>
-                  )}
                 </div>
               ))}
             </div>

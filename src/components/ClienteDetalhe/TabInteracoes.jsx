@@ -760,12 +760,6 @@ export default function TabInteracoes({
                         {item.mensagem.substring(0, 150)}
                       </p>
                     )}
-                    {item.clickup_comments && item.clickup_comments.length > 0 && (
-                      <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <MessageSquare style={{ width: '12px', height: '12px', color: '#06b6d4' }} />
-                        <span style={{ color: '#06b6d4', fontSize: '11px' }}>{item.clickup_comments.length} comentário{item.clickup_comments.length > 1 ? 's' : ''} do ClickUp</span>
-                      </div>
-                    )}
                   </div>
                 </div>
               );

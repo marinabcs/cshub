@@ -15,6 +15,7 @@ const MinhaCarteira = lazy(() => import(/* webpackPrefetch: true */ './pages/Min
 const Clientes = lazy(() => import(/* webpackPrefetch: true */ './pages/Clientes'))
 const ClienteDetalhe = lazy(() => import(/* webpackPrefetch: true */ './pages/ClienteDetalhe'))
 const Alertas = lazy(() => import(/* webpackPrefetch: true */ './pages/Alertas'))
+const MinhasTarefas = lazy(() => import(/* webpackPrefetch: true */ './pages/MinhasTarefas'))
 
 // Lazy — carregamento sob demanda (menos frequentes)
 const ClienteForm = lazy(() => import('./pages/ClienteForm'))
@@ -134,6 +135,7 @@ function AppRoutes() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/minha-carteira" element={<MinhaCarteira />} />
+        <Route path="/minhas-tarefas" element={<MinhasTarefas />} />
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/clientes/novo" element={<ClienteForm />} />
         <Route path="/clientes/:id" element={<ClienteDetalhe />} />

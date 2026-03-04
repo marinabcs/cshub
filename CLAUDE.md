@@ -566,40 +566,11 @@ Compatibilidade retroativa com valores antigos (GROW, NURTURE, WATCH, RESCUE) vi
 
 ---
 
-## 🔗 Integração ClickUp (Janeiro 2026)
+## 🔗 Integração ClickUp
 
-### Status: Implementado parcialmente ✅
+### Status: REMOVIDA (Março 2026)
 
-**O que está funcionando:**
-- ✅ Criação automática de tarefas no ClickUp ao criar alertas
-- ✅ Criação de tarefas para etapas de playbooks
-- ✅ Múltiplos responsáveis (assignees) nas tarefas
-- ✅ Nome do cliente no título das tarefas
-- ✅ Data de vencimento automática (3 dias)
-- ✅ Fechamento de tarefas ao cancelar playbook
-- ✅ Sincronização manual (botão em Configurações)
-- ✅ Mapeamento de status bidirecional
-
-**Mapeamento de Status CS Hub ↔ ClickUp:**
-```javascript
-const STATUS_CSHUB_TO_CLICKUP = {
-  'pendente': 'pendente',
-  'em_andamento': 'em andamento',
-  'concluida': 'resolvido',
-  'pulada': 'ignorado',
-  'bloqueado': 'bloqueado',
-  'resolvido': 'resolvido',
-  'ignorado': 'ignorado',
-  'cancelado': 'ignorado'
-};
-```
-
-**Variáveis de ambiente necessárias:**
-```
-VITE_CLICKUP_API_KEY=pk_xxxxxx
-VITE_CLICKUP_LIST_ID=xxxxxxx
-VITE_CLICKUP_TEAM_ID=xxxxxxx
-```
+A integração com ClickUp foi completamente removida. O time de CS não adotou o ClickUp como ferramenta de gestão. As tarefas pendentes agora são gerenciadas na página "Minhas Tarefas" do CS Hub, que agrega ações de Ongoing, Playbooks e Alertas num único lugar.
 
 ---
 
@@ -733,8 +704,6 @@ if (cliente.times && Array.isArray(cliente.times)) {
 - `setUserRole` — admin define roles (onCall, rate limited 20/min)
 - `classifyThread` — proxy OpenAI para reclassificação manual de threads (onCall, rate limited 30/min)
 - `generateSummary` — proxy OpenAI para resumo executivo (onCall, rate limited 30/min)
-- `clickupProxy` — proxy ClickUp API (onCall, rate limited 60/min)
-- `clickupWebhook` — recebe webhooks do ClickUp com verificacao HMAC (onRequest, rate limited 120/min)
 - `summarizeTranscription` — gera resumo de transcrição de reunião com GPT (onCall, rate limited 30/hora)
 
 ### ✅ Segurança Implementada:
@@ -762,9 +731,6 @@ if (cliente.times && Array.isArray(cliente.times)) {
 
 ### Firebase Secrets (Google Secret Manager):
 - `OPENAI_API_KEY` — chave OpenAI
-- `CLICKUP_API_KEY` — chave ClickUp
-- `CLICKUP_LIST_ID` — ID da lista do ClickUp para criar tarefas automáticas
-- `CLICKUP_WEBHOOK_SECRET` — secret HMAC do webhook
 
 ### Comandos de deploy:
 ```bash

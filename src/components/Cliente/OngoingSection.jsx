@@ -197,7 +197,6 @@ export default function OngoingSection({ clienteId, segmentoAtual, cliente }) {
         cadencia: modalCadencia,
         dataInicio: modalDataInicio,
         acoes: modalAcoes,
-        cliente: cliente, // Para criar tarefas no ClickUp
       });
       setCiclos(prev => [novoCiclo, ...prev]);
       setExpandedCiclo(novoCiclo.id);

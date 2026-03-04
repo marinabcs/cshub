@@ -3,7 +3,6 @@ import { collection, getDocs, doc, getDoc, addDoc, updateDoc, setDoc, query, whe
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
 import { verificarTodosAlertas, ordenarAlertas } from '../utils/alertas';
-import { isClickUpConfigured, buscarTarefaClickUp } from '../services/clickup';
 
 // Constantes de performance
 const MAX_ALERTAS_LISTAGEM = 500; // Limite para listagens gerais
@@ -230,7 +229,6 @@ export function useVerificarAlertas() {
 
       // Salvar novos alertas
       let criados = 0;
-      let clickupCriados = 0;
       const erros = [];
 
       for (const alerta of novosAlertas) {
@@ -240,15 +238,10 @@ export function useVerificarAlertas() {
             ...alerta,
             created_at: Timestamp.now(),
             updated_at: Timestamp.now(),
-            resolved_at: null,
-            clickup_task_id: null,
-            clickup_task_url: null
+            resolved_at: null
           });
           criados++;
 
-          // ClickUp desativado para alertas (20/02/2026)
-          // Tarefas ClickUp agora são criadas apenas via Ongoing e Onboarding
-          // Para reativar, descomentar o bloco abaixo
         } catch (e) {
           erros.push({ alerta: alerta.titulo, error: e.message });
         }
@@ -261,7 +254,6 @@ export function useVerificarAlertas() {
         },
         alertasExistentes: alertasExistentes.filter(a => a.status === 'pendente' || a.status === 'em_andamento').length,
         novosCriados: criados,
-        clickupCriados: clickupCriados,
         erros: erros.length > 0 ? erros : null
       });
 
@@ -269,11 +261,10 @@ export function useVerificarAlertas() {
       await setDoc(doc(db, 'config', 'sync_status'), {
         ultima_verificacao_alertas: Timestamp.now(),
         alertas_criados: criados,
-        tarefas_clickup_criadas: clickupCriados,
         origem_ultima_verificacao: 'manual'
       }, { merge: true });
 
-      return { success: true, criados, clickupCriados };
+      return { success: true, criados };
     } catch (e) {
       console.error('Erro ao verificar alertas:', e);
       setResultados({ error: e.message });
@@ -511,113 +502,3 @@ export function useAlertasDoCliente(clienteId) {
   return { alertas, loading };
 }
 
-// Mapeamento de status do ClickUp para CS Hub
-// Status configurados no ClickUp: PENDENTE, BLOQUEADO, EM ANDAMENTO, IGNORADO, RESOLVIDO
-const CLICKUP_STATUS_MAP = {
-  // PENDENTE (Not started)
-  'pendente': 'pendente',
-
-  // EM ANDAMENTO (Active)
-  'em andamento': 'em_andamento',
-
-  // BLOQUEADO (Active)
-  'bloqueado': 'bloqueado',
-
-  // RESOLVIDO (Done)
-  'resolvido': 'resolvido',
-
-  // IGNORADO (Done)
-  'ignorado': 'ignorado'
-};
-
-// Hook para sincronizar status dos alertas com ClickUp
-export function useSincronizarClickUp() {
-  const [sincronizando, setSincronizando] = useState(false);
-  const [resultado, setResultado] = useState(null);
-
-  const sincronizarComClickUp = async () => {
-    if (!isClickUpConfigured()) {
-      setResultado({ success: false, error: 'ClickUp não está configurado' });
-      return { success: false, error: 'ClickUp não está configurado' };
-    }
-
-    setSincronizando(true);
-    setResultado(null);
-
-    try {
-      // Buscar todos os alertas que têm clickup_task_id
-      const alertasSnap = await getDocs(collection(db, 'alertas'));
-      const alertasComClickUp = alertasSnap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(a => a.clickup_task_id && (a.status === 'pendente' || a.status === 'em_andamento' || a.status === 'bloqueado'));
-
-      let atualizados = 0;
-      let erros = 0;
-      const detalhes = [];
-
-      for (const alerta of alertasComClickUp) {
-        try {
-          // Buscar status atual no ClickUp
-          const tarefaClickUp = await buscarTarefaClickUp(alerta.clickup_task_id);
-          const statusClickUp = tarefaClickUp.status?.status?.toLowerCase() || '';
-          const novoStatusCSHub = CLICKUP_STATUS_MAP[statusClickUp];
-
-          if (novoStatusCSHub && novoStatusCSHub !== alerta.status) {
-            // Atualizar status no CS Hub
-            const updateData = {
-              status: novoStatusCSHub,
-              updated_at: Timestamp.now(),
-              clickup_sync_at: Timestamp.now()
-            };
-
-            if (novoStatusCSHub === 'resolvido' || novoStatusCSHub === 'ignorado') {
-              updateData.resolved_at = Timestamp.now();
-              updateData.motivo_fechamento = `Sincronizado do ClickUp (${tarefaClickUp.status?.status})`;
-            }
-
-            await updateDoc(doc(db, 'alertas', alerta.id), updateData);
-            atualizados++;
-            detalhes.push({
-              titulo: alerta.titulo,
-              de: alerta.status,
-              para: novoStatusCSHub
-            });
-          }
-
-          // Pequeno delay para evitar rate limit do ClickUp
-          await new Promise(resolve => setTimeout(resolve, 200));
-        } catch (e) {
-          console.error(`Erro ao sincronizar alerta ${alerta.id}:`, e);
-          erros++;
-        }
-      }
-
-      // Atualizar timestamp de última sincronização
-      await setDoc(doc(db, 'config', 'sync_status'), {
-        ultima_sync_clickup: Timestamp.now(),
-        alertas_sincronizados: atualizados,
-        clickup_ativo: true,
-        origem_ultima_sync: 'manual'
-      }, { merge: true });
-
-      const res = {
-        success: true,
-        total: alertasComClickUp.length,
-        atualizados,
-        erros,
-        detalhes
-      };
-      setResultado(res);
-      return res;
-    } catch (e) {
-      console.error('Erro ao sincronizar com ClickUp:', e);
-      const res = { success: false, error: e.message };
-      setResultado(res);
-      return res;
-    } finally {
-      setSincronizando(false);
-    }
-  };
-
-  return { sincronizarComClickUp, sincronizando, resultado };
-}

@@ -11,9 +11,6 @@ import {
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { SEGMENTOS_CS } from '../utils/segmentoCS';
-import { isClickUpConfigured } from '../services/clickup';
-import { useSincronizarClickUp } from '../hooks/useAlertas';
-import { sincronizarOngoingComClickUp } from '../services/ongoing';
 import { validateForm } from '../validation';
 import { configGeralSchema } from '../validation/configuracoes';
 import { isGestorOrHigher } from '../utils/roles';
@@ -29,13 +26,7 @@ export default function Configuracoes() {
   const [checkingRole, setCheckingRole] = useState(true);
 
   // Estado para status de integrações
-  const [clickUpStatus, setClickUpStatus] = useState(null);
   const [openAIStatus, setOpenAIStatus] = useState(null);
-
-  // Estado para sincronização do ClickUp
-  const [sincronizandoClickUp, setSincronizandoClickUp] = useState(false);
-  const [clickUpSyncResults, setClickUpSyncResults] = useState(null);
-  const { sincronizarComClickUp } = useSincronizarClickUp();
 
   // Estado para status de sync n8n
   const [syncStatus, setSyncStatus] = useState(null);
@@ -174,51 +165,11 @@ export default function Configuracoes() {
   }, []);
 
   const checkIntegrations = async () => {
-    // Check ClickUp (API key agora é via Cloud Function, verificar apenas config IDs)
-    const clickUpTeamId = import.meta.env.VITE_CLICKUP_TEAM_ID;
-    const clickUpListId = import.meta.env.VITE_CLICKUP_LIST_ID;
-    setClickUpStatus({
-      configured: !!(clickUpTeamId && clickUpListId),
-      apiKey: 'Via Cloud Function (servidor)',
-      teamId: clickUpTeamId || 'Não configurado'
-    });
-
     // Check OpenAI (API key agora é via Cloud Function)
     setOpenAIStatus({
       configured: true,
       apiKey: 'Via Cloud Function (servidor)'
     });
-  };
-
-  // Sincronização completa com ClickUp (alertas + playbooks)
-  const runClickUpSync = async () => {
-    setSincronizandoClickUp(true);
-    setClickUpSyncResults(null);
-
-    try {
-      // Sincronizar alertas e ongoing em paralelo
-      const [alertasResult, ongoingResult] = await Promise.all([
-        sincronizarComClickUp(),
-        sincronizarOngoingComClickUp()
-      ]);
-
-      setClickUpSyncResults({
-        alertas: alertasResult,
-        ongoing: ongoingResult
-      });
-
-      // Salvar timestamp da última sincronização
-      const agora = new Date();
-      const syncDocRef = doc(db, 'config', 'clickup_sync');
-      await setDoc(syncDocRef, { ultima_sincronizacao: agora }, { merge: true });
-      toast.success('Sincronização com ClickUp concluída!');
-    } catch (error) {
-      console.error('Erro ao sincronizar com ClickUp:', error);
-      setClickUpSyncResults({ erro: error.message });
-      toast.error('Erro ao sincronizar com ClickUp. Verifique as configurações.');
-    } finally {
-      setSincronizandoClickUp(false);
-    }
   };
 
   // Migração de datas das threads (retroativo)
@@ -586,14 +537,6 @@ export default function Configuracoes() {
           <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '600', margin: 0 }}>Sincronização / Status</h2>
         </div>
 
-        {/* Erro de sync ClickUp */}
-        {clickUpSyncResults?.erro && (
-          <div style={{ marginBottom: '16px', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <XCircle style={{ width: '14px', height: '14px', color: '#ef4444' }} />
-            <span style={{ color: '#ef4444', fontSize: '12px' }}>Erro: {clickUpSyncResults.erro}</span>
-          </div>
-        )}
-
         {/* Grid de 3 colunas */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
           {/* Coluna 1: Dados (n8n) */}
@@ -643,43 +586,6 @@ export default function Configuracoes() {
                     : 'Nunca'}
                 </span>
               </div>
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
-                borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.1)'
-              }}>
-                <p style={{ color: 'white', fontSize: '13px', margin: 0 }}>ClickUp</p>
-                <span style={{ color: syncStatus?.clickup_ativo ? '#a78bfa' : '#64748b', fontSize: '11px', fontWeight: '500' }}>
-                  {syncStatus?.ultima_sync_clickup
-                    ? (syncStatus.ultima_sync_clickup.toDate
-                        ? syncStatus.ultima_sync_clickup.toDate()
-                        : new Date(syncStatus.ultima_sync_clickup)
-                      ).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                    : 'Nunca'}
-                </span>
-              </div>
-              {/* Botão Sync Manual */}
-              {isClickUpConfigured() && (
-                <button
-                  onClick={runClickUpSync}
-                  disabled={sincronizandoClickUp}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    padding: '8px 12px',
-                    background: sincronizandoClickUp ? 'rgba(6, 182, 212, 0.2)' : 'rgba(6, 182, 212, 0.1)',
-                    border: '1px solid rgba(6, 182, 212, 0.3)',
-                    borderRadius: '8px',
-                    color: '#06b6d4',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    cursor: sincronizandoClickUp ? 'not-allowed' : 'pointer',
-                    marginTop: '4px'
-                  }}
-                >
-                  <RefreshCw style={{ width: '12px', height: '12px', animation: sincronizandoClickUp ? 'spin 1s linear infinite' : 'none' }} />
-                  {sincronizandoClickUp ? 'Sincronizando...' : 'Sincronizar Agora'}
-                </button>
-              )}
             </div>
           </div>
 
@@ -703,24 +609,6 @@ export default function Configuracoes() {
                   borderRadius: '4px', fontSize: '10px', fontWeight: '500'
                 }}>
                   {openAIStatus?.configured ? 'OK' : 'OFF'}
-                </span>
-              </div>
-              <div style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', background: 'rgba(15, 10, 31, 0.6)',
-                borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.1)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Zap style={{ width: '14px', height: '14px', color: clickUpStatus?.configured ? '#10b981' : '#64748b' }} />
-                  <p style={{ color: 'white', fontSize: '13px', margin: 0 }}>ClickUp</p>
-                </div>
-                <span style={{
-                  padding: '2px 6px',
-                  background: clickUpStatus?.configured ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.2)',
-                  color: clickUpStatus?.configured ? '#10b981' : '#64748b',
-                  borderRadius: '4px', fontSize: '10px', fontWeight: '500'
-                }}>
-                  {clickUpStatus?.configured ? 'OK' : 'OFF'}
                 </span>
               </div>
             </div>

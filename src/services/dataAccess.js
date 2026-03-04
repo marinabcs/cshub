@@ -296,6 +296,73 @@ export async function fetchAlertasByCliente(clienteId) {
   return snap.docs.map(docToObj)
 }
 
+/**
+ * Fetch active alertas assigned to a specific responsavel email.
+ * Runs 3 parallel queries (pendente, em_andamento, bloqueado). Cached for 5 min.
+ * @param {string} email
+ * @returns {Promise<Array<Object>>}
+ */
+export async function fetchAlertasAtivosDoResponsavel(email) {
+  if (!email) return []
+
+  const cacheKey = `da:alertas:responsavel:${email}`
+  const cached = getCached(cacheKey)
+  if (cached) return cached
+
+  const colRef = collection(db, 'alertas')
+  const statuses = ['pendente', 'em_andamento', 'bloqueado']
+
+  const snaps = await Promise.all(
+    statuses.map(status =>
+      getDocs(query(colRef, where('responsavel_email', '==', email), where('status', '==', status)))
+    )
+  )
+
+  const data = snaps.flatMap(snap => snap.docs.map(docToObj))
+  setCached(cacheKey, data, TTL_ALERTAS)
+  return data
+}
+
+// ---------- Ongoing Ciclos Batch --------------------------------------------
+
+/**
+ * Fetch ongoing ciclos em_andamento for multiple clientes in parallel.
+ * @param {string[]} clienteIds
+ * @returns {Promise<Array<{ clienteId: string, ciclos: Array<Object> }>>}
+ */
+export async function fetchOngoingCiclosBatch(clienteIds) {
+  if (!clienteIds || clienteIds.length === 0) return []
+
+  const results = await Promise.all(
+    clienteIds.map(async (clienteId) => {
+      const ciclos = await fetchOngoingCiclos(clienteId, { status: 'em_andamento' })
+      return { clienteId, ciclos }
+    })
+  )
+  return results
+}
+
+// ---------- Playbooks Ativos Batch ------------------------------------------
+
+/**
+ * Fetch playbooks_ativos em_andamento for multiple clientes in parallel.
+ * @param {string[]} clienteIds
+ * @returns {Promise<Array<{ clienteId: string, playbooks: Array<Object> }>>}
+ */
+export async function fetchPlaybooksAtivosBatch(clienteIds) {
+  if (!clienteIds || clienteIds.length === 0) return []
+
+  const results = await Promise.all(
+    clienteIds.map(async (clienteId) => {
+      const colRef = collection(db, 'clientes', clienteId, 'playbooks_ativos')
+      const q = query(colRef, where('status', '==', 'em_andamento'))
+      const snap = await getDocs(q)
+      return { clienteId, playbooks: snap.docs.map(docToObj) }
+    })
+  )
+  return results
+}
+
 // ---------- Metricas Diarias ------------------------------------------------
 
 /**
