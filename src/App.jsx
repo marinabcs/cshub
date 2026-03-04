@@ -29,7 +29,6 @@ const PlaybookForm = lazy(() => import('./pages/PlaybookForm'))
 const OnGoing = lazy(() => import('./pages/OnGoing'))
 const PlaybookFluxograma = lazy(() => import('./pages/PlaybookFluxograma'))
 const Documentos = lazy(() => import('./pages/Documentos'))
-const ResumoExecutivo = lazy(() => import('./pages/ResumoExecutivo'))
 const Onboarding = lazy(() => import('./pages/Onboarding'))
 const OnboardingCalculadora = lazy(() => import('./pages/OnboardingCalculadora'))
 
@@ -147,7 +146,6 @@ function AppRoutes() {
         <Route path="/playbooks/:id/editar" element={<PlaybookForm />} />
         <Route path="/documentos" element={<Documentos />} />
         <Route path="/analytics" element={<Analytics />} />
-        <Route path="/resumo-executivo" element={<ResumoExecutivo />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/onboarding/:clienteId" element={<Onboarding />} />
         <Route path="/onboarding/calculadora" element={<OnboardingCalculadora />} />

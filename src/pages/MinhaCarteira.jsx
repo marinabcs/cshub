@@ -1,26 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { cachedGetDocs } from '../services/cache';
 import { useAuth } from '../contexts/AuthContext';
 import { getThreadsByTeam } from '../services/api';
 import {
   Briefcase, Users, MessageSquare, AlertTriangle, ChevronRight,
-  Clock, TrendingUp, TrendingDown, Activity, Bell, CheckCircle,
-  XCircle, Calendar, ArrowUpRight, ChevronDown, Lock, ClipboardList
+  Clock, TrendingUp, Activity, ListTodo, CheckCircle,
+  XCircle, ArrowUpRight, ChevronDown, ClipboardList
 } from 'lucide-react';
 import { STATUS_OPTIONS } from '../utils/clienteStatus';
 import { SEGMENTOS_CS, getClienteSegmento, getSegmentoColor, getSegmentoLabel } from '../utils/segmentoCS';
 import { filterActiveCSUsers } from '../utils/roles';
+import { useAlertasCount } from '../hooks/useAlertas';
 
 export default function MinhaCarteira() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [clientes, setClientes] = useState([]);
   const [threads, setThreads] = useState([]);
-  const [alertas, setAlertas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { counts: alertaCounts } = useAlertasCount();
   const [responsaveis, setResponsaveis] = useState([]);
   const [selectedResponsavel, setSelectedResponsavel] = useState(null);
   const [filterStatus, setFilterStatus] = useState(['ativo', 'aviso_previo']);
@@ -35,8 +36,7 @@ export default function MinhaCarteira() {
     estavel: 0,
     alerta: 0,
     resgate: 0,
-    threadsPendentes: 0,
-    alertasPendentes: 0
+    threadsPendentes: 0
   });
 
   // Buscar lista de responsáveis (usuários CS) ao carregar
@@ -165,8 +165,7 @@ export default function MinhaCarteira() {
         estavel: filtered.filter(c => getClienteSegmento(c) === 'ESTAVEL').length,
         alerta: filtered.filter(c => getClienteSegmento(c) === 'ALERTA').length,
         resgate: filtered.filter(c => getClienteSegmento(c) === 'RESGATE').length,
-        threadsPendentes: 0,
-        alertasPendentes: 0
+        threadsPendentes: 0
       };
 
       // 2. Verificar quais clientes NÃO têm onboarding, ongoing ou playbook ativo
@@ -211,26 +210,6 @@ export default function MinhaCarteira() {
           setThreads(pendentes.slice(0, 10)); // Top 10
           statsCalc.threadsPendentes = pendentes.length;
         }
-      }
-
-      // 4. Buscar alertas pendentes
-      const alertasRef = collection(db, 'alertas');
-      const alertasQuery = query(
-        alertasRef,
-        where('responsavel_email', '==', responsavelEmail),
-        where('status', '==', 'pendente'),
-        orderBy('created_at', 'desc'),
-        limit(10)
-      );
-
-      try {
-        const alertasSnap = await getDocs(alertasQuery);
-        const alertasData = alertasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setAlertas(alertasData);
-        statsCalc.alertasPendentes = alertasData.length;
-      } catch {
-        // Pode falhar se não tiver índice, ignorar silenciosamente
-        console.log('Alertas query failed, skipping');
       }
 
       setStats(statsCalc);
@@ -594,10 +573,10 @@ export default function MinhaCarteira() {
           )}
         </div>
 
-        {/* Alertas */}
+        {/* Minhas Tarefas */}
         <div style={{
           background: 'rgba(30, 27, 75, 0.4)',
-          border: '1px solid rgba(239, 68, 68, 0.2)',
+          border: '1px solid rgba(139, 92, 246, 0.2)',
           borderRadius: '20px',
           padding: '20px',
           display: 'flex',
@@ -606,64 +585,52 @@ export default function MinhaCarteira() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Bell style={{ width: '18px', height: '18px', color: '#ef4444' }} />
-              <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>Alertas</h3>
+              <ListTodo style={{ width: '18px', height: '18px', color: '#8b5cf6' }} />
+              <h3 style={{ color: 'white', fontSize: '15px', fontWeight: '600', margin: 0 }}>Minhas Tarefas</h3>
             </div>
-            {stats.alertasPendentes > 0 && (
+            {alertaCounts.pendentes > 0 && (
               <span style={{
                 padding: '2px 8px',
-                background: 'rgba(239, 68, 68, 0.2)',
-                color: '#ef4444',
+                background: alertaCounts.urgentes > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                color: alertaCounts.urgentes > 0 ? '#ef4444' : '#f59e0b',
                 borderRadius: '10px',
                 fontSize: '12px',
                 fontWeight: '600'
               }}>
-                {stats.alertasPendentes}
+                {alertaCounts.pendentes}
               </span>
             )}
           </div>
 
-          {alertas.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', flex: 1 }}>
-              {alertas.map((alerta) => (
-                <div
-                  key={alerta.id}
-                  onClick={() => navigate('/minhas-tarefas')}
-                  style={{
-                    padding: '12px',
-                    background: 'rgba(15, 10, 31, 0.6)',
-                    border: `1px solid ${alerta.prioridade === 'urgente' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(139, 92, 246, 0.1)'}`,
-                    borderRadius: '10px',
-                    cursor: 'pointer',
-                    minWidth: 0
-                  }}
-                >
-                  <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', margin: '0 0 4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {alerta.titulo}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '16px 0', gap: '12px' }}>
+            {alertaCounts.pendentes > 0 ? (
+              <>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ color: 'white', fontSize: '32px', fontWeight: '700', margin: '0 0 4px 0' }}>{alertaCounts.pendentes}</p>
+                  <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>
+                    {alertaCounts.pendentes === 1 ? 'tarefa pendente' : 'tarefas pendentes'}
                   </p>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{
-                      padding: '2px 6px',
-                      background: alerta.prioridade === 'urgente' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                      color: alerta.prioridade === 'urgente' ? '#ef4444' : '#f59e0b',
-                      borderRadius: '4px',
-                      fontSize: '10px',
-                      fontWeight: '500'
-                    }}>
-                      {alerta.prioridade?.toUpperCase() || 'NORMAL'}
-                    </span>
-                    <span style={{ color: '#64748b', fontSize: '11px' }}>
-                      {formatRelativeDate(alerta.created_at)}
-                    </span>
-                  </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', padding: '16px 0', margin: 0 }}>
-              Nenhum alerta pendente
-            </p>
-          )}
+                {alertaCounts.urgentes > 0 && (
+                  <span style={{
+                    padding: '4px 10px',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '8px',
+                    color: '#ef4444',
+                    fontSize: '12px',
+                    fontWeight: '600'
+                  }}>
+                    {alertaCounts.urgentes} urgente{alertaCounts.urgentes > 1 ? 's' : ''}
+                  </span>
+                )}
+              </>
+            ) : (
+              <p style={{ color: '#64748b', fontSize: '13px', textAlign: 'center', margin: 0 }}>
+                Nenhuma tarefa pendente
+              </p>
+            )}
+          </div>
 
           <button
             onClick={() => navigate('/minhas-tarefas')}
@@ -671,10 +638,10 @@ export default function MinhaCarteira() {
               width: '100%',
               marginTop: '12px',
               padding: '10px',
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.2)',
+              background: 'rgba(139, 92, 246, 0.1)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
               borderRadius: '10px',
-              color: '#ef4444',
+              color: '#8b5cf6',
               fontSize: '12px',
               fontWeight: '500',
               cursor: 'pointer',
@@ -684,7 +651,7 @@ export default function MinhaCarteira() {
               gap: '6px'
             }}
           >
-            Ver todas as tarefas
+            Ver tarefas
             <ArrowUpRight style={{ width: '14px', height: '14px' }} />
           </button>
         </div>

@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { LayoutDashboard, Users, Settings, LogOut, UserCog, History, Briefcase, TrendingUp, ClipboardList, GraduationCap, ListTodo } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, LogOut, UserCog, History, Briefcase, ClipboardList, GraduationCap, ListTodo } from 'lucide-react';
 import { useAlertasCount } from '../../hooks/useAlertas';
 import { isAdmin as isAdminCheck } from '../../utils/roles';
 
@@ -50,9 +50,6 @@ export default function Sidebar() {
     { to: '/minha-carteira', icon: Briefcase, label: 'Minha Carteira' },
     { to: '/minhas-tarefas', icon: ListTodo, label: 'Minhas Tarefas', badge: alertaCounts.pendentes, urgente: alertaCounts.urgentes > 0 },
     { to: '/clientes', icon: Users, label: 'Clientes' },
-    { to: '/resumo-executivo', icon: TrendingUp, label: 'Oportunidades' },
-    // { to: '/analytics', icon: BarChart3, label: 'Analytics' }, // Oculto - página de gestão
-    // { to: '/documentos', icon: FileText, label: 'Documentos' }, // Oculto - usar aba no cliente
     { to: '/ongoing', icon: ClipboardList, label: 'Ongoing' },
     { to: '/onboarding', icon: GraduationCap, label: 'Onboarding' },
   ];
